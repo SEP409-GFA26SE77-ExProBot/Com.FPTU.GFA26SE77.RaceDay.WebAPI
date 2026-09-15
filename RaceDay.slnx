@@ -1,0 +1,48 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Gateways/">
+    <Project Path="src/Gateways/RaceDay.ApiGateway/RaceDay.ApiGateway.csproj" />
+  </Folder>
+  <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/RaceDay.Api/RaceDay.Api.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/AuditLog/">
+    <Project Path="src/Modules/AuditLog/RaceDay.Modules.AuditLog.Api/RaceDay.Modules.AuditLog.Api.csproj" />
+    <Project Path="src/Modules/AuditLog/RaceDay.Modules.AuditLog.Application/RaceDay.Modules.AuditLog.Application.csproj" />
+    <Project Path="src/Modules/AuditLog/RaceDay.Modules.AuditLog.Contracts/RaceDay.Modules.AuditLog.Contracts.csproj" />
+    <Project Path="src/Modules/AuditLog/RaceDay.Modules.AuditLog.Domain/RaceDay.Modules.AuditLog.Domain.csproj" />
+    <Project Path="src/Modules/AuditLog/RaceDay.Modules.AuditLog.Infrastructure/RaceDay.Modules.AuditLog.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Iam/">
+    <Project Path="src/Modules/Iam/RaceDay.Modules.Iam.Api/RaceDay.Modules.Iam.Api.csproj" />
+    <Project Path="src/Modules/Iam/RaceDay.Modules.Iam.Application/RaceDay.Modules.Iam.Application.csproj" />
+    <Project Path="src/Modules/Iam/RaceDay.Modules.Iam.Contracts/RaceDay.Modules.Iam.Contracts.csproj" />
+    <Project Path="src/Modules/Iam/RaceDay.Modules.Iam.Domain/RaceDay.Modules.Iam.Domain.csproj" />
+    <Project Path="src/Modules/Iam/RaceDay.Modules.Iam.Infrastructure/RaceDay.Modules.Iam.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Payment/">
+    <Project Path="src/Modules/Payment/RaceDay.Modules.Payment.Api/RaceDay.Modules.Payment.Api.csproj" />
+    <Project Path="src/Modules/Payment/RaceDay.Modules.Payment.Application/RaceDay.Modules.Payment.Application.csproj" />
+    <Project Path="src/Modules/Payment/RaceDay.Modules.Payment.Contracts/RaceDay.Modules.Payment.Contracts.csproj" />
+    <Project Path="src/Modules/Payment/RaceDay.Modules.Payment.Domain/RaceDay.Modules.Payment.Domain.csproj" />
+    <Project Path="src/Modules/Payment/RaceDay.Modules.Payment.Infrastructure/RaceDay.Modules.Payment.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/_Template/">
+    <Project Path="src/Modules/_Template/RaceDay.Modules._Template.Api/RaceDay.Modules._Template.Api.csproj" />
+    <Project Path="src/Modules/_Template/RaceDay.Modules._Template.Application/RaceDay.Modules._Template.Application.csproj" />
+    <Project Path="src/Modules/_Template/RaceDay.Modules._Template.Contracts/RaceDay.Modules._Template.Contracts.csproj" />
+    <Project Path="src/Modules/_Template/RaceDay.Modules._Template.Domain/RaceDay.Modules._Template.Domain.csproj" />
+    <Project Path="src/Modules/_Template/RaceDay.Modules._Template.Infrastructure/RaceDay.Modules._Template.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Shared/">
+    <Project Path="src/Shared/RaceDay.Shared.Application/RaceDay.Shared.Application.csproj" />
+    <Project Path="src/Shared/RaceDay.Shared.Domain/RaceDay.Shared.Domain.csproj" />
+    <Project Path="src/Shared/RaceDay.Shared.Infrastructure/RaceDay.Shared.Infrastructure.csproj" />
+    <Project Path="src/Shared/RaceDay.Shared.Web/RaceDay.Shared.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RaceDay.Modules.Iam.UnitTests/RaceDay.Modules.Iam.UnitTests.csproj" />
+    <Project Path="tests/RaceDay.Shared.UnitTests/RaceDay.Shared.UnitTests.csproj" />
+  </Folder>
+</Solution>

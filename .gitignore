@@ -1,0 +1,30 @@
+## .NET
+bin/
+obj/
+out/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.ncrunch*
+_NCrunch_*
+*.DotSettings.user
+
+## Secrets / env
+appsettings.*.local.json
+*.pfx
+.env
+.env.*
+
+## OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+## Test / coverage
+TestResults/
+coverage/
+*.coverage
+*.coveragexml

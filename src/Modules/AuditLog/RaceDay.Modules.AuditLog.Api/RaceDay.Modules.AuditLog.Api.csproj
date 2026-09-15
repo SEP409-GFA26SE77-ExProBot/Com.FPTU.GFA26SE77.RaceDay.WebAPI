@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RaceDay.Modules.AuditLog.Application\RaceDay.Modules.AuditLog.Application.csproj" />
+    <ProjectReference Include="..\RaceDay.Modules.AuditLog.Infrastructure\RaceDay.Modules.AuditLog.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Web\RaceDay.Shared.Web.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MediatR" Version="12.4.1" />
+  </ItemGroup>
+</Project>

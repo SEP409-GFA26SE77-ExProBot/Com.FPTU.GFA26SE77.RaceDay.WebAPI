@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RaceDay.Modules.Payment.Application\RaceDay.Modules.Payment.Application.csproj" />
+    <ProjectReference Include="..\RaceDay.Modules.Payment.Infrastructure\RaceDay.Modules.Payment.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Web\RaceDay.Shared.Web.csproj" />
+  </ItemGroup>
+</Project>
