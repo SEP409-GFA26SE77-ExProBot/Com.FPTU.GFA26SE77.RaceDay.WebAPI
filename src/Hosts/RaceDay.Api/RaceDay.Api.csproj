@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <!-- AspNetCore.OpenApi 10.0.12 requires >= 2.12.0; 2.7.5+ patches GHSA-v5pm-xwqc-g5wc -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.12.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Modules\Iam\RaceDay.Modules.Iam.Api\RaceDay.Modules.Iam.Api.csproj" />
+    <ProjectReference Include="..\..\Modules\AuditLog\RaceDay.Modules.AuditLog.Api\RaceDay.Modules.AuditLog.Api.csproj" />
+    <ProjectReference Include="..\..\Modules\Payment\RaceDay.Modules.Payment.Api\RaceDay.Modules.Payment.Api.csproj" />
+    <ProjectReference Include="..\..\Shared\RaceDay.Shared.Web\RaceDay.Shared.Web.csproj" />
+    <ProjectReference Include="..\..\Shared\RaceDay.Shared.Infrastructure\RaceDay.Shared.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

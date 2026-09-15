@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: raceday
+      POSTGRES_PASSWORD: raceday
+      POSTGRES_DB: raceday
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  # Optional: put Nginx/Traefik in front of api-gateway for load balancing multiple gateway replicas.
+  # api / gateway containers can be added when Dockerfiles are ready.
+
+volumes:
+  pgdata:
+  mongodata:
