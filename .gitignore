@@ -15,12 +15,17 @@ _NCrunch_*
 appsettings.*.local.json
 *.pfx
 .env
-.env.*
+.env.local
+.env.*.local
+!.env.example
 
 ## OS / IDE
 .DS_Store
 Thumbs.db
 .idea/
+# Cursor IDE project rules/settings at repo root only — NOT .git/
+/.cursor/
+/AGENTS.md
 *.swp
 
 ## Test / coverage

@@ -19,7 +19,8 @@ public static class TemplateModule
 
     public static IEndpointRouteBuilder MapTemplateEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/v1/_template/health", () => Results.Ok(new { module = "_template", status = "scaffold" }));
+        app.MapGet("/api/v1/_template/health", () => Results.Ok(new { module = "_template", status = "scaffold" }))
+            .WithTags("_Template");
         return app;
     }
 }

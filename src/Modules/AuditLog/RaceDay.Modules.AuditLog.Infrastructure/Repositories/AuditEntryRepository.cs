@@ -1,3 +1,4 @@
+using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
 using RaceDay.Modules.AuditLog.Application.Abstractions;
@@ -32,6 +33,7 @@ public sealed class AuditEntryRepository(IMongoDbContext mongo) : IAuditEntryRep
 internal sealed class AuditEntryDocument
 {
     [BsonId]
+    [BsonRepresentation(BsonType.String)]
     public Guid Id { get; set; }
     public string Action { get; set; } = string.Empty;
     public string ActorId { get; set; } = string.Empty;

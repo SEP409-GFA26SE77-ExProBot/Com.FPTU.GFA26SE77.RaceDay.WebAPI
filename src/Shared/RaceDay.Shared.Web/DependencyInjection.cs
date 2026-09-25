@@ -1,17 +1,29 @@
+using System.Text;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
+using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Application.Behaviors;
 using RaceDay.Shared.Web.Auth;
 using RaceDay.Shared.Web.Middleware;
+using MediatR;
 
 namespace RaceDay.Shared.Web;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddSharedWeb(this IServiceCollection services)
+    public static IServiceCollection AddSharedWeb(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+        services.AddHttpContextAccessor();
+        services.AddScoped<ICurrentUserAccessor, HttpCurrentUserAccessor>();
+        services.AddJwtAuthentication(configuration);
+
         services.AddAuthorizationBuilder()
             .AddPolicy(AuthPolicies.PublicUser, policy => policy.RequireAuthenticatedUser())
             .AddPolicy(AuthPolicies.AdminOnly, policy =>
@@ -33,6 +45,33 @@ public static class DependencyInjection
                 limiter.QueueLimit = 0;
             });
         });
+
+        return services;
+    }
+
+    public static IServiceCollection AddJwtAuthentication(this IServiceCollection services, IConfiguration configuration)
+    {
+        var signingKey = configuration["Jwt:SigningKey"];
+        if (string.IsNullOrWhiteSpace(signingKey))
+        {
+            throw new InvalidOperationException("Jwt:SigningKey is missing. Set it via .env or configuration.");
+        }
+
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
+            {
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidateLifetime = true,
+                    ValidIssuer = configuration["Jwt:Issuer"] ?? "raceday",
+                    ValidAudience = configuration["Jwt:Audience"] ?? "raceday-clients",
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                    RoleClaimType = System.Security.Claims.ClaimTypes.Role
+                };
+            });
 
         return services;
     }
