@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using FluentValidation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using RaceDay.Shared.Domain.Exceptions;
@@ -13,6 +14,12 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
         try
         {
             await next(context);
+        }
+        catch (ValidationException ex)
+        {
+            logger.LogWarning(ex, "Validation failed");
+            var errors = ex.Errors.Select(e => e.ErrorMessage).Distinct().ToArray();
+            await WriteAsync(context, HttpStatusCode.BadRequest, string.Join("; ", errors));
         }
         catch (DomainException ex)
         {

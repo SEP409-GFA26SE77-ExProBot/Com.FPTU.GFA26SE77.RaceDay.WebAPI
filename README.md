@@ -51,9 +51,47 @@ dotnet test RaceDay.slnx
 
 See `src/Modules/_Template/README.md`.
 
+## Cursor / agent conventions
+
+- `AGENTS.md` — short non-negotiables for AI/human contributors
+- `.cursor/rules/*.mdc` — architecture, C# standards, modules, API/security, Shared, testing
+
+## IAM database (PostgreSQL)
+
+- Server: PostgreSQL 18 — database `postgres`, schema `iam`
+- Secrets live in **repo-root `.env`** (gitignored). Copy from `.env.example`.
+- SQL script: `deploy/sql/iam_init.sql`
+- Dev seed password: `MatKhau@123` (users like `admin@raceday.vn`)
+- EF migrates + seeds on Host startup
+
+```bash
+cp .env.example .env   # then fill Password + Jwt__SigningKey
+docker compose -f deploy/docker-compose.yml up -d   # optional Mongo/Redis
+# OR run SQL: psql -h localhost -U postgres -d postgres -f deploy/sql/iam_init.sql
+dotnet run --project src/Hosts/RaceDay.Api
+```
+
+### IAM API
+
+| Method | Path | Auth |
+|--------|------|------|
+| POST | `/api/v1/iam/auth/register` | public |
+| POST | `/api/v1/iam/auth/login` | public |
+| POST | `/api/v1/iam/auth/reset-password` | public |
+| GET | `/admin/v1/iam/users` | Admin JWT |
+| GET | `/admin/v1/iam/users/{id}` | Admin JWT |
+| PUT | `/admin/v1/iam/users/{id}` | Admin JWT |
+| DELETE | `/admin/v1/iam/users/{id}` | Admin JWT |
+| GET | `/admin/v1/audit-logs` | Admin JWT |
+
+Seed admin: `admin@raceday.vn` / `MatKhau@123`
+
 ## Notes
 
-- JWT bearer is wired but signing config must be completed before production auth.
-- RabbitMQ publisher is a scaffold logger stub — replace with real client publish.
+- Secrets (DB password, JWT signing key) must be in `.env` — never commit `.env`.
+- If local PostgreSQL password differs, set `ConnectionStrings__Postgres` in `.env`.
+- Prefer **one** of: run `iam_init.sql` **or** let EF migrate on startup (SQL script already inserts EF migration history).
+- JWT is configured via `Jwt__*` env vars.
+- In-process audit: IAM Contracts events → `MediatorEventBus` → AuditLog (Mongo).
 - Old folder `Com.FPTU.GFA26SE77.RaceDay.WebAPI/WebApplication1` is leftover template; prefer `src/`.
-- `Directory.Build.props` pins patched transitive packages (`SharpCompress`, `Snappier`, `System.Security.Cryptography.Xml`) for NuGet audit on Infrastructure projects.
+- `Directory.Build.props` pins patched transitive packages for NuGet audit.

@@ -20,7 +20,9 @@ public static class PaymentModule
     public static IEndpointRouteBuilder MapPaymentEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/payment/status", () =>
-            Results.Ok(new { module = "payment", status = "not_implemented" }));
+                Results.Ok(new { module = "payment", status = "not_implemented" }))
+            .WithTags("Payment")
+            .RequireRateLimiting("public");
 
         return app;
     }

@@ -1,10 +1,10 @@
-using System.Reflection;
+using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using RaceDay.Modules.AuditLog.Application.Abstractions;
+using RaceDay.Modules.AuditLog.Application.AuditEntries;
 using RaceDay.Modules.AuditLog.Application.EventHandlers;
 using RaceDay.Modules.AuditLog.Infrastructure;
 using RaceDay.Shared.Web.Auth;
@@ -15,7 +15,7 @@ public static class AuditLogModule
 {
     public static IServiceCollection AddAuditLogModule(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(UserCreatedAuditHandler).Assembly));
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(IamAuditEventHandler).Assembly));
         services.AddAuditLogInfrastructure(configuration);
         return services;
     }
@@ -23,21 +23,14 @@ public static class AuditLogModule
     public static IEndpointRouteBuilder MapAuditLogEndpoints(this IEndpointRouteBuilder app)
     {
         var adminApi = app.MapGroup("/admin/v1/audit-logs")
+            .WithTags("AuditLog")
             .RequireAuthorization(AuthPolicies.AdminOnly)
             .RequireRateLimiting("admin");
 
-        adminApi.MapGet("/", async (IAuditEntryRepository repository, CancellationToken ct) =>
+        adminApi.MapGet("/", async (int? take, IMediator mediator, CancellationToken ct) =>
         {
-            var entries = await repository.ListRecentAsync(50, ct);
-            return Results.Ok(entries.Select(x => new
-            {
-                x.Id,
-                x.Action,
-                x.ActorId,
-                x.ResourceType,
-                x.ResourceId,
-                x.OccurredOnUtc
-            }));
+            var entries = await mediator.Send(new ListRecentAuditEntriesQuery(take ?? 50), ct);
+            return Results.Ok(entries);
         });
 
         return app;

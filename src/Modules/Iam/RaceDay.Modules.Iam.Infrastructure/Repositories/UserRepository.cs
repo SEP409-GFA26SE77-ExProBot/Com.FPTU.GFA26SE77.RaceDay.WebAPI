@@ -12,6 +12,21 @@ public sealed class UserRepository(IamDbContext dbContext)
     public Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         var normalized = email.Trim().ToLowerInvariant();
-        return Set.FirstOrDefaultAsync(x => x.Email == normalized, cancellationToken);
+        return Set.Include(x => x.Profile)
+            .FirstOrDefaultAsync(x => x.Email == normalized, cancellationToken);
+    }
+
+    public Task<User?> GetByIdWithProfileAsync(Guid id, CancellationToken cancellationToken = default)
+        => Set.Include(x => x.Profile).FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+    public async Task<(IReadOnlyList<User> Items, int Total)> ListAsync(
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var query = Set.AsNoTracking().Include(x => x.Profile).OrderBy(x => x.FullName);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        return (items, total);
     }
 }

@@ -1,14 +1,15 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
-      POSTGRES_USER: raceday
-      POSTGRES_PASSWORD: raceday
-      POSTGRES_DB: raceday
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./sql/iam_init.sql:/docker-entrypoint-initdb.d/01_iam_init.sql:ro
 
   mongodb:
     image: mongo:7
@@ -27,9 +28,6 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
-
-  # Optional: put Nginx/Traefik in front of api-gateway for load balancing multiple gateway replicas.
-  # api / gateway containers can be added when Dockerfiles are ready.
 
 volumes:
   pgdata:
