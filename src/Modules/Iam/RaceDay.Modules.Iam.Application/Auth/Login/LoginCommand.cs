@@ -7,15 +7,21 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Iam.Application.Auth.Login;
 
-public sealed record LoginCommand(string Email, string Password) : IRequest<LoginResult>;
+public sealed record LoginCommand(string Username, string Password) : IRequest<LoginResult>;
 
-public sealed record LoginResult(Guid UserId, string Email, string FullName, string Role, string AccessToken);
+public sealed record LoginResult(
+    Guid UserId,
+    string Email,
+    string Username,
+    string FullName,
+    string Role,
+    string AccessToken);
 
 public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
 {
     public LoginCommandValidator()
     {
-        RuleFor(x => x.Email).NotEmpty().EmailAddress();
+        RuleFor(x => x.Username).NotEmpty().MaximumLength(50);
         RuleFor(x => x.Password).NotEmpty();
     }
 }
@@ -30,14 +36,14 @@ public sealed class LoginCommandHandler(
 {
     public async Task<LoginResult> Handle(LoginCommand request, CancellationToken cancellationToken)
     {
-        var user = await users.GetByEmailAsync(request.Email, cancellationToken)
-            ?? throw new DomainException("Email hoặc mật khẩu không đúng.");
+        var user = await users.GetByUsernameAsync(request.Username, cancellationToken)
+            ?? throw new DomainException("Tên đăng nhập hoặc mật khẩu không đúng.");
 
         user.EnsureCanLogin();
 
         if (!passwordHasher.Verify(request.Password, user.PasswordHash))
         {
-            throw new DomainException("Email hoặc mật khẩu không đúng.");
+            throw new DomainException("Tên đăng nhập hoặc mật khẩu không đúng.");
         }
 
         var role = await roles.GetByIdAsync(user.RoleId, cancellationToken)
@@ -48,6 +54,6 @@ public sealed class LoginCommandHandler(
         await eventBus.PublishAsync(new UserLoggedInIntegrationEvent(user.Id, user.Email), cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return new LoginResult(user.Id, user.Email, user.FullName, role.RoleName, token);
+        return new LoginResult(user.Id, user.Email, user.Username, user.FullName, role.RoleName, token);
     }
 }

@@ -15,11 +15,15 @@ public sealed class EmailOtpService(
 {
     public async Task<string> IssueAndSendAsync(
         string email,
+        string username,
         Guid? userId,
         OtpPurpose purpose,
         CancellationToken cancellationToken = default)
     {
         var normalized = email.Trim().ToLowerInvariant();
+        var displayUsername = string.IsNullOrWhiteSpace(username)
+            ? normalized
+            : username.Trim().ToLowerInvariant();
         await otps.InvalidateActiveAsync(normalized, purpose, cancellationToken);
 
         var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
@@ -27,7 +31,7 @@ public sealed class EmailOtpService(
         await otps.AddAsync(otp, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        var message = RaceDayOtpEmailTemplates.Build(normalized, purpose, code);
+        var message = RaceDayOtpEmailTemplates.Build(normalized, displayUsername, purpose, code);
         await emailSender.SendAsync(message, cancellationToken);
 
         return code;

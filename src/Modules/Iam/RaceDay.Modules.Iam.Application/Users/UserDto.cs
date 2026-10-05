@@ -5,6 +5,7 @@ namespace RaceDay.Modules.Iam.Application.Users;
 public sealed record UserDto(
     Guid Id,
     string Email,
+    string Username,
     string FullName,
     string? Phone,
     DateOnly? DateOfBirth,
@@ -22,6 +23,7 @@ internal static class UserDtoMapper
     public static UserDto ToDto(User user, string? roleName) => new(
         user.Id,
         user.Email,
+        user.Username,
         user.FullName,
         user.Phone,
         user.DateOfBirth,

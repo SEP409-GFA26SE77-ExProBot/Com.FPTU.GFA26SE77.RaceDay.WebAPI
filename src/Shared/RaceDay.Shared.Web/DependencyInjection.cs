@@ -29,6 +29,22 @@ public static class DependencyInjection
             .AddPolicy(AuthPolicies.AdminOnly, policy =>
                 policy.RequireAuthenticatedUser().RequireRole("Admin"));
 
+        services.AddCors(options =>
+        {
+            options.AddPolicy("fe-dev", policy =>
+            {
+                policy
+                    .WithOrigins(
+                        "http://localhost:3000",
+                        "http://localhost:3001",
+                        "http://127.0.0.1:3000",
+                        "http://127.0.0.1:3001")
+                    .AllowAnyHeader()
+                    .AllowAnyMethod()
+                    .AllowCredentials();
+            });
+        });
+
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -80,6 +96,7 @@ public static class DependencyInjection
     {
         app.UseMiddleware<CorrelationIdMiddleware>();
         app.UseMiddleware<ExceptionHandlingMiddleware>();
+        app.UseCors("fe-dev");
         app.UseRateLimiter();
         return app;
     }

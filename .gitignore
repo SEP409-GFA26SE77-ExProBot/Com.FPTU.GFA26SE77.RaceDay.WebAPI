@@ -33,3 +33,6 @@ TestResults/
 coverage/
 *.coverage
 *.coveragexml
+
+## Local scratch (logs, smoke, temp scripts — do not push)
+_tmp_reports/

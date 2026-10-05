@@ -28,7 +28,7 @@ public class LockUnlockUserCommandHandlerTests
     [Fact]
     public async Task Lock_Success_Publishes_Event()
     {
-        var user = User.Create("a@raceday.vn", "h", "A", RoleId);
+        var user = User.Create("a@raceday.vn", "auser", "h", "A", RoleId);
         var users = Substitute.For<IUserRepository>();
         var uow = Substitute.For<IUnitOfWork>();
         var bus = Substitute.For<IEventBus>();
@@ -56,7 +56,7 @@ public class LockUnlockUserCommandHandlerTests
     [Fact]
     public async Task Unlock_Success_Publishes_Event()
     {
-        var user = User.Create("b@raceday.vn", "h", "B", RoleId);
+        var user = User.Create("b@raceday.vn", "buser", "h", "B", RoleId);
         user.Lock();
         var users = Substitute.For<IUserRepository>();
         var uow = Substitute.For<IUnitOfWork>();

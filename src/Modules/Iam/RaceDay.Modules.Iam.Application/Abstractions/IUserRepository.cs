@@ -7,6 +7,7 @@ namespace RaceDay.Modules.Iam.Application.Abstractions;
 public interface IUserRepository : IRepository<User>
 {
     Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default);
+    Task<User?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default);
     Task<User?> GetByIdWithProfileAsync(Guid id, CancellationToken cancellationToken = default);
     Task<(IReadOnlyList<User> Items, int Total)> ListAsync(int page, int pageSize, CancellationToken cancellationToken = default);
 }
@@ -39,6 +40,11 @@ public interface IEmailOtpRepository
 
 public interface IEmailOtpService
 {
-    Task<string> IssueAndSendAsync(string email, Guid? userId, OtpPurpose purpose, CancellationToken cancellationToken = default);
+    Task<string> IssueAndSendAsync(
+        string email,
+        string username,
+        Guid? userId,
+        OtpPurpose purpose,
+        CancellationToken cancellationToken = default);
     Task<EmailOtp> VerifyAsync(string email, OtpPurpose purpose, string code, CancellationToken cancellationToken = default);
 }

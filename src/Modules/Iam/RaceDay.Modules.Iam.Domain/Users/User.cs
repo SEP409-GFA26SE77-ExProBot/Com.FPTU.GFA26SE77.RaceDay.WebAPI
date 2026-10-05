@@ -6,7 +6,11 @@ namespace RaceDay.Modules.Iam.Domain.Users;
 
 public sealed class User : AggregateRoot
 {
+    public const int UsernameMinLength = 3;
+    public const int UsernameMaxLength = 50;
+
     public string Email { get; private set; } = string.Empty;
+    public string Username { get; private set; } = string.Empty;
     public Guid RoleId { get; private set; }
     public string PasswordHash { get; private set; } = string.Empty;
     public string FullName { get; private set; } = string.Empty;
@@ -25,6 +29,7 @@ public sealed class User : AggregateRoot
 
     public static User Create(
         string email,
+        string username,
         string passwordHash,
         string fullName,
         Guid roleId,
@@ -37,6 +42,8 @@ public sealed class User : AggregateRoot
         {
             throw new DomainException("Email không được để trống.");
         }
+
+        var normalizedUsername = NormalizeUsername(username);
 
         if (string.IsNullOrWhiteSpace(fullName))
         {
@@ -52,6 +59,7 @@ public sealed class User : AggregateRoot
         var user = new User
         {
             Email = email.Trim().ToLowerInvariant(),
+            Username = normalizedUsername,
             PasswordHash = passwordHash,
             FullName = fullName.Trim(),
             RoleId = roleId,
@@ -65,8 +73,15 @@ public sealed class User : AggregateRoot
         };
 
         user.Profile = Profile.CreateForUser(user.Id, description: $"Hồ sơ của {user.FullName}", contactEmail: user.Email, contactPhone: phone);
-        user.Raise(new UserCreatedDomainEvent(user.Id, user.Email, user.FullName));
+        user.Raise(new UserCreatedDomainEvent(user.Id, user.Email, user.Username, user.FullName));
         return user;
+    }
+
+    public void ChangeUsername(string username)
+    {
+        Username = NormalizeUsername(username);
+        UpdatedAt = DateTime.UtcNow;
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
     }
 
     public void UpdateProfile(
@@ -89,7 +104,7 @@ public sealed class User : AggregateRoot
         Gender = gender;
         UpdatedAt = DateTime.UtcNow;
         Profile?.UpdateContact(profileDescription, contactEmail, contactPhone);
-        Raise(new UserUpdatedDomainEvent(Id, Email, FullName));
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
     }
 
     public void ChangeRole(Guid roleId)
@@ -101,14 +116,14 @@ public sealed class User : AggregateRoot
 
         RoleId = roleId;
         UpdatedAt = DateTime.UtcNow;
-        Raise(new UserUpdatedDomainEvent(Id, Email, FullName));
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
     }
 
     public void SetStatus(UserStatus status)
     {
         Status = status;
         UpdatedAt = DateTime.UtcNow;
-        Raise(new UserUpdatedDomainEvent(Id, Email, FullName));
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
     }
 
     public void Lock()
@@ -179,10 +194,36 @@ public sealed class User : AggregateRoot
             throw new DomainException("Tài khoản chưa xác thực email. Vui lòng nhập OTP.");
         }
     }
+
+    public static string NormalizeUsername(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            throw new DomainException("Tên đăng nhập không được để trống.");
+        }
+
+        var normalized = username.Trim().ToLowerInvariant();
+        if (normalized.Length < UsernameMinLength || normalized.Length > UsernameMaxLength)
+        {
+            throw new DomainException($"Tên đăng nhập phải từ {UsernameMinLength}–{UsernameMaxLength} ký tự.");
+        }
+
+        foreach (var ch in normalized)
+        {
+            if (char.IsAsciiLetterOrDigit(ch) || ch is '_' or '.' or '-')
+            {
+                continue;
+            }
+
+            throw new DomainException("Tên đăng nhập chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.");
+        }
+
+        return normalized;
+    }
 }
 
-public sealed record UserCreatedDomainEvent(Guid UserId, string Email, string FullName) : DomainEvent;
-public sealed record UserUpdatedDomainEvent(Guid UserId, string Email, string FullName) : DomainEvent;
+public sealed record UserCreatedDomainEvent(Guid UserId, string Email, string Username, string FullName) : DomainEvent;
+public sealed record UserUpdatedDomainEvent(Guid UserId, string Email, string Username, string FullName) : DomainEvent;
 public sealed record UserLockedDomainEvent(Guid UserId, string Email) : DomainEvent;
 public sealed record UserUnlockedDomainEvent(Guid UserId, string Email) : DomainEvent;
 public sealed record UserEmailVerifiedDomainEvent(Guid UserId, string Email) : DomainEvent;

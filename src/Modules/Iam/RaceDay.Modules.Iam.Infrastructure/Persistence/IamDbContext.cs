@@ -50,6 +50,8 @@ public sealed class IamDbContext(DbContextOptions<IamDbContext> options) : DbCon
             entity.Property(x => x.Id).HasColumnName("user_id");
             entity.Property(x => x.Email).HasColumnName("email").HasMaxLength(100).IsRequired();
             entity.HasIndex(x => x.Email).IsUnique();
+            entity.Property(x => x.Username).HasColumnName("username").HasMaxLength(50).IsRequired();
+            entity.HasIndex(x => x.Username).IsUnique();
             entity.Property(x => x.RoleId).HasColumnName("role_id").IsRequired();
             entity.Property(x => x.PasswordHash).HasColumnName("password_hash").HasMaxLength(255).IsRequired();
             entity.Property(x => x.FullName).HasColumnName("full_name").HasMaxLength(100).IsRequired();

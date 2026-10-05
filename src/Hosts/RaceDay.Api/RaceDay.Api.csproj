@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Modules\Iam\RaceDay.Modules.Iam.Api\RaceDay.Modules.Iam.Api.csproj" />
+    <ProjectReference Include="..\..\Modules\Event\RaceDay.Modules.Event.Api\RaceDay.Modules.Event.Api.csproj" />
     <ProjectReference Include="..\..\Modules\AuditLog\RaceDay.Modules.AuditLog.Api\RaceDay.Modules.AuditLog.Api.csproj" />
     <ProjectReference Include="..\..\Modules\Payment\RaceDay.Modules.Payment.Api\RaceDay.Modules.Payment.Api.csproj" />
     <ProjectReference Include="..\..\Shared\RaceDay.Shared.Web\RaceDay.Shared.Web.csproj" />

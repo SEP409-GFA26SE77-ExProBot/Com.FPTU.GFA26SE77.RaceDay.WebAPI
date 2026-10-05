@@ -30,6 +30,7 @@ public sealed class ResendEmailVerificationOtpCommandHandler(
 
         await otpService.IssueAndSendAsync(
             user.Email,
+            user.Username,
             user.Id,
             OtpPurpose.EmailVerification,
             cancellationToken);

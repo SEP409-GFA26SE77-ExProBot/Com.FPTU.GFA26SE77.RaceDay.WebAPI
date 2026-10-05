@@ -56,42 +56,26 @@ See `src/Modules/_Template/README.md`.
 - `AGENTS.md` — short non-negotiables for AI/human contributors
 - `.cursor/rules/*.mdc` — architecture, C# standards, modules, API/security, Shared, testing
 
-## IAM database (PostgreSQL)
+## Database (PostgreSQL)
 
-- Server: PostgreSQL 18 — database `postgres`, schema `iam`
-- Secrets live in **repo-root `.env`** (gitignored). Copy from `.env.example`.
-- SQL script: `deploy/sql/iam_init.sql`
-- Dev seed password: `MatKhau@123` (users like `admin@raceday.vn`)
-- EF migrates + seeds on Host startup
+- Database `postgres` — schemas `iam` / `event` / `payment`
+- Secrets in **repo-root `.env`** (gitignored). Copy from `.env.example`.
+- One SQL script: [`deploy/sql/raceday_init.sql`](deploy/sql/raceday_init.sql) (schema + seed)
+- Dev seed password: `MatKhau@123` (`admin@raceday.vn`, `cuong.le@raceday.vn`, …)
+- EF also migrates on Host startup (history stamped in the SQL file)
 
 ```bash
 cp .env.example .env   # then fill Password + Jwt__SigningKey
-docker compose -f deploy/docker-compose.yml up -d   # optional Mongo/Redis
-# OR run SQL: psql -h localhost -U postgres -d postgres -f deploy/sql/iam_init.sql
+docker compose -f deploy/docker-compose.yml up -d
+# OR: psql -h localhost -U postgres -d postgres -f deploy/sql/raceday_init.sql
 dotnet run --project src/Hosts/RaceDay.Api
 ```
 
-### IAM API
-
-| Method | Path | Auth |
-|--------|------|------|
-| POST | `/api/v1/iam/auth/register` | public |
-| POST | `/api/v1/iam/auth/login` | public |
-| POST | `/api/v1/iam/auth/reset-password` | public |
-| GET | `/admin/v1/iam/users` | Admin JWT |
-| GET | `/admin/v1/iam/users/{id}` | Admin JWT |
-| PUT | `/admin/v1/iam/users/{id}` | Admin JWT |
-| DELETE | `/admin/v1/iam/users/{id}` | Admin JWT |
-| GET | `/admin/v1/audit-logs` | Admin JWT |
-
-Seed admin: `admin@raceday.vn` / `MatKhau@123`
+Seed admin: `admin@raceday.vn` / `MatKhau@123` · Event/Payment API: `docs/RaceDay_Event_API_Guide.docx`
 
 ## Notes
 
 - Secrets (DB password, JWT signing key) must be in `.env` — never commit `.env`.
-- If local PostgreSQL password differs, set `ConnectionStrings__Postgres` in `.env`.
-- Prefer **one** of: run `iam_init.sql` **or** let EF migrate on startup (SQL script already inserts EF migration history).
-- JWT is configured via `Jwt__*` env vars.
-- In-process audit: IAM Contracts events → `MediatorEventBus` → AuditLog (Mongo).
-- Old folder `Com.FPTU.GFA26SE77.RaceDay.WebAPI/WebApplication1` is leftover template; prefer `src/`.
-- `Directory.Build.props` pins patched transitive packages for NuGet audit.
+- Prefer **one** of: run `raceday_init.sql` **or** let EF migrate on startup.
+- JWT via `Jwt__*` env vars. In-process audit: IAM → AuditLog (Mongo).
+- Prefer `src/` modular monolith; ignore legacy `WebApplication1` template.

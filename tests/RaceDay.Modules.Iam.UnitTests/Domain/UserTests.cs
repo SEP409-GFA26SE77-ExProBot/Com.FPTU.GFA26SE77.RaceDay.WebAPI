@@ -10,9 +10,10 @@ public class UserTests
     [Fact]
     public void Create_Defaults_To_Pending_Unverified()
     {
-        var user = User.Create("An.Nguyen@RaceDay.vn", "hash:demo", "  Nguyễn Văn An  ", RoleId);
+        var user = User.Create("An.Nguyen@RaceDay.vn", "an.nguyen", "hash:demo", "  Nguyễn Văn An  ", RoleId);
 
         Assert.Equal("an.nguyen@raceday.vn", user.Email);
+        Assert.Equal("an.nguyen", user.Username);
         Assert.Equal("Nguyễn Văn An", user.FullName);
         Assert.Equal(UserStatus.Pending, user.Status);
         Assert.False(user.EmailVerified);
@@ -27,8 +28,19 @@ public class UserTests
     public void Create_EmptyEmail_Throws(string? email)
     {
         var ex = Assert.Throws<DomainException>(() =>
-            User.Create(email!, "hash", "Name", RoleId));
+            User.Create(email!, "uname", "hash", "Name", RoleId));
         Assert.Contains("Email", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Create_EmptyUsername_Throws(string? username)
+    {
+        var ex = Assert.Throws<DomainException>(() =>
+            User.Create("a@b.com", username!, "hash", "Name", RoleId));
+        Assert.Contains("Tên đăng nhập", ex.Message);
     }
 
     [Theory]
@@ -38,7 +50,7 @@ public class UserTests
     public void Create_EmptyFullName_Throws(string? fullName)
     {
         var ex = Assert.Throws<DomainException>(() =>
-            User.Create("a@b.com", "hash", fullName!, RoleId));
+            User.Create("a@b.com", "uname", "hash", fullName!, RoleId));
         Assert.Contains("Họ tên", ex.Message);
     }
 
@@ -46,14 +58,14 @@ public class UserTests
     public void Create_EmptyRoleId_Throws()
     {
         var ex = Assert.Throws<DomainException>(() =>
-            User.Create("a@b.com", "hash", "Name", Guid.Empty));
+            User.Create("a@b.com", "uname", "hash", "Name", Guid.Empty));
         Assert.Contains("RoleId", ex.Message);
     }
 
     [Fact]
     public void UpdateProfile_EmptyFullName_Throws()
     {
-        var user = User.Create("a@b.com", "hash", "Name", RoleId);
+        var user = User.Create("a@b.com", "uname", "hash", "Name", RoleId);
         user.ClearDomainEvents();
 
         var ex = Assert.Throws<DomainException>(() =>
@@ -64,14 +76,14 @@ public class UserTests
     [Fact]
     public void ChangeRole_Empty_Throws()
     {
-        var user = User.Create("a@b.com", "hash", "Name", RoleId);
+        var user = User.Create("a@b.com", "uname", "hash", "Name", RoleId);
         Assert.Throws<DomainException>(() => user.ChangeRole(Guid.Empty));
     }
 
     [Fact]
     public void ChangeRole_Updates_RoleId()
     {
-        var user = User.Create("a@b.com", "hash", "Name", RoleId);
+        var user = User.Create("a@b.com", "uname", "hash", "Name", RoleId);
         var newRole = Guid.Parse("11111111-1111-1111-1111-111111111111");
         user.ClearDomainEvents();
 
@@ -84,14 +96,14 @@ public class UserTests
     [Fact]
     public void SetPasswordHash_Empty_Throws()
     {
-        var user = User.Create("a@b.com", "hash", "Name", RoleId);
+        var user = User.Create("a@b.com", "uname", "hash", "Name", RoleId);
         Assert.Throws<DomainException>(() => user.SetPasswordHash(" "));
     }
 
     [Fact]
     public void EnsureCanLogin_Pending_Throws()
     {
-        var user = User.Create("p@raceday.vn", "hash", "Pending", RoleId);
+        var user = User.Create("p@raceday.vn", "pending", "hash", "Pending", RoleId);
         var ex = Assert.Throws<DomainException>(() => user.EnsureCanLogin());
         Assert.Contains("chưa xác thực", ex.Message);
     }
@@ -99,7 +111,7 @@ public class UserTests
     [Fact]
     public void ConfirmEmailVerification_Activates_Account()
     {
-        var user = User.Create("v@raceday.vn", "hash", "Verify", RoleId);
+        var user = User.Create("v@raceday.vn", "verify", "hash", "Verify", RoleId);
         user.ClearDomainEvents();
 
         user.ConfirmEmailVerification();
@@ -113,7 +125,7 @@ public class UserTests
     [Fact]
     public void Lock_Blocks_Login()
     {
-        var user = User.Create("lock@raceday.vn", "hash", "Lock User", RoleId, status: UserStatus.Active);
+        var user = User.Create("lock@raceday.vn", "lockuser", "hash", "Lock User", RoleId, status: UserStatus.Active);
         user.ConfirmEmailVerification();
         user.ClearDomainEvents();
 
@@ -127,7 +139,7 @@ public class UserTests
     [Fact]
     public void Lock_When_Already_Locked_Is_Idempotent()
     {
-        var user = User.Create("lock2@raceday.vn", "hash", "Lock User", RoleId);
+        var user = User.Create("lock2@raceday.vn", "lock2", "hash", "Lock User", RoleId);
         user.Lock();
         user.ClearDomainEvents();
 
@@ -140,7 +152,7 @@ public class UserTests
     [Fact]
     public void Unlock_Unverified_Returns_Pending()
     {
-        var user = User.Create("unlock@raceday.vn", "hash", "Unlock User", RoleId);
+        var user = User.Create("unlock@raceday.vn", "unlock", "hash", "Unlock User", RoleId);
         user.Lock();
         user.ClearDomainEvents();
 
@@ -154,7 +166,7 @@ public class UserTests
     [Fact]
     public void Unlock_Verified_Returns_Active()
     {
-        var user = User.Create("unlock2@raceday.vn", "hash", "Unlock User", RoleId, status: UserStatus.Active);
+        var user = User.Create("unlock2@raceday.vn", "unlock2", "hash", "Unlock User", RoleId, status: UserStatus.Active);
         user.ConfirmEmailVerification();
         user.Lock();
         user.ClearDomainEvents();

@@ -10,6 +10,7 @@ namespace RaceDay.Modules.Iam.Application.Users.CreateUser;
 
 public sealed record CreateUserCommand(
     string Email,
+    string Username,
     string Password,
     string FullName,
     Guid RoleId,
@@ -23,6 +24,12 @@ public sealed class CreateUserCommandValidator : AbstractValidator<CreateUserCom
     public CreateUserCommandValidator()
     {
         RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(100);
+        RuleFor(x => x.Username)
+            .NotEmpty()
+            .MinimumLength(User.UsernameMinLength)
+            .MaximumLength(User.UsernameMaxLength)
+            .Matches(@"^[a-zA-Z0-9._-]+$")
+            .WithMessage("Tên đăng nhập chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.");
         RuleFor(x => x.Password).NotEmpty().MinimumLength(8).MaximumLength(100);
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(100);
         RuleFor(x => x.RoleId).NotEmpty();
@@ -41,10 +48,16 @@ public sealed class CreateUserCommandHandler(
 {
     public async Task<Guid> Handle(CreateUserCommand request, CancellationToken cancellationToken)
     {
-        var existing = await users.GetByEmailAsync(request.Email, cancellationToken);
-        if (existing is not null)
+        var existingEmail = await users.GetByEmailAsync(request.Email, cancellationToken);
+        if (existingEmail is not null)
         {
             throw new DomainException("Email đã được đăng ký.");
+        }
+
+        var existingUsername = await users.GetByUsernameAsync(request.Username, cancellationToken);
+        if (existingUsername is not null)
+        {
+            throw new DomainException("Tên đăng nhập đã được sử dụng.");
         }
 
         _ = await roles.GetByIdAsync(request.RoleId, cancellationToken)
@@ -52,6 +65,7 @@ public sealed class CreateUserCommandHandler(
 
         var user = User.Create(
             request.Email,
+            request.Username,
             passwordHasher.Hash(request.Password),
             request.FullName,
             request.RoleId,
@@ -68,7 +82,7 @@ public sealed class CreateUserCommandHandler(
         await users.AddAsync(user, cancellationToken);
 
         await eventBus.PublishAsync(
-            new UserCreatedIntegrationEvent(user.Id, user.Email, user.FullName),
+            new UserCreatedIntegrationEvent(user.Id, user.Email, user.Username, user.FullName),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 

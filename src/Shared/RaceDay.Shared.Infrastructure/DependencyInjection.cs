@@ -11,6 +11,7 @@ using RaceDay.Shared.Infrastructure.Messaging;
 using RaceDay.Shared.Infrastructure.Messaging.Outbox;
 using RaceDay.Shared.Infrastructure.Messaging.RabbitMq;
 using RaceDay.Shared.Infrastructure.Persistence.Mongo;
+using RaceDay.Shared.Infrastructure.Storage;
 
 namespace RaceDay.Shared.Infrastructure;
 
@@ -32,6 +33,16 @@ public static class DependencyInjection
 
         services.AddSingleton<ICacheService, RedisCacheService>();
         services.AddSingleton<MediatorEventBus>();
+
+        var storageProvider = configuration["Storage:Provider"] ?? "Local";
+        if (string.Equals(storageProvider, "R2", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IFileStorage, CloudflareR2FileStorage>();
+        }
+        else
+        {
+            services.AddSingleton<IFileStorage, LocalFileStorage>();
+        }
 
         if (!string.IsNullOrWhiteSpace(configuration["Smtp:Host"]))
         {

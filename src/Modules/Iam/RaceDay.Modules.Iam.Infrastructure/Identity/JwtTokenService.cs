@@ -21,8 +21,10 @@ public sealed class JwtTokenService(IConfiguration configuration) : IJwtTokenSer
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Email, user.Email),
+            new(JwtRegisteredClaimNames.PreferredUsername, user.Username),
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.FullName),
+            new("username", user.Username),
             new(ClaimTypes.Role, roleName),
             new("role", roleName)
         };

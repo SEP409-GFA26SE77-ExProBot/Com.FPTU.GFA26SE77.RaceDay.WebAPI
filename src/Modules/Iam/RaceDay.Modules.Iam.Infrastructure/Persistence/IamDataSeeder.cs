@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +34,8 @@ public sealed class IamDataSeeder(
             await db.Database.MigrateAsync(cancellationToken);
             await EnsureOutboxTableAsync(db, cancellationToken);
             await EnsureEmailOtpsTableAsync(db, cancellationToken);
+            await EnsureUsernameColumnAsync(db, cancellationToken);
+            await BackfillMissingUsernamesFromFullNameAsync(db, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -100,6 +105,121 @@ public sealed class IamDataSeeder(
                 ON iam.email_otps (email, purpose, created_on_utc);
             """,
             ct);
+    }
+
+    private static async Task EnsureUsernameColumnAsync(IamDbContext db, CancellationToken ct)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE iam.users ADD COLUMN IF NOT EXISTS username varchar(50);
+            """,
+            ct);
+
+        // Leave empty rows for BackfillMissingUsernamesFromFullNameAsync (fullname rút gọn).
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON iam.users (username)
+            WHERE username IS NOT NULL AND btrim(username) <> '';
+            """,
+            ct);
+    }
+
+    private static async Task BackfillMissingUsernamesFromFullNameAsync(IamDbContext db, CancellationToken ct)
+    {
+        var users = await db.Users
+            .Where(x => string.IsNullOrWhiteSpace(x.Username))
+            .ToListAsync(ct);
+
+        if (users.Count == 0)
+        {
+            await db.Database.ExecuteSqlRawAsync(
+                """
+                ALTER TABLE iam.users ALTER COLUMN username SET NOT NULL;
+                """,
+                ct);
+            return;
+        }
+
+        var taken = await db.Users
+            .Where(x => !string.IsNullOrWhiteSpace(x.Username))
+            .Select(x => x.Username)
+            .ToListAsync(ct);
+        var used = new HashSet<string>(taken, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var user in users)
+        {
+            var candidate = SuggestUsernameFromFullName(user.FullName);
+            var unique = candidate;
+            var n = 1;
+            while (used.Contains(unique))
+            {
+                var suffix = $"_{n}";
+                unique = candidate[..Math.Min(candidate.Length, User.UsernameMaxLength - suffix.Length)] + suffix;
+                n++;
+            }
+
+            user.ChangeUsername(unique);
+            user.ClearDomainEvents();
+            used.Add(unique);
+        }
+
+        await db.SaveChangesAsync(ct);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE iam.users ALTER COLUMN username SET NOT NULL;
+            """,
+            ct);
+    }
+
+    /// <summary>Vietnamese full name → given.family without diacritics (e.g. Nguyễn Văn An → an.nguyen).</summary>
+    internal static string SuggestUsernameFromFullName(string fullName)
+    {
+        var ascii = RemoveDiacritics(fullName ?? string.Empty).ToLowerInvariant();
+        var parts = Regex.Split(ascii, @"[^a-z0-9]+")
+            .Where(static p => p.Length > 0)
+            .ToArray();
+
+        string baseName;
+        if (parts.Length == 0)
+        {
+            baseName = "user";
+        }
+        else if (parts.Length == 1)
+        {
+            baseName = parts[0];
+        }
+        else
+        {
+            baseName = $"{parts[^1]}.{parts[0]}";
+        }
+
+        baseName = Regex.Replace(baseName, @"[^a-z0-9._-]", string.Empty);
+        if (baseName.Length > User.UsernameMaxLength)
+        {
+            baseName = baseName[..User.UsernameMaxLength];
+        }
+
+        if (baseName.Length < User.UsernameMinLength)
+        {
+            baseName = (baseName + "user")[..Math.Min(User.UsernameMaxLength, Math.Max(User.UsernameMinLength, baseName.Length + 4))];
+        }
+
+        return baseName;
+    }
+
+    private static string RemoveDiacritics(string text)
+    {
+        var normalized = text.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(normalized.Length);
+        foreach (var ch in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
+            {
+                sb.Append(ch);
+            }
+        }
+
+        return sb.ToString().Normalize(NormalizationForm.FormC);
     }
 
     private string RequireSeedPassword()
@@ -208,27 +328,27 @@ public sealed class IamDataSeeder(
         {
             BuildSeed(
                 Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-                "admin@raceday.vn", AdminRoleId, passwordHash,
+                "admin@raceday.vn", "admin", AdminRoleId, passwordHash,
                 "Nguyễn Văn Quản Trị", "0901000001", new DateOnly(1990, 1, 15), Gender.Male, UserStatus.Active, true,
                 "Tài khoản quản trị RaceDay", true),
             BuildSeed(
                 Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-                "an.nguyen@raceday.vn", UserRoleId, passwordHash,
+                "an.nguyen@raceday.vn", "an.nguyen", UserRoleId, passwordHash,
                 "Nguyễn Văn An", "0902000002", new DateOnly(1998, 5, 20), Gender.Male, UserStatus.Active, true,
                 "Vận động viên phong trào TP.HCM", true),
             BuildSeed(
                 Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"),
-                "binh.tran@raceday.vn", UserRoleId, passwordHash,
+                "binh.tran@raceday.vn", "binh.tran", UserRoleId, passwordHash,
                 "Trần Thị Bình", "0903000003", new DateOnly(1999, 8, 12), Gender.Female, UserStatus.Active, true,
                 "Runner bán marathon Hà Nội", true),
             BuildSeed(
                 Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"),
-                "cuong.le@raceday.vn", OrganizerRoleId, passwordHash,
+                "cuong.le@raceday.vn", "cuong.le", OrganizerRoleId, passwordHash,
                 "Lê Hoàng Cường", "0904000004", new DateOnly(1995, 3, 8), Gender.Male, UserStatus.Active, true,
                 "Ban tổ chức giải chạy Đà Nẵng", true),
             BuildSeed(
                 Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"),
-                "dung.pham@raceday.vn", UserRoleId, passwordHash,
+                "dung.pham@raceday.vn", "dung.pham", UserRoleId, passwordHash,
                 "Phạm Minh Dũng", "0905000005", new DateOnly(2000, 11, 25), Gender.Male, UserStatus.Pending, false,
                 "Hồ sơ chờ xác minh email", false)
         };
@@ -262,6 +382,7 @@ public sealed class IamDataSeeder(
     private static User BuildSeed(
         Guid id,
         string email,
+        string username,
         Guid roleId,
         string passwordHash,
         string fullName,
@@ -273,7 +394,7 @@ public sealed class IamDataSeeder(
         string profileDescription,
         bool profileVerified)
     {
-        var user = User.Create(email, passwordHash, fullName, roleId, phone, dob, gender, status);
+        var user = User.Create(email, username, passwordHash, fullName, roleId, phone, dob, gender, status);
         SetEntityId(user, id);
         if (user.Profile is not null)
         {
