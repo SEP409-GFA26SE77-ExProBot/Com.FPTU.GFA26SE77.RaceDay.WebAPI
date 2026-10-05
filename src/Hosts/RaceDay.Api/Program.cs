@@ -9,6 +9,18 @@ LoadDotEnv();
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:3000", "http://localhost:3001")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
 builder.Services.AddSharedInfrastructure(builder.Configuration);
 builder.Services.AddSharedWeb(builder.Configuration);
 
@@ -86,6 +98,7 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseSharedWeb();
+app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
