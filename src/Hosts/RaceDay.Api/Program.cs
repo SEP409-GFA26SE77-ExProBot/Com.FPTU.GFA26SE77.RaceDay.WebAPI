@@ -65,7 +65,7 @@ builder.Services.AddSwaggerGen(options =>
             3. PAID → `pending_approval` → organizer approve → `confirmed` + bib + `qrPayload`
             4. `GET /api/v1/event/registrations/mine`
 
-            Docs: `docs/RaceDay_Event_API_Guide.docx`, `docs/RaceDay_IAM_API_Guide.docx`
+            Docs: `docs/RaceDay_API_Guide.docx` (View → Navigation Pane)
             """
     });
 

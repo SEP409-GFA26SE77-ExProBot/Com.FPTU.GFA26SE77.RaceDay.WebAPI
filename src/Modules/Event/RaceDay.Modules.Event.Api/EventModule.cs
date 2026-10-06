@@ -84,7 +84,7 @@ public static class EventModule
             + "(2) Hồ sơ bắt buộc → documents[] (documentKey: plan, program, rules, official-letter, foreign-list, security) sau /uploads; "
             + "(3) Điều kiện an toàn → rules (safetyChecklist, authorityContact, medicalPartner, ...); "
             + "(4) Rà soát & gửi → submitForApproval=true. "
-            + "Bắt buộc thêm coordinates + distances[] (≥1). Chi tiết: docs/RaceDay_Event_API_Guide.docx")
+            + "Bắt buộc thêm coordinates + distances[] (≥1). Chi tiết: docs/RaceDay_API_Guide.docx")
         .Accepts<CreateRaceEventCommand>("application/json")
         .Produces<RaceEventDto>(StatusCodes.Status201Created);
 

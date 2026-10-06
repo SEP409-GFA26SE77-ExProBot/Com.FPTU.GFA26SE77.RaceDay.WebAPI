@@ -15,10 +15,10 @@ SEP_WebAPI/
 ├── .env                         # Secrets thật (KHÔNG commit)
 ├── AGENTS.md / .cursor/rules/   # Quy ước kiến trúc cho contributor / AI
 │
-├── docs/                        # ★ Tài liệu hướng dẫn API (Word)
-│   ├── RaceDay_IAM_API_Guide.docx      # Auth, OTP, admin users
-│   ├── RaceDay_Event_API_Guide.docx    # Event + Payment, upload, checkout, FE flow
-│   └── EventDoc.docx                   # Spec field domain giải (không phải HTTP guide)
+├── docs/                        # ★ Tài liệu
+│   ├── RaceDay_API_Guide.docx          # ★ Hướng dẫn API gộp 1 file (IAM+Event+Payment)
+│   │                                   #    View → Navigation Pane: click Heading nhảy API
+│   └── _gen_api_guide_docx.py          # Regenerate: python docs/_gen_api_guide_docx.py
 │
 ├── deploy/                      # ★ Hạ tầng local
 │   ├── docker-compose.yml       # Postgres, MongoDB, Redis, RabbitMQ
@@ -43,9 +43,7 @@ SEP_WebAPI/
 |----------|-------------------|
 | SQL tạo bảng + seed | [`deploy/sql/raceday_init.sql`](deploy/sql/raceday_init.sql) |
 | Docker DB/cache/queue | [`deploy/docker-compose.yml`](deploy/docker-compose.yml) |
-| Hướng dẫn API IAM | [`docs/RaceDay_IAM_API_Guide.docx`](docs/RaceDay_IAM_API_Guide.docx) |
-| Hướng dẫn API Event + Payment | [`docs/RaceDay_Event_API_Guide.docx`](docs/RaceDay_Event_API_Guide.docx) |
-| Spec field tạo giải | [`docs/EventDoc.docx`](docs/EventDoc.docx) |
+| Hướng dẫn API + body mẫu | [`docs/RaceDay_API_Guide.docx`](docs/RaceDay_API_Guide.docx) — mở Navigation Pane (mục lục trái) |
 | Biến môi trường | [`.env.example`](.env.example) → copy thành `.env` |
 | Chạy API | `src/Hosts/RaceDay.Api` |
 | Gateway | `src/Gateways/RaceDay.ApiGateway` |
@@ -86,8 +84,14 @@ dotnet test RaceDay.slnx
 - Public API: `/api/v1/{module}/...`
 - Admin: `/api/v1/{module}/admin/...` hoặc policy `AdminOnly` (Gateway Production chặn `/admin/**`)
 
-**Seed login:** `admin@raceday.vn` / `MatKhau@123`  
-(Organizer: `cuong.le@raceday.vn` · Runner: `an.nguyen@raceday.vn` — cùng password nếu dùng `raceday_init.sql`)
+**Seed login** (ưu tiên **username**, password chung Active: `MatKhau@123` — nguồn `deploy/sql/raceday_init.sql` / mục 0 trong `docs/RaceDay_API_Guide.docx`):
+
+| Role | Username | Email |
+|------|----------|-------|
+| Admin | `admin` | `admin@raceday.vn` |
+| Organizer | `cuong.le` | `cuong.le@raceday.vn` |
+| Runner | `an.nguyen` | `an.nguyen@raceday.vn` |
+| Runner | `binh.tran` | `binh.tran@raceday.vn` |
 
 ---
 
