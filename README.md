@@ -61,9 +61,12 @@ cp .env.example .env
 
 # 2) Infra
 docker compose -f deploy/docker-compose.yml up -d
+# Postgres 18 volume: /var/lib/postgresql (không dùng .../data như bản ≤17).
 # Volume Postgres trống → tự chạy deploy/sql/raceday_init.sql lần đầu.
 # Nếu Postgres đã có data sẵn (không Docker init): 
 #   psql -h localhost -U postgres -d postgres -f deploy/sql/raceday_init.sql
+# Đổi path volume lần đầu trên máy cũ: docker compose -f deploy/docker-compose.yml down -v && up -d
+# (mất data trong volume Docker → seed lại).
 
 # 3) API
 dotnet run --project src/Hosts/RaceDay.Api

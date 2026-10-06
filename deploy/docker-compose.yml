@@ -8,7 +8,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
       - ./sql/raceday_init.sql:/docker-entrypoint-initdb.d/01_raceday_init.sql:ro
 
   mongodb:
