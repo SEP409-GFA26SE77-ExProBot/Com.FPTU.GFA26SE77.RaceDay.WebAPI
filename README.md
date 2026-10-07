@@ -20,8 +20,9 @@ SEP_WebAPI/
 │   │                                   #    View → Navigation Pane: click Heading nhảy API
 │   └── _gen_api_guide_docx.py          # Regenerate: python docs/_gen_api_guide_docx.py
 │
-├── deploy/                      # ★ Hạ tầng local
-│   ├── docker-compose.yml       # Postgres, MongoDB, Redis, RabbitMQ
+├── deploy/                      # ★ Hạ tầng local (+ optional API container)
+│   ├── docker-compose.yml       # Postgres, MongoDB, Redis, RabbitMQ, profile `api`
+│   ├── Dockerfile               # RaceDay.Api image (compose profile api)
 │   └── sql/
 │       └── raceday_init.sql     # ★ Schema + seed IAM/Event/Payment (1 file)
 │
@@ -57,17 +58,19 @@ SEP_WebAPI/
 cp .env.example .env
 # Sửa: Postgres password, Jwt__SigningKey, Iam__SeedPassword (= MatKhau@123 nếu dùng seed SQL)
 
-# 2) Infra
+# 2) Infra (không gồm API — mặc định)
 docker compose -f deploy/docker-compose.yml up -d
-# Postgres 18 volume: /var/lib/postgresql (không dùng .../data như bản ≤17).
+# Postgres map host :5433 → container :5432 (tránh conflict PostgreSQL Windows :5432).
 # Volume Postgres trống → tự chạy deploy/sql/raceday_init.sql lần đầu.
-# Nếu Postgres đã có data sẵn (không Docker init): 
-#   psql -h localhost -U postgres -d postgres -f deploy/sql/raceday_init.sql
-# Đổi path volume lần đầu trên máy cũ: docker compose -f deploy/docker-compose.yml down -v && up -d
-# (mất data trong volume Docker → seed lại).
+# Reset volume Docker: docker compose -f deploy/docker-compose.yml down -v && up -d
 
-# 3) API
-dotnet run --project src/Hosts/RaceDay.Api
+# 3a) API local (dev thường)
+dotnet run --project src/Hosts/RaceDay.Api --launch-profile http
+
+# 3b) API trong Docker (cùng file compose, profile api)
+# docker compose -f deploy/docker-compose.yml --profile api up -d --build
+# → http://localhost:5080/swagger  (connection string nội bộ: Host=postgres …)
+
 # Optional gateway:
 dotnet run --project src/Gateways/RaceDay.ApiGateway
 
@@ -103,9 +106,9 @@ Tất cả cấu hình qua **`.env`** ở root (ASP.NET: `Section__Key`). Host �
 
 | Key | Ví dụ |
 |-----|--------|
-| `ConnectionStrings__Postgres` | `Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=...` |
+| `ConnectionStrings__Postgres` | `Host=localhost;Port=5433;Database=postgres;Username=postgres;Password=postgres` |
 
-- Docker compose: user/password/db = `postgres` / `postgres` / `postgres` (đổi password thì sửa cả compose + `.env`).
+- Docker compose: user/password/db = `postgres` / `postgres` / `postgres`, **host port `5433`** (tránh đụng PostgreSQL Windows trên `5432`).
 - Schemas: `iam`, `event`, `payment`.
 - Schema + seed: **một file** [`deploy/sql/raceday_init.sql`](deploy/sql/raceday_init.sql).
 - App cũng `MigrateAsync` khi start; file SQL đã stamp `__EFMigrationsHistory` để không tạo trùng.

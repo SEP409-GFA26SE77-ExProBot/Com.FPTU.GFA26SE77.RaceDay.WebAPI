@@ -84,6 +84,50 @@ public sealed class User : AggregateRoot
         Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
     }
 
+    /// <summary>
+    /// Re-register before email OTP verify: replace username/password/profile; keep same user id + email.
+    /// </summary>
+    public void ReplaceUnverifiedRegistration(
+        string username,
+        string passwordHash,
+        string fullName,
+        string? phone,
+        DateOnly? dateOfBirth,
+        Gender gender)
+    {
+        if (EmailVerified)
+        {
+            throw new DomainException("Email đã được đăng ký.");
+        }
+
+        if (Status == UserStatus.Locked)
+        {
+            throw new DomainException("Tài khoản đã bị khóa.");
+        }
+
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            throw new DomainException("Họ tên không được để trống.");
+        }
+
+        if (string.IsNullOrWhiteSpace(passwordHash))
+        {
+            throw new DomainException("Password hash không hợp lệ.");
+        }
+
+        Username = NormalizeUsername(username);
+        PasswordHash = passwordHash;
+        FullName = fullName.Trim();
+        Phone = phone;
+        DateOfBirth = dateOfBirth;
+        Gender = gender;
+        Status = UserStatus.Pending;
+        EmailVerified = false;
+        UpdatedAt = DateTime.UtcNow;
+        Profile?.UpdateContact($"Hồ sơ của {FullName}", Email, phone);
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
+    }
+
     public void UpdateProfile(
         string fullName,
         string? phone,

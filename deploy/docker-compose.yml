@@ -6,10 +6,16 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     ports:
-      - "5432:5432"
+      # Host 5433: tránh đụng PostgreSQL Windows cài sẵn (thường chiếm 5432)
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql
       - ./sql/raceday_init.sql:/docker-entrypoint-initdb.d/01_raceday_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
 
   mongodb:
     image: mongo:7
@@ -28,6 +34,37 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+
+  # Optional: docker compose -f deploy/docker-compose.yml --profile api up -d --build
+  # Local `dotnet run` vẫn dùng được song song (infra only: up -d không có --profile api).
+  api:
+    profiles: ["api"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "5080:8080"
+    env_file:
+      - ../.env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      # Override host .env (localhost) → tên service trong Docker network
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=postgres
+      ConnectionStrings__MongoDb: mongodb://mongodb:27017
+      ConnectionStrings__Redis: redis:6379
+      ConnectionStrings__RabbitMq: amqp://guest:guest@rabbitmq:5672
+      Storage__PublicBaseUrl: http://localhost:5080
+      PayOS__PublicApiBaseUrl: http://localhost:5080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
 
 volumes:
   pgdata:

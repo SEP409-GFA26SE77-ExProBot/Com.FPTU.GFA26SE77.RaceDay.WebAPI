@@ -123,6 +123,36 @@ public class UserTests
     }
 
     [Fact]
+    public void ReplaceUnverifiedRegistration_Updates_Pending_User()
+    {
+        var user = User.Create("p@raceday.vn", "olduser", "old-hash", "Old", RoleId);
+        user.ClearDomainEvents();
+
+        user.ReplaceUnverifiedRegistration(
+            "newuser", "new-hash", "New Name", "0901234567", new DateOnly(1999, 1, 1), Gender.Female);
+
+        Assert.Equal("newuser", user.Username);
+        Assert.Equal("new-hash", user.PasswordHash);
+        Assert.Equal("New Name", user.FullName);
+        Assert.Equal("0901234567", user.Phone);
+        Assert.Equal(new DateOnly(1999, 1, 1), user.DateOfBirth);
+        Assert.Equal(Gender.Female, user.Gender);
+        Assert.Equal(UserStatus.Pending, user.Status);
+        Assert.False(user.EmailVerified);
+        Assert.Contains(user.DomainEvents, e => e is UserUpdatedDomainEvent);
+    }
+
+    [Fact]
+    public void ReplaceUnverifiedRegistration_Verified_Throws()
+    {
+        var user = User.Create("v@raceday.vn", "vuser", "hash", "V", RoleId);
+        user.ConfirmEmailVerification();
+
+        Assert.Throws<DomainException>(() =>
+            user.ReplaceUnverifiedRegistration("x", "h", "Name", null, null, Gender.Male));
+    }
+
+    [Fact]
     public void Lock_Blocks_Login()
     {
         var user = User.Create("lock@raceday.vn", "lockuser", "hash", "Lock User", RoleId, status: UserStatus.Active);

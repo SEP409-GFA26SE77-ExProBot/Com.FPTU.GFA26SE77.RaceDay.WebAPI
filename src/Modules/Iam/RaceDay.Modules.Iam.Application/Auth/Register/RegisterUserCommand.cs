@@ -51,14 +51,46 @@ public sealed class RegisterUserCommandHandler(
         var existingEmail = await users.GetByEmailAsync(request.Email, cancellationToken);
         if (existingEmail is not null)
         {
-            throw new DomainException("Email đã được đăng ký.");
+            // Verified (or locked) → block. Unverified Pending → replace info + gửi OTP mới.
+            if (existingEmail.EmailVerified || existingEmail.Status == UserStatus.Locked)
+            {
+                throw new DomainException("Email đã được đăng ký.");
+            }
+
+            await EnsureUsernameAvailableAsync(request.Username, existingEmail.Id, cancellationToken);
+
+            existingEmail.ReplaceUnverifiedRegistration(
+                request.Username,
+                passwordHasher.Hash(request.Password),
+                request.FullName,
+                request.Phone,
+                request.DateOfBirth,
+                request.Gender.ToDomain());
+
+            users.Update(existingEmail);
+            await eventBus.PublishAsync(
+                new UserCreatedIntegrationEvent(
+                    existingEmail.Id,
+                    existingEmail.Email,
+                    existingEmail.Username,
+                    existingEmail.FullName),
+                cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            await otpService.IssueAndSendAsync(
+                existingEmail.Email,
+                existingEmail.Username,
+                existingEmail.Id,
+                OtpPurpose.EmailVerification,
+                cancellationToken);
+
+            return new RegisterUserResult(
+                existingEmail.Id,
+                existingEmail.Username,
+                "Đăng ký thành công. Vui lòng kiểm tra email và nhập OTP để xác thực tài khoản.");
         }
 
-        var existingUsername = await users.GetByUsernameAsync(request.Username, cancellationToken);
-        if (existingUsername is not null)
-        {
-            throw new DomainException("Tên đăng nhập đã được sử dụng.");
-        }
+        await EnsureUsernameAvailableAsync(request.Username, excludeUserId: null, cancellationToken);
 
         var role = await roles.GetByNameAsync("User", cancellationToken)
             ?? throw new DomainException("Role User chưa được cấu hình.");
@@ -91,5 +123,17 @@ public sealed class RegisterUserCommandHandler(
             user.Id,
             user.Username,
             "Đăng ký thành công. Vui lòng kiểm tra email và nhập OTP để xác thực tài khoản.");
+    }
+
+    private async Task EnsureUsernameAvailableAsync(
+        string username,
+        Guid? excludeUserId,
+        CancellationToken cancellationToken)
+    {
+        var existingUsername = await users.GetByUsernameAsync(username, cancellationToken);
+        if (existingUsername is not null && existingUsername.Id != excludeUserId)
+        {
+            throw new DomainException("Tên đăng nhập đã được sử dụng.");
+        }
     }
 }

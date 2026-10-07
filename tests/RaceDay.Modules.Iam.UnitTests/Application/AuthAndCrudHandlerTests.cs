@@ -151,7 +151,7 @@ public class AuthAndCrudHandlerTests
     }
 
     [Fact]
-    public async Task Register_DuplicateEmail_Throws()
+    public async Task Register_DuplicateVerifiedEmail_Throws()
     {
         var users = Substitute.For<IUserRepository>();
         users.GetByEmailAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(ActiveUser());
@@ -163,6 +163,46 @@ public class AuthAndCrudHandlerTests
         await Assert.ThrowsAsync<DomainException>(() => handler.Handle(
             new RegisterUserCommand("a@raceday.vn", "auser", "Password1!", "A", null, null, GenderDto.Male),
             CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Register_UnverifiedEmail_Replaces_And_Sends_Otp()
+    {
+        var pending = User.Create("p@raceday.vn", "oldname", "old-hash", "Old Name", RoleId);
+        var users = Substitute.For<IUserRepository>();
+        var hasher = Substitute.For<IPasswordHasher>();
+        var otp = Substitute.For<IEmailOtpService>();
+        var uow = Substitute.For<IUnitOfWork>();
+        var bus = Substitute.For<IEventBus>();
+
+        users.GetByEmailAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(pending);
+        users.GetByUsernameAsync("newname", Arg.Any<CancellationToken>()).Returns((User?)null);
+        hasher.Hash("Password1!").Returns("new-hash");
+
+        var result = await new RegisterUserCommandHandler(
+                users, Substitute.For<IRoleRepository>(), hasher, otp, uow, bus)
+            .Handle(
+                new RegisterUserCommand(
+                    "p@raceday.vn", "newname", "Password1!", "New Name", "0901111222",
+                    new DateOnly(2001, 2, 3), GenderDto.Female),
+                CancellationToken.None);
+
+        Assert.Equal(pending.Id, result.UserId);
+        Assert.Equal("newname", result.Username);
+        Assert.Equal("newname", pending.Username);
+        Assert.Equal("New Name", pending.FullName);
+        Assert.Equal("new-hash", pending.PasswordHash);
+        Assert.Equal(UserStatus.Pending, pending.Status);
+        Assert.False(pending.EmailVerified);
+        users.Received(1).Update(pending);
+        await otp.Received(1).IssueAndSendAsync(
+            "p@raceday.vn",
+            "newname",
+            pending.Id,
+            OtpPurpose.EmailVerification,
+            Arg.Any<CancellationToken>());
+        await uow.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await users.DidNotReceive().AddAsync(Arg.Any<User>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
