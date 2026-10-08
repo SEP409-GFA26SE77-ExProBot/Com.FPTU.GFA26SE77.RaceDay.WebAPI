@@ -4,6 +4,7 @@ using RaceDay.Modules.Iam.Application.Abstractions;
 using RaceDay.Modules.Iam.Contracts.Events;
 using RaceDay.Modules.Iam.Domain.Users;
 using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Application.Validation;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Iam.Application.Users.CreateUser;
@@ -33,7 +34,8 @@ public sealed class CreateUserCommandValidator : AbstractValidator<CreateUserCom
         RuleFor(x => x.Password).NotEmpty().MinimumLength(8).MaximumLength(100);
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(100);
         RuleFor(x => x.RoleId).NotEmpty();
-        RuleFor(x => x.Phone).MaximumLength(20).When(x => x.Phone is not null);
+        RuleFor(x => x.Phone).MaximumLength(20).OptionalVietnamPhone();
+        RuleFor(x => x.DateOfBirth).DateOfBirth();
         RuleFor(x => x.Status).IsInEnum();
         RuleFor(x => x.Gender).IsInEnum();
     }

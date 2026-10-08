@@ -5,6 +5,7 @@ using RaceDay.Modules.Payment.Contracts.Events;
 using RaceDay.Modules.Payment.Domain;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Application.Messaging;
+using RaceDay.Shared.Application.Validation;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Payment.Application;
@@ -96,8 +97,8 @@ public sealed class CreateCheckoutCommandValidator : AbstractValidator<CreateChe
     public CreateCheckoutCommandValidator()
     {
         RuleFor(x => x.RegistrationId).NotEmpty();
-        RuleFor(x => x.ReturnUrl).NotEmpty().MaximumLength(500);
-        RuleFor(x => x.CancelUrl).NotEmpty().MaximumLength(500);
+        RuleFor(x => x.ReturnUrl).NotEmpty().MaximumLength(500).OptionalHttpUrl();
+        RuleFor(x => x.CancelUrl).NotEmpty().MaximumLength(500).OptionalHttpUrl();
     }
 }
 

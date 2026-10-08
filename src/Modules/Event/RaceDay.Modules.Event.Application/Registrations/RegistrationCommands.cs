@@ -7,6 +7,7 @@ using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Application.Validation;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Registrations;
@@ -124,10 +125,26 @@ public sealed class CreateRegistrationCommandValidator : AbstractValidator<Creat
 {
     public CreateRegistrationCommandValidator()
     {
+        RuleFor(x => x.EventId).NotEmpty();
+        RuleFor(x => x.DistanceId).NotEmpty();
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(100);
-        RuleFor(x => x.Email).NotEmpty().EmailAddress();
-        RuleFor(x => x.Phone).NotEmpty().MaximumLength(20);
-        RuleFor(x => x.LiabilityAccepted).Equal(true);
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(100);
+        RuleFor(x => x.Phone).NotEmpty().MaximumLength(20).VietnamPhone();
+        RuleFor(x => x.DateOfBirth).DateOfBirth();
+        RuleFor(x => x.Gender).MaximumLength(20).OptionalGenderLabel();
+        RuleFor(x => x.IdNumber).MaximumLength(20).OptionalIdNumber();
+        RuleFor(x => x.HeightCm).OptionalHeightCm();
+        RuleFor(x => x.WeightKg).OptionalWeightKg();
+        RuleFor(x => x.BloodType).MaximumLength(5).OptionalBloodType();
+        RuleFor(x => x.EmergencyName).MaximumLength(100);
+        RuleFor(x => x.EmergencyPhone).MaximumLength(20).OptionalVietnamPhone();
+        RuleFor(x => x.ShirtType).MaximumLength(50);
+        RuleFor(x => x.ShirtSize).MaximumLength(20);
+        RuleFor(x => x.ShirtColor).MaximumLength(50);
+        RuleFor(x => x.HealthCertFileName).MaximumLength(200);
+        RuleFor(x => x.HealthCertUrl).OptionalHttpUrl();
+        RuleFor(x => x.LiabilityAccepted).Equal(true)
+            .WithMessage("Cần chấp nhận điều khoản trách nhiệm.");
     }
 }
 

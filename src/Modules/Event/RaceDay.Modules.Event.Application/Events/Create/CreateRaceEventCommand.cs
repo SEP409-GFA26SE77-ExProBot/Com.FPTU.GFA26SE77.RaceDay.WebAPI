@@ -5,6 +5,7 @@ using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Application.Validation;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Events;
@@ -53,11 +54,84 @@ public sealed class CreateRaceEventCommandValidator : AbstractValidator<CreateRa
     public CreateRaceEventCommandValidator()
     {
         RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Tagline).MaximumLength(300);
+        RuleFor(x => x.BannerImage).OptionalHttpUrl();
         RuleFor(x => x.Location).NotEmpty().MaximumLength(300);
-        RuleFor(x => x.TotalRunners).GreaterThanOrEqualTo(0);
-        RuleFor(x => x.Organizer.Name).NotEmpty();
-        RuleFor(x => x.Organizer.Email).NotEmpty().EmailAddress();
-        RuleFor(x => x.Distances).NotEmpty();
+        RuleFor(x => x.Coordinates.Lat).Latitude();
+        RuleFor(x => x.Coordinates.Lng).Longitude();
+        RuleFor(x => x.Date).EventDate();
+        RuleFor(x => x.Description).MaximumLength(10_000);
+        RuleFor(x => x.TotalRunners).InclusiveBetween(0, 500_000);
+
+        RuleFor(x => x.Organizer.Name).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Organizer.Email).NotEmpty().EmailAddress().MaximumLength(100);
+        RuleFor(x => x.Organizer.Phone).NotEmpty().MaximumLength(30).VietnamPhone();
+        RuleFor(x => x.Organizer.Website).OptionalHttpUrl();
+        RuleFor(x => x.Organizer.LegalEntity).MaximumLength(200);
+
+        When(x => x.PermitDocument is not null, () =>
+        {
+            RuleFor(x => x.PermitDocument!.FileUrl).OptionalHttpUrl();
+            RuleFor(x => x.PermitDocument!.FileName).MaximumLength(200);
+            RuleFor(x => x.PermitDocument!.PermitNumber).MaximumLength(100);
+            RuleFor(x => x.PermitDocument!.IssuingAuthority).MaximumLength(200);
+            RuleFor(x => x.PermitDocument!)
+                .Must(p => p.IssueDate is null || p.ValidUntil is null || p.ValidUntil >= p.IssueDate)
+                .WithMessage("Ngày hết hạn giấy phép phải sau hoặc bằng ngày cấp.");
+        });
+
+        RuleFor(x => x.Distances).NotEmpty().WithMessage("Cần ít nhất một cự ly.");
+        RuleForEach(x => x.Distances).SetValidator(new CreateDistanceInputValidator());
+
+        When(x => x.Documents is { Count: > 0 }, () =>
+        {
+            RuleForEach(x => x.Documents!).ChildRules(doc =>
+            {
+                doc.RuleFor(d => d.DocumentKey).NotEmpty().MaximumLength(100);
+                doc.RuleFor(d => d.Title).NotEmpty().MaximumLength(200);
+                doc.RuleFor(d => d.FileName).MaximumLength(200);
+                doc.RuleFor(d => d.FileUrl).OptionalHttpUrl();
+            });
+        });
+    }
+}
+
+public sealed class CreateDistanceInputValidator : AbstractValidator<CreateDistanceInput>
+{
+    public CreateDistanceInputValidator()
+    {
+        RuleFor(x => x.Type).NotEmpty().MaximumLength(50);
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.DistanceKm).InclusiveBetween(0.1, 500);
+        RuleFor(x => x.ElevationGainM).InclusiveBetween(0, 20_000);
+        RuleFor(x => x.MaxElevationM).InclusiveBetween(-500, 9000);
+        RuleFor(x => x.MinElevationM).InclusiveBetween(-500, 9000);
+        RuleFor(x => x)
+            .Must(x => x.MaxElevationM >= x.MinElevationM)
+            .WithMessage("Độ cao max phải ≥ độ cao min.");
+        RuleFor(x => x.Capacity).InclusiveBetween(1, 500_000);
+        RuleFor(x => x.Price).GreaterThanOrEqualTo(0).LessThanOrEqualTo(100_000_000);
+        RuleFor(x => x.Currency).MaximumLength(10);
+        RuleFor(x => x.Color).MaximumLength(30);
+
+        RuleFor(x => x.StartLocation.Name).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.StartLocation.Lat).Latitude();
+        RuleFor(x => x.StartLocation.Lng).Longitude();
+        RuleFor(x => x.FinishLocation.Name).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.FinishLocation.Lat).Latitude();
+        RuleFor(x => x.FinishLocation.Lng).Longitude();
+
+        When(x => x.Checkpoints is { Count: > 0 }, () =>
+        {
+            RuleForEach(x => x.Checkpoints!).ChildRules(cp =>
+            {
+                cp.RuleFor(c => c.Name).NotEmpty().MaximumLength(100);
+                cp.RuleFor(c => c.Km).GreaterThanOrEqualTo(0);
+                cp.RuleFor(c => c.Lat).Latitude();
+                cp.RuleFor(c => c.Lng).Longitude();
+                cp.RuleFor(c => c.Type).NotEmpty().MaximumLength(50);
+            });
+        });
     }
 }
 

@@ -4,6 +4,7 @@ using RaceDay.Modules.Iam.Application.Abstractions;
 using RaceDay.Modules.Iam.Contracts.Events;
 using RaceDay.Modules.Iam.Domain.Users;
 using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Application.Validation;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Iam.Application.Users.UpdateUser;
@@ -46,7 +47,10 @@ public sealed class UpdateUserCommandValidator : AbstractValidator<UpdateUserCom
             .WithMessage("Tên đăng nhập chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.");
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(100);
         RuleFor(x => x.RoleId).NotEmpty();
-        RuleFor(x => x.Phone).MaximumLength(20).When(x => x.Phone is not null);
+        RuleFor(x => x.Phone).MaximumLength(20).OptionalVietnamPhone();
+        RuleFor(x => x.DateOfBirth).DateOfBirth();
+        RuleFor(x => x.ContactPhone).MaximumLength(20).OptionalVietnamPhone();
+        RuleFor(x => x.ContactEmail).EmailAddress().When(x => !string.IsNullOrWhiteSpace(x.ContactEmail));
         RuleFor(x => x.Gender).IsInEnum();
         RuleFor(x => x.Status).IsInEnum();
     }
