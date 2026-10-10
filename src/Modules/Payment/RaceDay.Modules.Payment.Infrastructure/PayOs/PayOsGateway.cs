@@ -64,7 +64,38 @@ public sealed class PayOsGateway(
                 + $"?returnUrl={Uri.EscapeDataString(request.ReturnUrl)}"
                 + $"&cancelUrl={Uri.EscapeDataString(request.CancelUrl)}";
             logger.LogWarning("PayOS mock mode (dev) — checkout behaves like live redirect flow: {Url}", checkout);
-            return new PayOsCreateResult(checkout, $"mock-{request.OrderCode}", "{\"mock\":true,\"status\":\"PENDING\"}");
+            // VietQR payload giả để FE render QR + thông tin CK chung 1 khung
+            var mockQr =
+                $"00020101021238570010A000000727012700069704220113MOCK{request.PaymentId:N}0208QRIBFTTA5303704540{request.AmountVnd:D}5802VN62{Math.Min(99, request.Description.Length + 4):D2}08{Truncate(request.Description, 25)}6304ABCD";
+            var mockAccount = $"VQR{request.OrderCode % 1000000000:D9}";
+            var mockDesc = Truncate(request.Description, 9);
+            var mockRaw = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                code = "00",
+                desc = "success",
+                mock = true,
+                data = new
+                {
+                    checkoutUrl = checkout,
+                    paymentLinkId = $"mock-{request.OrderCode}",
+                    qrCode = mockQr,
+                    accountNumber = mockAccount,
+                    accountName = "RACEDAY PAYOS MOCK",
+                    bin = "970422",
+                    amount = request.AmountVnd,
+                    description = mockDesc,
+                    status = "PENDING"
+                }
+            });
+            return new PayOsCreateResult(
+                checkout,
+                $"mock-{request.OrderCode}",
+                mockRaw,
+                mockQr,
+                AccountNumber: mockAccount,
+                AccountName: "RACEDAY PAYOS MOCK",
+                Bin: "970422",
+                TransferDescription: mockDesc);
         }
 
         var o = Options;
@@ -115,7 +146,13 @@ public sealed class PayOsGateway(
         var checkoutUrl = data.GetProperty("checkoutUrl").GetString()
             ?? throw new DomainException("PayOS không trả checkoutUrl.");
         var paymentLinkId = data.TryGetProperty("paymentLinkId", out var pl) ? pl.GetString() : null;
-        return new PayOsCreateResult(checkoutUrl, paymentLinkId, raw);
+        var qrCode = data.TryGetProperty("qrCode", out var qr) ? qr.GetString() : null;
+        var accountNumber = data.TryGetProperty("accountNumber", out var an) ? an.GetString() : null;
+        var accountName = data.TryGetProperty("accountName", out var am) ? am.GetString() : null;
+        var bin = data.TryGetProperty("bin", out var b) ? b.GetString() : null;
+        var transferDesc = data.TryGetProperty("description", out var td) ? td.GetString() : null;
+        return new PayOsCreateResult(
+            checkoutUrl, paymentLinkId, raw, qrCode, accountNumber, accountName, bin, transferDesc);
     }
 
     public async Task<PayOsPaymentLinkInfo?> GetPaymentLinkAsync(long orderCode, CancellationToken cancellationToken = default)

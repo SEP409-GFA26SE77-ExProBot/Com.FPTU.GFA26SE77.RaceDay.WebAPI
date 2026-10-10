@@ -38,6 +38,8 @@ public static class EventModule
             Results.Ok(await mediator.Send(new GetRaceEventByIdQuery(eventId), ct)))
             .WithSummary("Chi tiết giải public");
 
+        // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
+        // không bắt role ORGANIZER riêng (không cần duyệt tài khoản organizer).
         var organizerApi = app.MapGroup("/api/v1/event/organizer")
             .WithTags(ApiTags.EventOrganizer)
             .RequireAuthorization(AuthPolicies.PublicUser)
@@ -49,6 +51,7 @@ public static class EventModule
 
         organizerApi.MapPost("/uploads", async (
             IFormFile file,
+            string? purpose,
             IFileStorage storage,
             CancellationToken ct) =>
         {
@@ -57,34 +60,44 @@ public static class EventModule
                 return Results.BadRequest(new { message = "File trống." });
             }
 
+            // Separate R2/local prefixes: banner ≠ hồ sơ giấy phép ≠ runner health-certs.
+            var folder = ResolveOrganizerUploadFolder(purpose);
+            if (folder is null)
+            {
+                return Results.BadRequest(new
+                {
+                    message = "purpose không hợp lệ. Dùng: banner | document (mặc định document)."
+                });
+            }
+
             await using var stream = file.OpenReadStream();
             var stored = await storage.UploadAsync(
                 stream,
                 file.FileName,
                 string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
-                folder: "event-docs",
+                folder: folder,
                 ct);
             return Results.Ok(stored);
         })
         .DisableAntiforgery()
-        .WithSummary("Bước hồ sơ: upload 1 file → fileUrl")
+        .WithSummary("Organizer upload → fileUrl (banner hoặc hồ sơ)")
         .WithDescription(
-            "FE màn «Hồ sơ bắt buộc»: mỗi file gọi API này, "
-            + "rồi gắn fileUrl/fileName vào documents[] khi POST /organizer/.");
+            "Query purpose=banner → folder event-banners; "
+            + "purpose=document (default) → event-docs. "
+            + "Runner giấy khám: POST /api/v1/event/uploads → health-certs.");
 
         organizerApi.MapPost("/", async (CreateRaceEventCommand command, IMediator mediator, CancellationToken ct) =>
         {
             var result = await mediator.Send(command, ct);
             return Results.Created($"/api/v1/event/{result.Id}", result);
         })
-        .WithSummary("Tạo giải (JSON) — map wizard FE 4 bước")
+        .WithSummary("Tạo giải (JSON) — wizard cấp phép + cự ly")
         .WithDescription(
-            "Map FE /organizer/events/register: "
-            + "(1) Thông tin giải → name/location/date/startTime/totalRunners/organizer/description; "
-            + "(2) Hồ sơ bắt buộc → documents[] (documentKey: plan, program, rules, official-letter, foreign-list, security) sau /uploads; "
-            + "(3) Điều kiện an toàn → rules (safetyChecklist, authorityContact, medicalPartner, ...); "
-            + "(4) Rà soát & gửi → submitForApproval=true. "
-            + "Bắt buộc thêm coordinates + distances[] (≥1). Chi tiết: docs/RaceDay_API_Guide.docx")
+            "Auth: user đã đăng nhập (PublicUser). "
+            + "Body gọn: name, location, date, startTime?, totalRunners, organizer (+ beneficiaryAccount khi gửi duyệt), "
+            + "distances[] (type/name/km/capacity/price; start/finish/elevation optional), "
+            + "documents[] sau /organizer/uploads, rules (checklist an toàn), submitForApproval. "
+            + "coordinates optional (mặc định 0,0). Không nhận weather/permitDocument/ticketPricing/merchandise/rewards/route.")
         .Accepts<CreateRaceEventCommand>("application/json")
         .Produces<RaceEventDto>(StatusCodes.Status201Created);
 
@@ -191,6 +204,15 @@ public static class EventModule
 
         return app;
     }
+
+    /// <summary>Maps upload purpose → storage folder prefix (same bucket, different keys).</summary>
+    private static string? ResolveOrganizerUploadFolder(string? purpose) =>
+        (purpose ?? "document").Trim().ToLowerInvariant() switch
+        {
+            "" or "document" or "doc" or "docs" => "event-docs",
+            "banner" or "image" or "cover" => "event-banners",
+            _ => null
+        };
 
     private sealed record RejectRequest(string Reason);
     private sealed record ApproveEventRequest(bool OpenRegistration = false);

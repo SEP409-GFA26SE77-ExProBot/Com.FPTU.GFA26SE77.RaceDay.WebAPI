@@ -23,7 +23,8 @@ public static partial class InputRules
     [GeneratedRegex(@"^\d{9}$|^\d{12}$", RegexOptions.CultureInvariant)]
     private static partial Regex VietnamIdNumberRegex();
 
-    [GeneratedRegex(@"^(A|B|AB|O)[+-]$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    /// <summary>ABO with optional Rh: O, A, B, AB, O+, A-, …</summary>
+    [GeneratedRegex(@"^(A|B|AB|O)([+-])?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex BloodTypeRegex();
 
     public static string NormalizePhone(string? phone)

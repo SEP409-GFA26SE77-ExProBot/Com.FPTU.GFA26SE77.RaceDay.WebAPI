@@ -7,9 +7,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Payment.Application;
 using RaceDay.Modules.Payment.Infrastructure;
 using RaceDay.Modules.Payment.Infrastructure.PayOs;
+using RaceDay.Shared.Domain.Exceptions;
 using RaceDay.Shared.Web.Auth;
 using RaceDay.Shared.Web.OpenApi;
 
@@ -116,8 +118,16 @@ public static class PaymentModule
         .AllowAnonymous()
         .ExcludeFromDescription();
 
-        api.MapPost("/webhooks/payos", async (HttpRequest http, IPayOsGateway payOs, IMediator mediator, CancellationToken ct) =>
+        api.MapPost("/webhooks/payos", async (
+            HttpRequest http,
+            IPayOsGateway payOs,
+            IMediator mediator,
+            ILoggerFactory loggerFactory,
+            CancellationToken ct) =>
         {
+            // PayOS pings this URL when saving webhook (sample code=00). Must return 2xx
+            // even if orderCode is unknown — otherwise dashboard shows 400 "không hoạt động".
+            var logger = loggerFactory.CreateLogger("PayOsWebhook");
             using var reader = new StreamReader(http.Body);
             var raw = await reader.ReadToEndAsync(ct);
             var signature = http.Headers["x-payos-signature"].FirstOrDefault()
@@ -125,26 +135,42 @@ public static class PaymentModule
 
             if (!payOs.IsMock && !payOs.VerifyWebhookSignature(raw, signature))
             {
+                logger.LogWarning("PayOS webhook rejected: invalid signature");
                 return Results.Unauthorized();
             }
 
             using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(raw) ? "{}" : raw);
             var root = doc.RootElement;
             var data = root.TryGetProperty("data", out var d) ? d : root;
-            var orderCode = data.TryGetProperty("orderCode", out var oc) ? oc.GetInt64() : 0L;
+            var orderCode = data.TryGetProperty("orderCode", out var oc) && oc.ValueKind == JsonValueKind.Number
+                ? oc.GetInt64()
+                : 0L;
             var status = data.TryGetProperty("status", out var st) ? st.GetString() : null;
             var code = data.TryGetProperty("code", out var c) ? c.GetString()
                 : root.TryGetProperty("code", out var c2) ? c2.GetString() : null;
 
-            if (string.Equals(status, "PAID", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(code, "00", StringComparison.OrdinalIgnoreCase))
+            var looksPaid = string.Equals(status, "PAID", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(code, "00", StringComparison.OrdinalIgnoreCase);
+
+            if (looksPaid && orderCode > 0)
             {
                 var gatewayId = data.TryGetProperty("paymentLinkId", out var pl) ? pl.GetString()
                     : data.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-                await mediator.Send(new ConfirmPaymentPaidCommand(null, orderCode, gatewayId, raw), ct);
+                try
+                {
+                    await mediator.Send(new ConfirmPaymentPaidCommand(null, orderCode, gatewayId, raw), ct);
+                }
+                catch (DomainException ex)
+                {
+                    // Confirm-webhook sample / unknown order → still ACK so PayOS accepts the URL.
+                    logger.LogInformation(
+                        ex,
+                        "PayOS webhook ACK without matching payment (orderCode={OrderCode})",
+                        orderCode);
+                }
             }
 
-            return Results.Ok(new { received = true });
+            return Results.Ok(new { success = true, received = true });
         })
         .AllowAnonymous()
         .WithSummary("Webhook PayOS (PAID → Event MarkPaidPendingApproval)")

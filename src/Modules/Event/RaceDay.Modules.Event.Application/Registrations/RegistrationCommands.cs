@@ -135,7 +135,7 @@ public sealed class CreateRegistrationCommandValidator : AbstractValidator<Creat
         RuleFor(x => x.IdNumber).MaximumLength(20).OptionalIdNumber();
         RuleFor(x => x.HeightCm).OptionalHeightCm();
         RuleFor(x => x.WeightKg).OptionalWeightKg();
-        RuleFor(x => x.BloodType).MaximumLength(5).OptionalBloodType();
+        RuleFor(x => x.BloodType).MaximumLength(10).OptionalBloodType();
         RuleFor(x => x.EmergencyName).MaximumLength(100);
         RuleFor(x => x.EmergencyPhone).MaximumLength(20).OptionalVietnamPhone();
         RuleFor(x => x.ShirtType).MaximumLength(50);
