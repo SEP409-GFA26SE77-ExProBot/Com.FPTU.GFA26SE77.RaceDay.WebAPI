@@ -11,6 +11,7 @@ COPY src/Modules/Iam ./src/Modules/Iam
 COPY src/Modules/Event ./src/Modules/Event
 COPY src/Modules/Payment ./src/Modules/Payment
 COPY src/Modules/AuditLog ./src/Modules/AuditLog
+COPY src/Modules/RaceMonitoring ./src/Modules/RaceMonitoring
 COPY src/Hosts/RaceDay.Api ./src/Hosts/RaceDay.Api
 
 RUN dotnet restore src/Hosts/RaceDay.Api/RaceDay.Api.csproj

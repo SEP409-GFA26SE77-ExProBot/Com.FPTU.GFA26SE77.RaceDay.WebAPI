@@ -3,6 +3,7 @@ using RaceDay.Modules.AuditLog.Api;
 using RaceDay.Modules.Event.Api;
 using RaceDay.Modules.Iam.Api;
 using RaceDay.Modules.Payment.Api;
+using RaceDay.Modules.RaceMonitoring.Api;
 using RaceDay.Shared.Infrastructure;
 using RaceDay.Shared.Web;
 using RaceDay.Shared.Web.OpenApi;
@@ -31,6 +32,7 @@ builder.Services.AddIamModule(builder.Configuration);
 builder.Services.AddEventModule(builder.Configuration);
 builder.Services.AddAuditLogModule(builder.Configuration);
 builder.Services.AddPaymentModule(builder.Configuration);
+builder.Services.AddRaceMonitoringModule(builder.Configuration);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -140,6 +142,7 @@ app.MapIamEndpoints();
 app.MapEventEndpoints();
 app.MapAuditLogEndpoints();
 app.MapPaymentEndpoints();
+app.MapRaceMonitoringEndpoints();
 
 app.Run();
 

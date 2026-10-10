@@ -12,6 +12,7 @@ public static class ApiTags
     public const string AuditLog = "7. AuditLog";
     public const string Payment = "8. Payment";
     public const string Host = "9. Host";
+    public const string RaceMonitoring = "10. RaceMonitoring";
 
     public static IReadOnlyList<(string Name, string Description)> All { get; } =
     [
@@ -23,7 +24,8 @@ public static class ApiTags
         (EventAdmin, "Duyệt / từ chối hồ sơ giải. Bearer Admin. Prefix /api/v1/event/admin"),
         (AuditLog, "Xem audit gần đây (Admin)."),
         (Payment, "PayOS checkout + webhook/mock. Luồng: create registration → checkout → PAID → pending_approval."),
-        (Host, "Health / hạ tầng host.")
+        (Host, "Health / hạ tầng host."),
+        (RaceMonitoring, "Giám sát giải (scaffold). Prefix /api/v1/race-monitoring")
     ];
 
     public static string SortKey(string tag) => tag switch
@@ -37,6 +39,7 @@ public static class ApiTags
         AuditLog => "7",
         Payment => "8",
         Host => "9",
+        RaceMonitoring => "10",
         _ => "99"
     };
 }
