@@ -24,6 +24,12 @@ public static class DependencyInjection
         services.AddScoped<IEventUnitOfWork, EventUnitOfWork>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Registrations.IRegistrationCheckoutInfoQuery,
             RaceDay.Modules.Event.Infrastructure.Registrations.RegistrationCheckoutInfoQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventDistanceAccessQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventDistanceAccessQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IEventFinanceQuery,
+            RaceDay.Modules.Event.Infrastructure.Finance.EventFinanceQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IRegistrationCapacityPort,
+            RaceDay.Modules.Event.Infrastructure.Finance.RegistrationCapacityPort>();
         services.AddHostedService<EventDataSeeder>();
         return services;
     }

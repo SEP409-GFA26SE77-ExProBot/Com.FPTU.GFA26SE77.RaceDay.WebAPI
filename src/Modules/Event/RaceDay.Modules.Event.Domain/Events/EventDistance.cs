@@ -163,5 +163,13 @@ public sealed class EventDistance : Entity
         RegisteredCount++;
     }
 
+    public void DecrementRegistered()
+    {
+        if (RegisteredCount > 0)
+        {
+            RegisteredCount--;
+        }
+    }
+
     public bool HasAvailableSlot => Capacity <= 0 || RegisteredCount < Capacity;
 }

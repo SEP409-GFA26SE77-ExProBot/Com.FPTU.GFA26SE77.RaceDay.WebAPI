@@ -11,7 +11,9 @@ public static class ApiTags
     public const string EventAdmin = "6. Event — Admin duyệt";
     public const string AuditLog = "7. AuditLog";
     public const string Payment = "8. Payment";
-    public const string Host = "9. Host";
+    public const string Map = "9. Map — Course / route";
+    public const string Finance = "10. Finance — Ví / giải ngân / hoàn";
+    public const string Host = "11. Host";
 
     public static IReadOnlyList<(string Name, string Description)> All { get; } =
     [
@@ -23,6 +25,8 @@ public static class ApiTags
         (EventAdmin, "Duyệt / từ chối hồ sơ giải. Bearer Admin. Prefix /api/v1/event/admin"),
         (AuditLog, "Xem audit gần đây (Admin)."),
         (Payment, "PayOS checkout + webhook/mock. Luồng: create registration → checkout → PAID → pending_approval."),
+        (Map, "Course map theo (eventId, distanceId): GET/PUT /api/v1/map/events/.../course. FE organizer setup map + simulator. OSRM/Nominatim vẫn ở FE."),
+        (Finance, "Escrow theo giải, payout Admin duyệt, hoàn tiền theo payment.Amount × % policy (mở ĐK 100% / đóng ĐK 50% / sau gun 0%)."),
         (Host, "Health / hạ tầng host.")
     ];
 
@@ -36,7 +40,9 @@ public static class ApiTags
         EventAdmin => "6",
         AuditLog => "7",
         Payment => "8",
-        Host => "9",
+        Map => "9",
+        Finance => "10",
+        Host => "11",
         _ => "99"
     };
 }

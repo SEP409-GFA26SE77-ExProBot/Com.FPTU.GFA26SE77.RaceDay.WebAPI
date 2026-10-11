@@ -163,6 +163,23 @@ public sealed class EventRegistration : AggregateRoot
         Touch();
     }
 
+    /// <summary>After paid refund (runner request or post-reject cleanup) — free the registration.</summary>
+    public void MarkCancelledAfterRefund()
+    {
+        if (Status is RegistrationStatus.Cancelled)
+        {
+            return;
+        }
+
+        if (Status is not (RegistrationStatus.PendingApproval or RegistrationStatus.Confirmed or RegistrationStatus.Rejected))
+        {
+            throw new DomainException("Không thể hủy đăng ký đã hoàn ở trạng thái hiện tại.");
+        }
+
+        Status = RegistrationStatus.Cancelled;
+        Touch();
+    }
+
     private void Touch() => UpdatedAtUtc = DateTime.UtcNow;
 }
 
