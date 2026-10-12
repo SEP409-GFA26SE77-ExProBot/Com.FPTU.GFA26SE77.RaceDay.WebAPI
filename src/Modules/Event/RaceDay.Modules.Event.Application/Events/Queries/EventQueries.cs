@@ -19,13 +19,33 @@ public sealed class ListPublicEventsQueryHandler(IRaceEventRepository events)
 
 public sealed record GetRaceEventByIdQuery(Guid EventId) : IRequest<RaceEventDto>;
 
-public sealed class GetRaceEventByIdQueryHandler(IRaceEventRepository events)
+public sealed class GetRaceEventByIdQueryHandler(
+    IRaceEventRepository events,
+    RaceDay.Shared.Application.Abstractions.ICurrentUserAccessor currentUser)
     : IRequestHandler<GetRaceEventByIdQuery, RaceEventDto>
 {
+    private static readonly HashSet<RaceEventStatus> PublicStatuses =
+    [
+        RaceEventStatus.Approved,
+        RaceEventStatus.RegistrationOpen,
+        RaceEventStatus.Closed,
+        RaceEventStatus.Completed
+    ];
+
     public async Task<RaceEventDto> Handle(GetRaceEventByIdQuery request, CancellationToken cancellationToken)
     {
         var race = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy giải.");
+
+        if (!PublicStatuses.Contains(race.Status))
+        {
+            var userId = currentUser.UserId;
+            if (userId is null || (race.OrganizerUserId != userId && !currentUser.IsAdmin))
+            {
+                throw new DomainException("Không tìm thấy giải.");
+            }
+        }
+
         return RaceEventDtoMapper.ToDetail(race);
     }
 }

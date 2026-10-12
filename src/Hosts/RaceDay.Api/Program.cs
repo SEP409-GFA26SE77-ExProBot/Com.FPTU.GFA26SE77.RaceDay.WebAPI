@@ -1,10 +1,17 @@
+using MediatR;
 using Microsoft.OpenApi;
 using RaceDay.Modules.AuditLog.Api;
+using RaceDay.Modules.AuditLog.Application.EventHandlers;
 using RaceDay.Modules.Event.Api;
-using RaceDay.Modules.Iam.Api;
 using RaceDay.Modules.Finance.Api;
+using RaceDay.Modules.Finance.Application.Wallet;
+using RaceDay.Modules.Iam.Api;
+using RaceDay.Modules.Iam.Application.Auth.Register;
+using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Map.Api;
+using RaceDay.Modules.Map.Application.Courses;
 using RaceDay.Modules.Payment.Api;
+using RaceDay.Modules.Payment.Application;
 using RaceDay.Shared.Infrastructure;
 using RaceDay.Shared.Web;
 using RaceDay.Shared.Web.OpenApi;
@@ -13,6 +20,17 @@ using Swashbuckle.AspNetCore.SwaggerUI;
 LoadDotEnv();
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Một lần AddMediatR cho mọi module — tránh miss INotificationHandler (finance ledger sau PayOS).
+builder.Services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(RegisterUserCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(CreateRaceEventCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(IamAuditEventHandler).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(CreateCheckoutCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(GetCourseQuery).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(GetOrganizerWalletQuery).Assembly);
+});
 
 builder.Services.AddCors(options =>
 {

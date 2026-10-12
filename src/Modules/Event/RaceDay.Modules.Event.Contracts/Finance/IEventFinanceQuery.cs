@@ -6,6 +6,10 @@ public interface IEventFinanceQuery
     Task<EventFinanceInfo?> GetEventAsync(Guid eventId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EventFinanceInfo>> ListByOrganizerAsync(Guid organizerUserId, CancellationToken cancellationToken = default);
     Task<RegistrationFinanceInfo?> GetRegistrationAsync(Guid registrationId, CancellationToken cancellationToken = default);
+    /** Đăng ký còn hiệu lực sau thanh toán — dùng reconcile ledger. */
+    Task<IReadOnlyList<Guid>> ListPaidEligibleRegistrationIdsAsync(
+        Guid eventId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record EventFinanceInfo(

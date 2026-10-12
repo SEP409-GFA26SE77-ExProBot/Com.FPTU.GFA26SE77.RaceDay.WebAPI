@@ -3,6 +3,7 @@ using MediatR;
 using RaceDay.Modules.Event.Contracts.Finance;
 using RaceDay.Modules.Finance.Application.Abstractions;
 using RaceDay.Modules.Finance.Domain.Settings;
+using RaceDay.Modules.Payment.Contracts.Payments;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
 
@@ -15,26 +16,27 @@ public sealed class GetOrganizerWalletQueryHandler(
     IOrganizerBankAccountRepository banks,
     IPlatformFinanceSettingsRepository settingsRepo,
     IEventFinanceQuery events,
+    IPaymentFinancePort payments,
+    IFinanceUnitOfWork uow,
+    Microsoft.Extensions.Logging.ILogger<GetOrganizerWalletQueryHandler> logger,
     ICurrentUserAccessor currentUser) : IRequestHandler<GetOrganizerWalletQuery, OrganizerWalletDto>
 {
     public async Task<OrganizerWalletDto> Handle(GetOrganizerWalletQuery request, CancellationToken cancellationToken)
     {
         var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
         var settings = await settingsRepo.GetAsync(cancellationToken);
-        var list = await ledgers.ListByOrganizerAsync(userId, cancellationToken);
         var eventInfos = await events.ListByOrganizerAsync(userId, cancellationToken);
         var byId = eventInfos.ToDictionary(x => x.EventId);
 
-        // Ensure empty ledgers appear for organizer events with no payments yet
         var dtos = new List<EventLedgerDto>();
         foreach (var ev in eventInfos)
         {
-            var ledger = list.FirstOrDefault(l => l.EventId == ev.EventId)
-                ?? Domain.Ledger.EventLedger.Create(ev.EventId, userId, ev.Name, "VND");
+            var ledger = await EventLedgerReconciler.ReconcileAsync(
+                ev.EventId, ev, ledgers, events, payments, uow, logger, cancellationToken);
             dtos.Add(LedgerCalculator.ToDto(ledger, settings, byId.GetValueOrDefault(ev.EventId)));
         }
 
-        // Also include ledgers whose event query missed (edge)
+        var list = await ledgers.ListByOrganizerAsync(userId, cancellationToken);
         foreach (var ledger in list.Where(l => dtos.All(d => d.EventId != l.EventId)))
         {
             dtos.Add(LedgerCalculator.ToDto(ledger, settings, byId.GetValueOrDefault(ledger.EventId)));
@@ -71,6 +73,9 @@ public sealed class GetEventFinanceSummaryQueryHandler(
     IEventLedgerRepository ledgers,
     IPlatformFinanceSettingsRepository settingsRepo,
     IEventFinanceQuery events,
+    IPaymentFinancePort payments,
+    IFinanceUnitOfWork uow,
+    Microsoft.Extensions.Logging.ILogger<GetEventFinanceSummaryQueryHandler> logger,
     ICurrentUserAccessor currentUser) : IRequestHandler<GetEventFinanceSummaryQuery, EventLedgerDto>
 {
     public async Task<EventLedgerDto> Handle(GetEventFinanceSummaryQuery request, CancellationToken cancellationToken)
@@ -84,8 +89,9 @@ public sealed class GetEventFinanceSummaryQueryHandler(
         }
 
         var settings = await settingsRepo.GetAsync(cancellationToken);
-        var ledger = await ledgers.GetByEventIdAsync(request.EventId, cancellationToken)
-            ?? Domain.Ledger.EventLedger.Create(ev.EventId, ev.OrganizerUserId, ev.Name, "VND");
+        // Auto-heal: nếu ledger trống/miss trong khi đã có payment Paid → sync từ payment.
+        var ledger = await EventLedgerReconciler.ReconcileAsync(
+            request.EventId, ev, ledgers, events, payments, uow, logger, cancellationToken);
         return LedgerCalculator.ToDto(ledger, settings, ev);
     }
 }

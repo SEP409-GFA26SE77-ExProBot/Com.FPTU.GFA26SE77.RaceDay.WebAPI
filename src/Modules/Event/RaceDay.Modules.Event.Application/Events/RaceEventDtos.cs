@@ -55,6 +55,8 @@ public sealed record DistanceDto(
     decimal Price,
     string Currency,
     string Color,
+    TimeOnly? StartAt,
+    TimeOnly? EndAt,
     NamedGeoPointDto StartLocation,
     NamedGeoPointDto FinishLocation,
     IReadOnlyList<CheckpointDto> Checkpoints,
@@ -86,12 +88,17 @@ public sealed record RaceEventDto(
     string? Description,
     string? RejectionReason,
     TimeOnly? StartTime,
+    string? EndDate,
     JsonElement? TicketPricing,
     JsonElement? Merchandise,
     JsonElement? Rules,
     JsonElement? Rewards,
     IReadOnlyList<DistanceDto> Distances,
     IReadOnlyList<EventDocumentDto> Documents,
+    Guid? PackagePurchaseId,
+    DateTime? PackageExpiresAtUtc,
+    DateTime? RegistrationOpensAtUtc,
+    DateTime? RegistrationClosesAtUtc,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
@@ -102,11 +109,13 @@ public sealed record RaceEventListItemDto(
     string? BannerImage,
     string Location,
     string Date,
+    string? EndDate,
     string Status,
     string OrganizerName,
     int TotalRunners,
     int ActiveRunners,
-    IReadOnlyList<string> DistanceTypes);
+    IReadOnlyList<string> DistanceTypes,
+    DateTime? RegistrationOpensAtUtc = null);
 
 public static class RaceEventDtoMapper
 {
@@ -122,6 +131,7 @@ public static class RaceEventDtoMapper
         RaceEventStatus.Closed => "closed",
         RaceEventStatus.Completed => "completed",
         RaceEventStatus.Cancelled => "cancelled",
+        RaceEventStatus.Suspended => "suspended",
         _ => status.ToString().ToLowerInvariant()
     };
 
@@ -154,11 +164,13 @@ public static class RaceEventDtoMapper
         e.BannerImage,
         e.Location,
         e.EventDate.ToString("yyyy-MM-dd"),
+        e.EndDate?.ToString("yyyy-MM-dd"),
         ToApiStatus(e.Status),
         e.Organizer.Name,
         e.TotalRunnersCap,
         e.ActiveRunners,
-        e.Distances.Select(d => d.Type).ToList());
+        e.Distances.Select(d => d.Type).ToList(),
+        e.RegistrationOpensAtUtc);
 
     public static RaceEventDto ToDetail(RaceEvent e)
     {
@@ -200,12 +212,17 @@ public static class RaceEventDtoMapper
             e.Description,
             e.RejectionReason,
             e.StartTime,
+            e.EndDate?.ToString("yyyy-MM-dd"),
             ParseJson(e.TicketPricingJson),
             ParseJson(e.MerchandiseJson),
             ParseJson(e.RulesJson),
             ParseJson(e.RewardsJson),
             e.Distances.Select(MapDistance).ToList(),
             e.Documents.Select(d => new EventDocumentDto(d.DocumentKey, d.Title, d.FileName, d.FileUrl, d.Required)).ToList(),
+            e.PackagePurchaseId,
+            e.PackageExpiresAtUtc,
+            e.RegistrationOpensAtUtc,
+            e.RegistrationClosesAtUtc,
             e.CreatedAtUtc,
             e.UpdatedAtUtc);
     }
@@ -232,6 +249,8 @@ public static class RaceEventDtoMapper
             d.Price,
             d.Currency,
             d.Color,
+            d.StartAt,
+            d.EndAt,
             new NamedGeoPointDto(d.StartLocation.Name, d.StartLocation.Lat, d.StartLocation.Lng),
             new NamedGeoPointDto(d.FinishLocation.Name, d.FinishLocation.Lat, d.FinishLocation.Lng),
             d.Checkpoints.OrderBy(c => c.SortOrder).Select(c => new CheckpointDto(

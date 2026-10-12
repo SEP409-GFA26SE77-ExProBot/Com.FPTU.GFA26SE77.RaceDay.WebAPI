@@ -127,6 +127,10 @@ public sealed class CreateRefundCommandHandler(
         CancellationToken cancellationToken)
     {
         refund.MarkProcessing();
+
+        // PayOS mock/payout trước — fail → không persist refund/ledger (tránh kẹt Processing).
+        await payments.MarkRefundedAsync(refund.PaymentId, refund.RefundAmount, cancellationToken);
+
         var ledger = await ledgers.GetByEventIdAsync(refund.EventId, cancellationToken);
         if (ledger is not null)
         {
@@ -134,9 +138,6 @@ public sealed class CreateRefundCommandHandler(
             ledgers.Update(ledger);
         }
 
-        await uow.SaveChangesAsync(cancellationToken);
-
-        await payments.MarkRefundedAsync(refund.PaymentId, cancellationToken);
         await capacity.ReleaseSlotAsync(refund.RegistrationId, cancellationToken);
         await capacity.MarkRegistrationCancelledAfterRefundAsync(refund.RegistrationId, cancellationToken);
 

@@ -69,6 +69,10 @@ public sealed class EventDistance : Entity
     public decimal Price { get; private set; }
     public string Currency { get; private set; } = "VND";
     public string Color { get; private set; } = "#FC4C02";
+    /// <summary>Giờ xuất phát cự ly (ngày giải).</summary>
+    public TimeOnly? StartAt { get; private set; }
+    /// <summary>Giờ kết thúc / cutoff cự ly (ngày giải).</summary>
+    public TimeOnly? EndAt { get; private set; }
     public NamedGeoPoint StartLocation { get; private set; } = new("Start", 0, 0);
     public NamedGeoPoint FinishLocation { get; private set; } = new("Finish", 0, 0);
     /// <summary>JSON arrays: osrmWaypoints, leafletPolyline, geoJson — FE map payload.</summary>
@@ -95,7 +99,9 @@ public sealed class EventDistance : Entity
         NamedGeoPoint start,
         NamedGeoPoint finish,
         string? routeGeometryJson,
-        IReadOnlyList<(string ExternalId, string Name, double Km, double Lat, double Lng, CheckpointType Type, string? Cutoff, int? Elevation)>? checkpoints = null)
+        IReadOnlyList<(string ExternalId, string Name, double Km, double Lat, double Lng, CheckpointType Type, string? Cutoff, int? Elevation)>? checkpoints = null,
+        TimeOnly? startAt = null,
+        TimeOnly? endAt = null)
     {
         if (string.IsNullOrWhiteSpace(type))
         {
@@ -126,6 +132,8 @@ public sealed class EventDistance : Entity
             Price = price,
             Currency = string.IsNullOrWhiteSpace(currency) ? "VND" : currency.Trim().ToUpperInvariant(),
             Color = string.IsNullOrWhiteSpace(color) ? "#FC4C02" : color.Trim(),
+            StartAt = startAt,
+            EndAt = endAt,
             StartLocation = start,
             FinishLocation = finish,
             RouteGeometryJson = string.IsNullOrWhiteSpace(routeGeometryJson) ? "{}" : routeGeometryJson

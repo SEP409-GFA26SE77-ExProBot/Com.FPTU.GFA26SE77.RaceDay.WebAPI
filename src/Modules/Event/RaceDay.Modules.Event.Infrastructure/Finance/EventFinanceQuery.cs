@@ -56,6 +56,21 @@ public sealed class EventFinanceQuery(EventDbContext db) : IEventFinanceQuery
             race.StartTime);
     }
 
+    public async Task<IReadOnlyList<Guid>> ListPaidEligibleRegistrationIdsAsync(
+        Guid eventId,
+        CancellationToken cancellationToken = default)
+    {
+        // PendingApproval / Confirmed / Rejected(đã trả rồi hoàn) — reconcile dùng payment.Paid làm nguồn thật.
+        return await db.Registrations.AsNoTracking()
+            .Where(x => x.EventId == eventId &&
+                        (x.Status == RegistrationStatus.PendingApproval ||
+                         x.Status == RegistrationStatus.Confirmed ||
+                         x.Status == RegistrationStatus.Rejected ||
+                         x.Status == RegistrationStatus.Cancelled))
+            .Select(x => x.Id)
+            .ToListAsync(cancellationToken);
+    }
+
     private static EventFinanceInfo Map(RaceEvent race) => new(
         race.Id,
         race.Name,

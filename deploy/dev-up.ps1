@@ -1,13 +1,38 @@
-﻿# RaceDay local: Docker -> compose API -> ngrok + PayOS webhook (live) -> User FE
-# Run:  .\deploy\dev-up.ps1   OR double-click deploy\dev-up.cmd
+﻿# RaceDay local all-in-one:
+#   Docker Desktop → compose (Postgres/Mongo/Redis/Rabbit + API profile)
+#   → ngrok + PayOS webhook (live) → User FE (:3000) → Admin FE (:3001)
+#
+# Run:
+#   .\deploy\dev-up.ps1
+#   .\deploy\dev-up.cmd
+#
+# Useful switches:
+#   -InfraOnly              chỉ infra (không API container)
+#   -SkipBuild              compose up không --build
+#   -SkipPayOsWebhook       bỏ ngrok / confirm-webhook
+#   -SkipFrontend           không mở User/Admin FE
+#   -SkipAdminFrontend      chỉ User FE
+#   -NoBrowser              không mở browser
+#   -FePath / -FeAdminPath  override đường dẫn FE
+#
+# Ngrok (PayOS live webhook):
+#   1) Cài: https://ngrok.com/download  (hoặc winget install ngrok.ngrok)
+#   2) Lấy authtoken: https://dashboard.ngrok.com/get-started/your-authtoken
+#   3) Một lần: ngrok config add-authtoken <TOKEN>
+#   4) Script tự `ngrok http 5080` + đăng ký webhook PayOS
+#   Dashboard tunnel: http://127.0.0.1:4040
+#   Nếu PayOS__UseMock=true (hoặc thiếu ClientId/ApiKey) → bỏ qua ngrok.
+
 [CmdletBinding()]
 param(
     [switch]$SkipFrontend,
+    [switch]$SkipAdminFrontend,
     [switch]$InfraOnly,
     [switch]$SkipBuild,
     [switch]$SkipPayOsWebhook,
     [switch]$NoBrowser,
-    [string]$FePath = ""
+    [string]$FePath = "",
+    [string]$FeAdminPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,14 +41,22 @@ $DeployDir = $PSScriptRoot
 $RepoRoot = Split-Path $DeployDir -Parent
 $ComposeFile = Join-Path $DeployDir "docker-compose.yml"
 $EnvFile = Join-Path $RepoRoot ".env"
+$SepParent = Split-Path $RepoRoot -Parent
 
 if (-not $FePath) {
-    $FePath = Join-Path (Split-Path $RepoRoot -Parent) "SEP_True_Frontend_User"
+    $FePath = Join-Path $SepParent "SEP_True_Frontend_User"
+}
+if (-not $FeAdminPath) {
+    $FeAdminPath = Join-Path $SepParent "SEP_FronteEnd_Admin\Com.FPTU.GFA26SE77.RaceDay.AdminWeb"
 }
 
 function Write-Step([string]$msg) {
     Write-Host ""
     Write-Host "==> $msg" -ForegroundColor Cyan
+}
+
+function Write-Hint([string]$msg) {
+    Write-Host "    $msg" -ForegroundColor DarkGray
 }
 
 function Get-DotEnvMap([string]$path) {
@@ -39,6 +72,15 @@ function Get-DotEnvMap([string]$path) {
         $map[$k] = $v
     }
     return $map
+}
+
+function Test-HttpOk([string]$url) {
+    try {
+        $null = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2
+        return $true
+    } catch {
+        return $false
+    }
 }
 
 function Ensure-DockerDesktop {
@@ -90,7 +132,7 @@ function Start-Compose {
         throw "Missing compose file: $ComposeFile"
     }
     if (-not (Test-Path $EnvFile)) {
-        Write-Host "WARN: no .env at $EnvFile" -ForegroundColor Yellow
+        Write-Host "WARN: no .env at $EnvFile — API/PayOS có thể thiếu key" -ForegroundColor Yellow
     }
 
     Push-Location $RepoRoot
@@ -115,6 +157,8 @@ function Start-Compose {
         Pop-Location
     }
     Write-Host "Compose OK." -ForegroundColor Green
+    Write-Hint "Postgres init SQL: deploy/sql/raceday_init.sql (chỉ chạy khi volume pgdata trống)"
+    Write-Hint "API start cũng chạy EventDataSeeder → refresh banner/docs/certs Quy Nhơn (R2)"
 }
 
 function Wait-Api([int]$timeoutSec = 180) {
@@ -153,10 +197,18 @@ function Ensure-NgrokTunnel {
 
     $ngrok = Get-Command ngrok -ErrorAction SilentlyContinue
     if (-not $ngrok) {
-        throw "ngrok not in PATH. Install https://ngrok.com/download (needed for PayOS live webhook)."
+        Write-Host ""
+        Write-Host "NGROK MISSING — cần cho PayOS webhook live:" -ForegroundColor Yellow
+        Write-Hint "1) Download: https://ngrok.com/download"
+        Write-Hint "2) Authtoken: https://dashboard.ngrok.com/get-started/your-authtoken"
+        Write-Hint "3) ngrok config add-authtoken <TOKEN>"
+        Write-Hint "4) Re-run: .\deploy\dev-up.ps1"
+        Write-Hint "Hoặc: .\deploy\dev-up.ps1 -SkipPayOsWebhook  (dùng mock / sync payment)"
+        throw "ngrok not in PATH."
     }
 
     Write-Host "Starting ngrok http 5080..." -ForegroundColor Yellow
+    Write-Hint "Nếu lỗi 'authtoken' → ngrok config add-authtoken <TOKEN>"
     Start-Process ngrok -ArgumentList @("http", "5080") -WindowStyle Minimized
     $deadline = (Get-Date).AddSeconds(45)
     do {
@@ -164,12 +216,13 @@ function Ensure-NgrokTunnel {
         $url = Get-NgrokHttpsUrl
         if ($url) {
             Write-Host "ngrok OK: $url" -ForegroundColor Green
+            Write-Hint "Inspector: http://127.0.0.1:4040"
             return $url
         }
         Write-Host "  waiting for ngrok..." -ForegroundColor DarkGray
     } while ((Get-Date) -lt $deadline)
 
-    throw "ngrok public URL not available. Open http://127.0.0.1:4040"
+    throw "ngrok public URL not available. Open http://127.0.0.1:4040 — kiểm tra authtoken."
 }
 
 function Register-PayOsWebhook([string]$webhookUrl, [hashtable]$envMap) {
@@ -214,6 +267,7 @@ function Register-PayOsWebhook([string]$webhookUrl, [hashtable]$envMap) {
 function Start-PayOsLiveWebhook {
     if ($SkipPayOsWebhook -or $InfraOnly) {
         Write-Step "PayOS webhook skipped"
+        Write-Hint "Live PayOS cần URL public → ngrok. Xem hướng dẫn đầu file script."
         return
     }
 
@@ -225,6 +279,7 @@ function Start-PayOsLiveWebhook {
 
     if ($isMock) {
         Write-Step "PayOS mock mode - skip ngrok/webhook"
+        Write-Hint "Bật live: set PayOS__UseMock=false + ClientId/ApiKey/ChecksumKey trong .env"
         return
     }
 
@@ -234,68 +289,90 @@ function Start-PayOsLiveWebhook {
     try { Set-Clipboard -Value $webhookUrl } catch { }
     Register-PayOsWebhook -webhookUrl $webhookUrl -envMap $envMap
     Write-Host "Webhook: $webhookUrl" -ForegroundColor Green
+    Write-Hint "(đã copy clipboard nếu được)"
 }
 
-function Start-Frontend {
-    if ($SkipFrontend) { return }
-    Write-Step "Frontend User"
-    if (-not (Test-Path (Join-Path $FePath "package.json"))) {
-        throw "FE not found at: $FePath  (use -FePath)"
+function Start-NextDev([string]$path, [string]$title, [string]$url, [int]$port) {
+    if (-not (Test-Path (Join-Path $path "package.json"))) {
+        throw "FE not found at: $path"
     }
 
-    if (-not (Test-Path (Join-Path $FePath "node_modules"))) {
-        Write-Host "npm install..." -ForegroundColor Yellow
-        Push-Location $FePath
+    if (-not (Test-Path (Join-Path $path "node_modules"))) {
+        Write-Host "npm install ($title)..." -ForegroundColor Yellow
+        Push-Location $path
         try { npm install } finally { Pop-Location }
     }
 
-    try {
-        $null = Invoke-WebRequest -Uri "http://localhost:3000" -UseBasicParsing -TimeoutSec 2
-        Write-Host "FE already running http://localhost:3000" -ForegroundColor Green
-    } catch {
-        Write-Host "Starting next dev..." -ForegroundColor Yellow
-        Start-Process powershell -ArgumentList @(
-            "-NoExit",
-            "-Command",
-            "Set-Location `"$FePath`"; Write-Host 'RaceDay User FE' -ForegroundColor Cyan; npm run dev"
-        ) | Out-Null
-        $deadline = (Get-Date).AddSeconds(90)
-        while ((Get-Date) -lt $deadline) {
-            try {
-                $null = Invoke-WebRequest -Uri "http://localhost:3000" -UseBasicParsing -TimeoutSec 2
-                Write-Host "FE ready http://localhost:3000" -ForegroundColor Green
-                break
-            } catch {
-                Start-Sleep -Seconds 2
-            }
+    if (Test-HttpOk $url) {
+        Write-Host "$title already running $url" -ForegroundColor Green
+        return
+    }
+
+    Write-Host "Starting $title on :$port ..." -ForegroundColor Yellow
+    Start-Process powershell -ArgumentList @(
+        "-NoExit",
+        "-Command",
+        "Set-Location `"$path`"; Write-Host '$title' -ForegroundColor Cyan; npm run dev"
+    ) | Out-Null
+
+    $deadline = (Get-Date).AddSeconds(120)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-HttpOk $url) {
+            Write-Host "$title ready $url" -ForegroundColor Green
+            return
+        }
+        Start-Sleep -Seconds 2
+    }
+    Write-Host "$title chưa ready trong 120s — mở cửa sổ '$title' xem lỗi (port bận?)." -ForegroundColor Yellow
+}
+
+function Start-Frontends {
+    if ($SkipFrontend) { return }
+
+    Write-Step "Frontend User (SEP_True_Frontend_User) :3000"
+    Start-NextDev -path $FePath -title "RaceDay User FE :3000" -url "http://localhost:3000" -port 3000
+
+    if (-not $SkipAdminFrontend) {
+        Write-Step "Frontend Admin (SEP_FronteEnd_Admin) :3001"
+        if (-not (Test-Path (Join-Path $FeAdminPath "package.json"))) {
+            Write-Host "WARN: Admin FE not found at $FeAdminPath — skip" -ForegroundColor Yellow
+            Write-Hint "Dùng -FeAdminPath hoặc clone đúng thư mục SEP_FronteEnd_Admin"
+        } else {
+            Start-NextDev -path $FeAdminPath -title "RaceDay Admin FE :3001" -url "http://localhost:3001" -port 3001
         }
     }
 
     if (-not $NoBrowser) {
         Start-Process "http://localhost:3000"
+        if (-not $SkipAdminFrontend) { Start-Process "http://localhost:3001" }
         Start-Process "http://localhost:5080/swagger"
     }
 }
 
 try {
-    Write-Host "RaceDay dev-up (Docker + API + PayOS webhook + FE)" -ForegroundColor White
-    Write-Host "Repo: $RepoRoot"
-    Write-Host "FE:   $FePath"
+    Write-Host "RaceDay dev-up (Docker + API + PayOS/ngrok + User FE + Admin FE)" -ForegroundColor White
+    Write-Host "Repo:      $RepoRoot"
+    Write-Host "User FE:   $FePath"
+    Write-Host "Admin FE:  $FeAdminPath"
 
     Ensure-DockerDesktop
     Start-Compose
     Wait-Api
     Start-PayOsLiveWebhook
-    Start-Frontend
+    Start-Frontends
 
     Write-Step "Done"
-    Write-Host "  API:     http://localhost:5080"
-    Write-Host "  Swagger: http://localhost:5080/swagger"
-    Write-Host "  FE:      http://localhost:3000"
-    Write-Host "  ngrok:   http://127.0.0.1:4040"
+    Write-Host "  API:       http://localhost:5080"
+    Write-Host "  Swagger:   http://localhost:5080/swagger"
+    Write-Host "  User FE:   http://localhost:3000"
+    Write-Host "  Admin FE:  http://localhost:3001"
+    Write-Host "  ngrok UI:  http://127.0.0.1:4040"
+    Write-Host "  Flagship:  VnExpress Marathon Quy Nhon 2026 (id …aaa1)"
     Write-Host ""
-    Write-Host "  Stop: docker compose -f deploy/docker-compose.yml --profile api down"
-    Write-Host "  Skip webhook: .\deploy\dev-up.ps1 -SkipPayOsWebhook"
+    Write-Host "  Stop API/infra: docker compose -f deploy/docker-compose.yml --profile api down"
+    Write-Host "  Skip webhook:   .\deploy\dev-up.ps1 -SkipPayOsWebhook"
+    Write-Host "  Skip Admin FE:  .\deploy\dev-up.ps1 -SkipAdminFrontend"
+    Write-Host "  Re-seed SQL (volume mới hoặc chạy tay upsert block trong raceday_init.sql)"
     exit 0
 } catch {
     Write-Host ""

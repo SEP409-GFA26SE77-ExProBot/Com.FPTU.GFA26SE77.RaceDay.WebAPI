@@ -16,7 +16,7 @@ public static class MapModule
 {
     public static IServiceCollection AddMapModule(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(GetCourseQuery).Assembly));
+        // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddValidatorsFromAssembly(typeof(UpsertCourseCommandValidator).Assembly);
         services.AddMapInfrastructure(configuration);
         return services;

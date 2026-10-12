@@ -21,7 +21,7 @@ public static class PaymentModule
 {
     public static IServiceCollection AddPaymentModule(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CreateCheckoutCommand).Assembly));
+        // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddValidatorsFromAssembly(typeof(CreateCheckoutCommand).Assembly);
         services.AddPaymentInfrastructure(configuration);
         return services;
@@ -52,6 +52,18 @@ public static class PaymentModule
         .WithDescription(
             "FE: sau POST /event/{id}/registrations → gọi checkout với registrationId + returnUrl/cancelUrl. "
             + "Mock mode: checkoutUrl mở trang giả PayOS (nút Thanh toán / Hủy).");
+
+        api.MapPost("/checkout/package", async (CreatePackageCheckoutRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(
+                new CreatePackageCheckoutCommand(body.PackagePurchaseId, body.ReturnUrl, body.CancelUrl), ct);
+            return Results.Ok(result);
+        })
+        .RequireAuthorization(AuthPolicies.PublicUser)
+        .WithSummary("Tạo link thanh toán PayOS cho gói sự kiện (event package)")
+        .WithDescription(
+            "FE: sau POST /event/organizer/packages/purchases → gọi checkout/package. "
+            + "Mock mode: giống registration checkout.");
 
         api.MapGet("/mine", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyPaymentsQuery(), ct)))
@@ -249,4 +261,5 @@ public static class PaymentModule
     }
 
     private sealed record CreateCheckoutRequest(Guid RegistrationId, string ReturnUrl, string CancelUrl);
+    private sealed record CreatePackageCheckoutRequest(Guid PackagePurchaseId, string ReturnUrl, string CancelUrl);
 }

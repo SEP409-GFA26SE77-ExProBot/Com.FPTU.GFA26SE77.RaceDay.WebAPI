@@ -58,6 +58,22 @@ public sealed class EventLedger : AggregateRoot
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// Đồng bộ lại: gross = tổng đã thu (Paid+Refunded); ticketsSold = vé còn Paid.
+    /// Không đụng RefundedTotal / Withdrawn / Pending.
+    /// </summary>
+    public void SyncTicketSalesFromPayments(int ticketsSold, decimal grossRevenue)
+    {
+        if (ticketsSold < 0 || grossRevenue < 0)
+        {
+            throw new DomainException("Snapshot doanh thu không hợp lệ.");
+        }
+
+        TicketsSold = ticketsSold;
+        GrossRevenue = grossRevenue;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     public void DebitRefund(decimal amount)
     {
         if (amount <= 0)

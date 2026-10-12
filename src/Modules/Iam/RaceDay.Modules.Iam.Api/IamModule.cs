@@ -29,7 +29,7 @@ public static class IamModule
 {
     public static IServiceCollection AddIamModule(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(RegisterUserCommand).Assembly));
+        // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddValidatorsFromAssembly(typeof(RegisterUserCommand).Assembly);
         services.AddIamInfrastructure(configuration);
         return services;
@@ -90,6 +90,14 @@ public static class IamModule
             })
             .RequireAuthorization(AuthPolicies.PublicUser)
             .WithSummary("Đổi mật khẩu (cần JWT)");
+
+        publicApi.MapGet("/me", async (IMediator mediator, CancellationToken ct) =>
+            {
+                var result = await mediator.Send(new GetMyProfileQuery(), ct);
+                return Results.Ok(result);
+            })
+            .RequireAuthorization(AuthPolicies.PublicUser)
+            .WithSummary("Hồ sơ user đang đăng nhập");
 
         var adminApi = app.MapGroup("/api/v1/iam/admin")
             .WithTags(ApiTags.IamAdmin)

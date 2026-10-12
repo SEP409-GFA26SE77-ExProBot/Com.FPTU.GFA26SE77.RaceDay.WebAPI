@@ -19,7 +19,7 @@ public static class FinanceModule
 {
     public static IServiceCollection AddFinanceModule(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(GetOrganizerWalletQuery).Assembly));
+        // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddValidatorsFromAssembly(typeof(CreatePayoutCommandValidator).Assembly);
         services.AddFinanceInfrastructure(configuration);
         return services;
