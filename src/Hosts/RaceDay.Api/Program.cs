@@ -11,13 +11,14 @@ using Swashbuckle.AspNetCore.SwaggerUI;
 LoadDotEnv();
 
 var builder = WebApplication.CreateBuilder(args);
+var allowedCorsOrigins = GetAllowedCorsOrigins(builder.Configuration["ALLOWS_CORS"]);
 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
         policy
-            .WithOrigins("http://localhost:3000", "http://localhost:3001")
+            .WithOrigins(allowedCorsOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
@@ -157,6 +158,14 @@ static void LoadDotEnv()
 
         dir = dir.Parent;
     }
+}
+
+static string[] GetAllowedCorsOrigins(string? configuredOrigins)
+{
+    const string defaultOrigins = "http://localhost:3000,http://localhost:3001,http://localhost:51356";
+
+    return (string.IsNullOrWhiteSpace(configuredOrigins) ? defaultOrigins : configuredOrigins)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }
 
 public partial class Program;
