@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Contracts.Registrations;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
@@ -40,6 +41,20 @@ public sealed class RegistrationCheckoutInfoQuery(EventDbContext db) : IRegistra
             _ => reg.Status.ToString().ToLowerInvariant()
         };
 
+        // Ưu tiên giá đã chốt lúc tạo ĐK; fallback resolve phase hiện tại (đơn cũ chưa snapshot).
+        decimal amount;
+        if (reg.QuotedAmount is decimal quoted && quoted >= 0)
+        {
+            amount = quoted;
+        }
+        else
+        {
+            amount = TicketPricingResolver.Resolve(
+                race.TicketPricingJson,
+                distance.Name,
+                distance.Price).Price;
+        }
+
         return new RegistrationCheckoutInfo(
             reg.Id,
             reg.UserId,
@@ -49,7 +64,7 @@ public sealed class RegistrationCheckoutInfoQuery(EventDbContext db) : IRegistra
             distance.Type,
             distance.Name,
             distance.DistanceKm,
-            distance.Price,
+            amount,
             string.IsNullOrWhiteSpace(distance.Currency) ? "VND" : distance.Currency,
             status);
     }

@@ -3,6 +3,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Application.Abstractions;
+using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
@@ -44,6 +45,8 @@ public sealed record RegistrationDto(
     double? DistanceKm,
     decimal? Price,
     string? Currency,
+    string? PricePhaseKey,
+    string? PricePhaseName,
     DateTime CreatedAtUtc);
 
 public static class RegistrationDtoMapper
@@ -93,8 +96,10 @@ public static class RegistrationDtoMapper
             race?.Name,
             distance is null ? null : $"{distance.Type} · {distance.Name}",
             distance?.DistanceKm,
-            distance?.Price,
+            r.QuotedAmount ?? distance?.Price,
             distance?.Currency,
+            r.QuotedPhaseKey,
+            r.QuotedPhaseName,
             r.CreatedAtUtc);
     }
 }
@@ -135,7 +140,7 @@ public sealed class CreateRegistrationCommandValidator : AbstractValidator<Creat
         RuleFor(x => x.IdNumber).MaximumLength(20).OptionalIdNumber();
         RuleFor(x => x.HeightCm).OptionalHeightCm();
         RuleFor(x => x.WeightKg).OptionalWeightKg();
-        RuleFor(x => x.BloodType).MaximumLength(5).OptionalBloodType();
+        RuleFor(x => x.BloodType).MaximumLength(10).OptionalBloodType();
         RuleFor(x => x.EmergencyName).MaximumLength(100);
         RuleFor(x => x.EmergencyPhone).MaximumLength(20).OptionalVietnamPhone();
         RuleFor(x => x.ShirtType).MaximumLength(50);
@@ -219,6 +224,13 @@ public sealed class CreateRegistrationCommandHandler(
             request.HealthCertFileName,
             request.HealthCertUrl,
             request.LiabilityAccepted);
+
+        // Chốt giá theo phase tại thời điểm tạo ĐK — checkout/PayOS/refund bám snapshot này.
+        var quoted = TicketPricingResolver.Resolve(
+            race.TicketPricingJson,
+            distance.Name,
+            distance.Price);
+        reg.LockQuotedPrice(quoted.Price, quoted.PhaseKey, quoted.PhaseName);
 
         // Status = PendingPayment — FE gọi Payment checkout; slot tăng sau khi paid.
         await registrations.AddAsync(reg, cancellationToken);

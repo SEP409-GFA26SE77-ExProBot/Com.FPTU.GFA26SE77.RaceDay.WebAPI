@@ -1,8 +1,17 @@
+using MediatR;
 using Microsoft.OpenApi;
 using RaceDay.Modules.AuditLog.Api;
+using RaceDay.Modules.AuditLog.Application.EventHandlers;
 using RaceDay.Modules.Event.Api;
+using RaceDay.Modules.Finance.Api;
+using RaceDay.Modules.Finance.Application.Wallet;
 using RaceDay.Modules.Iam.Api;
+using RaceDay.Modules.Iam.Application.Auth.Register;
+using RaceDay.Modules.Event.Application.Events;
+using RaceDay.Modules.Map.Api;
+using RaceDay.Modules.Map.Application.Courses;
 using RaceDay.Modules.Payment.Api;
+using RaceDay.Modules.Payment.Application;
 using RaceDay.Shared.Infrastructure;
 using RaceDay.Shared.Web;
 using RaceDay.Shared.Web.OpenApi;
@@ -12,6 +21,17 @@ LoadDotEnv();
 
 var builder = WebApplication.CreateBuilder(args);
 var allowedCorsOrigins = GetAllowedCorsOrigins(builder.Configuration["ALLOWS_CORS"]);
+
+// Một lần AddMediatR cho mọi module — tránh miss INotificationHandler (finance ledger sau PayOS).
+builder.Services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(RegisterUserCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(CreateRaceEventCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(IamAuditEventHandler).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(CreateCheckoutCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(GetCourseQuery).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(GetOrganizerWalletQuery).Assembly);
+});
 
 builder.Services.AddCors(options =>
 {
@@ -32,6 +52,8 @@ builder.Services.AddIamModule(builder.Configuration);
 builder.Services.AddEventModule(builder.Configuration);
 builder.Services.AddAuditLogModule(builder.Configuration);
 builder.Services.AddPaymentModule(builder.Configuration);
+builder.Services.AddMapModule(builder.Configuration);
+builder.Services.AddFinanceModule(builder.Configuration);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -65,6 +87,16 @@ builder.Services.AddSwaggerGen(options =>
             2. `POST /api/v1/payment/checkout` → mở `checkoutUrl` (mock hoặc PayOS)
             3. PAID → `pending_approval` → organizer approve → `confirmed` + bib + `qrPayload`
             4. `GET /api/v1/event/registrations/mine`
+
+            ### E. Organizer map / course (sau khi có event + distances)
+            1. `GET/PUT /api/v1/map/events/{eventId}/distances/{distanceId}/course`
+            2. FE True: tắt mock `NEXT_PUBLIC_RACE_MAP_USE_MOCK=false` — OSRM/Nominatim/simulator vẫn chạy phía FE
+
+            ### F. Ví / giải ngân / hoàn tiền
+            1. Paid → escrow ledger theo giải (`/api/v1/finance/organizer/...`)
+            2. Organizer xin rút → Admin `.../finance/admin/payouts/{id}/approve`
+            3. Runner hoàn: `POST /api/v1/finance/runner/refunds` (số tiền = payment.Amount × % policy)
+            4. Organizer reject đăng ký đã trả → hoàn 100% tự động
 
             Docs: `docs/RaceDay_API_Guide.docx` (View → Navigation Pane)
             """
@@ -141,6 +173,8 @@ app.MapIamEndpoints();
 app.MapEventEndpoints();
 app.MapAuditLogEndpoints();
 app.MapPaymentEndpoints();
+app.MapMapEndpoints();
+app.MapFinanceEndpoints();
 
 app.Run();
 

@@ -115,3 +115,28 @@ public sealed class OpenRegistrationCommandHandler(
         return RaceEventDtoMapper.ToDetail(race);
     }
 }
+
+public sealed record CloseRegistrationCommand(Guid EventId) : IRequest<RaceEventDto>;
+
+public sealed class CloseRegistrationCommandHandler(
+    IRaceEventRepository events,
+    ICurrentUserAccessor currentUser,
+    IEventUnitOfWork unitOfWork) : IRequestHandler<CloseRegistrationCommand, RaceEventDto>
+{
+    public async Task<RaceEventDto> Handle(CloseRegistrationCommand request, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        var race = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy giải.");
+
+        if (!currentUser.IsAdmin && race.OrganizerUserId != userId)
+        {
+            throw new DomainException("Bạn không phải chủ giải này.");
+        }
+
+        race.CloseRegistration();
+        events.Update(race);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return RaceEventDtoMapper.ToDetail(race);
+    }
+}

@@ -19,6 +19,10 @@ public sealed class PayOsOptions
     /// <summary>When true or keys missing → mock checkout (testable without PayOS account).</summary>
     public bool UseMock { get; set; }
     public string? PublicApiBaseUrl { get; set; }
+    /// <summary>Kênh Chi (payout) — fallback về ClientId/ApiKey/ChecksumKey nếu trống.</summary>
+    public string? PayoutClientId { get; set; }
+    public string? PayoutApiKey { get; set; }
+    public string? PayoutChecksumKey { get; set; }
 }
 
 public sealed class PayOsGateway(
@@ -64,7 +68,38 @@ public sealed class PayOsGateway(
                 + $"?returnUrl={Uri.EscapeDataString(request.ReturnUrl)}"
                 + $"&cancelUrl={Uri.EscapeDataString(request.CancelUrl)}";
             logger.LogWarning("PayOS mock mode (dev) — checkout behaves like live redirect flow: {Url}", checkout);
-            return new PayOsCreateResult(checkout, $"mock-{request.OrderCode}", "{\"mock\":true,\"status\":\"PENDING\"}");
+            // VietQR payload giả để FE render QR + thông tin CK chung 1 khung
+            var mockQr =
+                $"00020101021238570010A000000727012700069704220113MOCK{request.PaymentId:N}0208QRIBFTTA5303704540{request.AmountVnd:D}5802VN62{Math.Min(99, request.Description.Length + 4):D2}08{Truncate(request.Description, 25)}6304ABCD";
+            var mockAccount = $"VQR{request.OrderCode % 1000000000:D9}";
+            var mockDesc = Truncate(request.Description, 9);
+            var mockRaw = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                code = "00",
+                desc = "success",
+                mock = true,
+                data = new
+                {
+                    checkoutUrl = checkout,
+                    paymentLinkId = $"mock-{request.OrderCode}",
+                    qrCode = mockQr,
+                    accountNumber = mockAccount,
+                    accountName = "RACEDAY PAYOS MOCK",
+                    bin = "970422",
+                    amount = request.AmountVnd,
+                    description = mockDesc,
+                    status = "PENDING"
+                }
+            });
+            return new PayOsCreateResult(
+                checkout,
+                $"mock-{request.OrderCode}",
+                mockRaw,
+                mockQr,
+                AccountNumber: mockAccount,
+                AccountName: "RACEDAY PAYOS MOCK",
+                Bin: "970422",
+                TransferDescription: mockDesc);
         }
 
         var o = Options;
@@ -115,7 +150,13 @@ public sealed class PayOsGateway(
         var checkoutUrl = data.GetProperty("checkoutUrl").GetString()
             ?? throw new DomainException("PayOS không trả checkoutUrl.");
         var paymentLinkId = data.TryGetProperty("paymentLinkId", out var pl) ? pl.GetString() : null;
-        return new PayOsCreateResult(checkoutUrl, paymentLinkId, raw);
+        var qrCode = data.TryGetProperty("qrCode", out var qr) ? qr.GetString() : null;
+        var accountNumber = data.TryGetProperty("accountNumber", out var an) ? an.GetString() : null;
+        var accountName = data.TryGetProperty("accountName", out var am) ? am.GetString() : null;
+        var bin = data.TryGetProperty("bin", out var b) ? b.GetString() : null;
+        var transferDesc = data.TryGetProperty("description", out var td) ? td.GetString() : null;
+        return new PayOsCreateResult(
+            checkoutUrl, paymentLinkId, raw, qrCode, accountNumber, accountName, bin, transferDesc);
     }
 
     public async Task<PayOsPaymentLinkInfo?> GetPaymentLinkAsync(long orderCode, CancellationToken cancellationToken = default)
@@ -147,6 +188,105 @@ public sealed class PayOsGateway(
         var status = data.TryGetProperty("status", out var st) ? st.GetString() : null;
         var id = data.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
         return new PayOsPaymentLinkInfo(orderCode, status, id, raw);
+    }
+
+    public async Task<PayOsRefundResult> RefundAsync(
+        PayOsRefundRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.AmountVnd <= 0)
+        {
+            throw new DomainException("Số tiền hoàn phải > 0.");
+        }
+
+        if (IsMock)
+        {
+            var mockId = $"mock-refund-{request.PaymentId:N}";
+            var mockRaw = JsonSerializer.Serialize(new
+            {
+                code = "00",
+                desc = "success",
+                mock = true,
+                data = new
+                {
+                    id = mockId,
+                    referenceId = $"refund-{request.OrderCode}",
+                    amount = request.AmountVnd,
+                    description = Truncate(request.Description, 25),
+                    approvalState = "SUCCEEDED"
+                }
+            });
+            logger.LogWarning(
+                "PayOS mock refund — không chuyển ngân hàng thật. payment={PaymentId} amount={Amount} payoutId={PayoutId}",
+                request.PaymentId,
+                request.AmountVnd,
+                mockId);
+            return new PayOsRefundResult(IsMock: true, mockId, mockRaw);
+        }
+
+        var (toBin, toAccount) = ResolveRefundDestination(request);
+        if (string.IsNullOrWhiteSpace(toBin) || string.IsNullOrWhiteSpace(toAccount))
+        {
+            throw new DomainException(
+                "Không có số tài khoản đối ứng từ PayOS webhook để hoàn tiền tự động. "
+                + "Chỉ một số ngân hàng trả counterAccount — cần hoàn thủ công hoặc cấu hình lệnh chi với STK VĐV.");
+        }
+
+        var o = Options;
+        var clientId = string.IsNullOrWhiteSpace(o.PayoutClientId) ? o.ClientId : o.PayoutClientId!;
+        var apiKey = string.IsNullOrWhiteSpace(o.PayoutApiKey) ? o.ApiKey : o.PayoutApiKey!;
+        var checksum = string.IsNullOrWhiteSpace(o.PayoutChecksumKey) ? o.ChecksumKey : o.PayoutChecksumKey!;
+
+        var referenceId = $"refund-{request.OrderCode}-{request.AmountVnd}";
+        var description = Truncate(request.Description, 25);
+        var payload = new Dictionary<string, object?>
+        {
+            ["referenceId"] = referenceId,
+            ["amount"] = request.AmountVnd,
+            ["description"] = description,
+            ["toBin"] = toBin.Trim(),
+            ["toAccountNumber"] = toAccount.Trim()
+        };
+
+        var signature = SignPayoutPayload(payload, checksum);
+        var idempotency = $"{request.PaymentId:N}-{request.AmountVnd}";
+
+        using var msg = new HttpRequestMessage(HttpMethod.Post, $"{o.BaseUrl.TrimEnd('/')}/v1/payouts");
+        msg.Headers.TryAddWithoutValidation("x-client-id", clientId);
+        msg.Headers.TryAddWithoutValidation("x-api-key", apiKey);
+        msg.Headers.TryAddWithoutValidation("x-idempotency-key", idempotency);
+        msg.Headers.TryAddWithoutValidation("x-signature", signature);
+        msg.Content = JsonContent.Create(payload);
+
+        using var resp = await http.SendAsync(msg, cancellationToken);
+        var raw = await resp.Content.ReadAsStringAsync(cancellationToken);
+        if (!resp.IsSuccessStatusCode)
+        {
+            logger.LogError("PayOS payout (refund) failed {Status}: {Body}", (int)resp.StatusCode, raw);
+            throw new DomainException($"Không tạo được lệnh chi hoàn tiền PayOS: {ExtractPayOsError(raw)}");
+        }
+
+        using var doc = JsonDocument.Parse(raw);
+        if (doc.RootElement.TryGetProperty("code", out var codeEl)
+            && codeEl.GetString() is { } code
+            && code != "00")
+        {
+            var desc = doc.RootElement.TryGetProperty("desc", out var d) ? d.GetString() : raw;
+            throw new DomainException($"PayOS từ chối lệnh chi hoàn tiền: {desc}");
+        }
+
+        string? payoutId = null;
+        if (doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object)
+        {
+            payoutId = data.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+        }
+
+        logger.LogInformation(
+            "PayOS payout refund created payment={PaymentId} amount={Amount} payoutId={PayoutId}",
+            request.PaymentId,
+            request.AmountVnd,
+            payoutId);
+        return new PayOsRefundResult(IsMock: false, payoutId, raw);
     }
 
     public bool VerifyWebhookSignature(string rawBody, string? signatureHeader)
@@ -181,6 +321,74 @@ public sealed class PayOsGateway(
             logger.LogWarning(ex, "PayOS webhook signature verify failed");
             return false;
         }
+    }
+
+    private static (string? ToBin, string? ToAccount) ResolveRefundDestination(PayOsRefundRequest request)
+    {
+        var bin = request.CounterAccountBankId;
+        var account = request.CounterAccountNumber;
+        if (!string.IsNullOrWhiteSpace(bin) && !string.IsNullOrWhiteSpace(account))
+        {
+            return (bin, account);
+        }
+
+        return TryExtractCounterAccount(request.ChargeRawJson);
+    }
+
+    internal static (string? ToBin, string? ToAccount) TryExtractCounterAccount(string? rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson))
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            var root = doc.RootElement;
+            var data = root.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Object
+                ? d
+                : root;
+
+            var bin = GetStringProp(data, "counterAccountBankId")
+                      ?? GetStringProp(root, "counterAccountBankId");
+            var account = GetStringProp(data, "counterAccountNumber")
+                          ?? GetStringProp(root, "counterAccountNumber");
+            return (
+                string.IsNullOrWhiteSpace(bin) ? null : bin,
+                string.IsNullOrWhiteSpace(account) ? null : account);
+        }
+        catch
+        {
+            return (null, null);
+        }
+    }
+
+    private static string? GetStringProp(JsonElement el, string name)
+        => el.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String
+            ? p.GetString()
+            : null;
+
+    /// <summary>PayOS payout signature: deep-sort + encodeURIComponent(key)=encodeURIComponent(value) + HMAC-SHA256.</summary>
+    private static string SignPayoutPayload(IReadOnlyDictionary<string, object?> payload, string checksumKey)
+    {
+        var parts = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in payload)
+        {
+            parts[key] = value switch
+            {
+                null => string.Empty,
+                string s => s,
+                int or long or decimal => Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
+                bool b => b ? "true" : "false",
+                _ => JsonSerializer.Serialize(value)
+            };
+        }
+
+        var query = string.Join(
+            '&',
+            parts.Select(kv => $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value)}"));
+        return Sign(query, checksumKey);
     }
 
     private static string SortObjectToQuery(JsonElement data)

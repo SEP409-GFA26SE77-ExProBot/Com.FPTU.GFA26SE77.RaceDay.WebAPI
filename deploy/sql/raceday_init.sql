@@ -9,10 +9,16 @@
 -- Seed password (tất cả user Active): MatKhau@123
 --   admin@raceday.vn | an.nguyen@raceday.vn | binh.tran@raceday.vn
 --   cuong.le@raceday.vn (Organizer) | dung.pham@raceday.vn (Pending)
+--   Staff ops (4/role):
+--     coord1..4@raceday.vn (Coordinator)
+--     photo1..4@raceday.vn (Photographer)
+--     vol1..4@raceday.vn (Volunteer)
 --
 -- Lịch giải seed (mỗi ngày 1, không trùng):
---   2026-03-15 HCMC Night | 2026-06-07 Hanoi | 2026-09-19 Nha Trang (Approved)
---   2026-11-22 Đà Nẵng | 2026-12-14 Sa Pa | 2027-02-08 Mekong (Pending) | 2027-05-01 Highlands (Draft)
+--   2026-03-15 HCMC Night | 2026-06-07 Hanoi | 2026-06-21 VnExpress Marathon Quy Nhon (flagship R2)
+--   2026-09-19 Nha Trang (Approved) | 2026-12-14 Sa Pa
+--   2027-02-08 Mekong (Pending) | 2027-05-01 Highlands (Draft)
+-- Media R2 (banner / docs / health-certs) — absolute URL, không phụ thuộc Storage__PublicBaseUrl
 --
 -- Re-seed sạch Event+Payment (giữ IAM) — bỏ comment khối dưới rồi chạy lại file:
 --   TRUNCATE payment.payment_transactions, payment.payments, payment.outbox_messages RESTART IDENTITY CASCADE;
@@ -352,7 +358,10 @@ BEGIN;
 INSERT INTO iam.roles (role_id, role_name, description) VALUES
     ('11111111-1111-1111-1111-111111111111', 'Admin', 'Quản trị hệ thống RaceDay'),
     ('22222222-2222-2222-2222-222222222222', 'User', 'Người dùng / vận động viên'),
-    ('33333333-3333-3333-3333-333333333333', 'Organizer', 'Ban tổ chức sự kiện')
+    ('33333333-3333-3333-3333-333333333333', 'Organizer', 'Ban tổ chức sự kiện'),
+    ('44444444-4444-4444-4444-444444444444', 'Coordinator', 'Điều phối viên giải'),
+    ('55555555-5555-5555-5555-555555555555', 'Photographer', 'Nhiếp ảnh giải'),
+    ('66666666-6666-6666-6666-666666666666', 'Volunteer', 'Tình nguyện viên giải')
 ON CONFLICT (role_id) DO NOTHING;
 
 -- -----------------------------------------------------------------------------
@@ -404,6 +413,105 @@ INSERT INTO iam.users (
     'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
     'Phạm Minh Dũng', '0905000005', '2000-11-25', 1, 2, false,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+-- Coordinator ×4
+(
+    'a1444444-0001-4000-8000-000000000001',
+    'coord1@raceday.vn', 'coord1',
+    '44444444-4444-4444-4444-444444444444',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Nguyễn Điều Phối Một', '0911000001', '1994-02-10', 1, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+(
+    'a1444444-0002-4000-8000-000000000002',
+    'coord2@raceday.vn', 'coord2',
+    '44444444-4444-4444-4444-444444444444',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Trần Điều Phối Hai', '0911000002', '1993-06-18', 2, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+(
+    'a1444444-0003-4000-8000-000000000003',
+    'coord3@raceday.vn', 'coord3',
+    '44444444-4444-4444-4444-444444444444',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Lê Điều Phối Ba', '0911000003', '1996-09-05', 1, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+(
+    'a1444444-0004-4000-8000-000000000004',
+    'coord4@raceday.vn', 'coord4',
+    '44444444-4444-4444-4444-444444444444',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Phạm Điều Phối Tư', '0911000004', '1992-12-22', 2, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+-- Photographer ×4
+(
+    'a1555555-0001-4000-8000-000000000001',
+    'photo1@raceday.vn', 'photo1',
+    '55555555-5555-5555-5555-555555555555',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Hoàng Ảnh Một', '0912000001', '1995-04-08', 1, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+(
+    'a1555555-0002-4000-8000-000000000002',
+    'photo2@raceday.vn', 'photo2',
+    '55555555-5555-5555-5555-555555555555',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Vũ Ảnh Hai', '0912000002', '1997-07-14', 2, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+(
+    'a1555555-0003-4000-8000-000000000003',
+    'photo3@raceday.vn', 'photo3',
+    '55555555-5555-5555-5555-555555555555',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Đặng Ảnh Ba', '0912000003', '1994-01-30', 1, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+(
+    'a1555555-0004-4000-8000-000000000004',
+    'photo4@raceday.vn', 'photo4',
+    '55555555-5555-5555-5555-555555555555',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Bùi Ảnh Tư', '0912000004', '1998-10-03', 2, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+-- Volunteer ×4
+(
+    'a1666666-0001-4000-8000-000000000001',
+    'vol1@raceday.vn', 'vol1',
+    '66666666-6666-6666-6666-666666666666',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Ngô Tình Nguyện Một', '0913000001', '2001-03-12', 1, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+(
+    'a1666666-0002-4000-8000-000000000002',
+    'vol2@raceday.vn', 'vol2',
+    '66666666-6666-6666-6666-666666666666',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Đỗ Tình Nguyện Hai', '0913000002', '2000-05-21', 2, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+(
+    'a1666666-0003-4000-8000-000000000003',
+    'vol3@raceday.vn', 'vol3',
+    '66666666-6666-6666-6666-666666666666',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Mai Tình Nguyện Ba', '0913000003', '1999-08-09', 1, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+(
+    'a1666666-0004-4000-8000-000000000004',
+    'vol4@raceday.vn', 'vol4',
+    '66666666-6666-6666-6666-666666666666',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Lý Tình Nguyện Tư', '0913000004', '2002-11-17', 2, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
 )
 ON CONFLICT (user_id) DO NOTHING;
 
@@ -435,7 +543,19 @@ INSERT INTO iam.profiles (
     'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee',
     'Hồ sơ chờ xác minh email', 'dung.pham@raceday.vn', '0905000005',
     0, NULL, NULL
-)
+),
+('a1444444-0001-4000-8000-000000000001', 'Coordinator seed #1', 'coord1@raceday.vn', '0911000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0002-4000-8000-000000000002', 'Coordinator seed #2', 'coord2@raceday.vn', '0911000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0003-4000-8000-000000000003', 'Coordinator seed #3', 'coord3@raceday.vn', '0911000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0004-4000-8000-000000000004', 'Coordinator seed #4', 'coord4@raceday.vn', '0911000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1555555-0001-4000-8000-000000000001', 'Photographer seed #1', 'photo1@raceday.vn', '0912000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1555555-0002-4000-8000-000000000002', 'Photographer seed #2', 'photo2@raceday.vn', '0912000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1555555-0003-4000-8000-000000000003', 'Photographer seed #3', 'photo3@raceday.vn', '0912000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1555555-0004-4000-8000-000000000004', 'Photographer seed #4', 'photo4@raceday.vn', '0912000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1666666-0001-4000-8000-000000000001', 'Volunteer seed #1', 'vol1@raceday.vn', '0913000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1666666-0002-4000-8000-000000000002', 'Volunteer seed #2', 'vol2@raceday.vn', '0913000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1666666-0003-4000-8000-000000000003', 'Volunteer seed #3', 'vol3@raceday.vn', '0913000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1666666-0004-4000-8000-000000000004', 'Volunteer seed #4', 'vol4@raceday.vn', '0913000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system')
 ON CONFLICT (user_id) DO NOTHING;
 
 -- -----------------------------------------------------------------------------
@@ -447,7 +567,7 @@ ON CONFLICT (user_id) DO NOTHING;
 --   2026-03-15  HCMC Night Run          RegistrationOpen
 --   2026-06-07  Hanoi Lakeside Half     RegistrationOpen
 --   2026-09-19  Nha Trang Ocean         Approved (chưa mở ĐK)
---   2026-11-22  Coastal Đà Nẵng         RegistrationOpen  (khớp EventDataSeeder)
+--   2026-06-21  VnExpress Quy Nhon      RegistrationOpen  (khớp EventDataSeeder aaa1 + R2)
 --   2026-12-14  Sa Pa Mountain          RegistrationOpen  (khớp EventDataSeeder)
 --   2027-02-08  Mekong Delta            PendingApproval
 --   2027-05-01  Central Highlands       Draft
@@ -511,20 +631,20 @@ INSERT INTO event.race_events (
     TIMESTAMPTZ '2026-01-14 00:00:00+00', TIMESTAMPTZ '2026-01-14 00:00:00+00',
     TIMESTAMPTZ '2026-01-14 00:00:00+00', TIMESTAMPTZ '2026-01-15 00:00:00+00'
 ),
--- 4) Đà Nẵng 2026-11-22 (EventDataSeeder)
+-- 4) VnExpress Marathon Quy Nhon 2026-06-21 (EventDataSeeder aaa1 + R2 media)
 (
     '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
     'dddddddd-dddd-dddd-dddd-dddddddddddd',
-    'RaceDay Coastal Run Đà Nẵng 2026',
-    'Chạy cùng biển xanh — mở đăng ký ngay',
-    'https://images.unsplash.com/photo-1452626635019-14babd4f4a0b?auto=format&fit=crop&w=1600&q=80',
-    'Biển Mỹ Khê, Đà Nẵng',
-    16.05995, 108.24909, DATE '2026-11-22', TIME '05:30:00', 'RegistrationOpen',
-    'Ban tổ chức RaceDay Đà Nẵng', 'RaceDay Event Company', 'cuong.le@raceday.vn', '0904000004',
+    'VnExpress Marathon Quy Nhon 2026',
+    'Chạy đêm thành phố biển — VnExpress Marathon',
+    'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/event-banners/20261010153523-b062278b2115439abd42da13aa689368.JPG',
+    'Quy Nhơn, Bình Định',
+    13.782967, 109.219663, DATE '2026-06-21', TIME '04:00:00', 'RegistrationOpen',
+    'Ban tổ chức VnExpress Marathon Quy Nhơn', 'RaceDay Event Company', 'cuong.le@raceday.vn', '0904000004',
     'https://raceday.vn', true,
-    3200, '26°C', 'Nắng nhẹ', '70%',
+    12000, '27°C', 'Đêm mát', '78%',
     '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
-    'Giải chạy duyên hải Đà Nẵng — demo seed FE.',
+    'Giải chạy Việt: VnExpress Marathon Quy Nhơn 2026. Cung đường ven biển, check-in QR, BIB điện tử. Seed FE/Admin với banner & hồ sơ trên R2.',
     TIMESTAMPTZ '2026-01-16 00:00:00+00', TIMESTAMPTZ '2026-01-16 00:00:00+00',
     TIMESTAMPTZ '2026-01-16 00:00:00+00', TIMESTAMPTZ '2026-01-17 00:00:00+00'
 ),
@@ -609,13 +729,19 @@ INSERT INTO event.event_distances (
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbe1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa5',
  '10K', 'Ocean 10K', 10, 120, 80, 0, 1000, 0, 420000, 'VND', '#06B6D4',
  'Start NT', 12.2388, 109.1967, 'Finish NT', 12.2450, 109.1900, '{}'::jsonb),
--- Đà Nẵng (EventDataSeeder IDs)
+-- Quy Nhơn (EventDataSeeder IDs — 5K/10K/21K/42K)
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '5K', 'Fun Run 5K', 5, 20, 15, 0, 1500, 0, 199000, 'VND', '#22c55e',
- 'Start Mỹ Khê', 16.05995, 108.24909, 'Finish Mỹ Khê', 16.0612, 108.251, '{}'::jsonb),
+ '5K', 'Fun Run 5K', 5, 15, 12, 0, 4000, 0, 450000, 'VND', '#22c55e',
+ 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '10K', 'Coastal 10K', 10, 40, 25, 0, 1200, 0, 349000, 'VND', '#0ea5e9',
- 'Start Mỹ Khê', 16.05995, 108.24909, 'Finish Sơn Trà', 16.08, 108.27, '{}'::jsonb),
+ '10K', 'City 10K', 10, 30, 18, 0, 3500, 0, 650000, 'VND', '#0ea5e9',
+ 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.7855, 109.221, '{}'::jsonb),
+('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb4', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+ '21K', 'Half Marathon', 21.1, 80, 35, 0, 2500, 0, 990000, 'VND', '#F59E0B',
+ 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
+('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb5', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+ '42K', 'Full Marathon', 42.195, 150, 40, 0, 2000, 0, 1450000, 'VND', '#EF4444',
+ 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
 -- Sa Pa
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb3', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
  '21K', 'Cloud Valley', 21, 980, 2150, 1450, 800, 0, 900000, 'VND', '#F59E0B',
@@ -637,23 +763,34 @@ INSERT INTO event.event_documents (
     "Id", "EventId", "DocumentKey", "Title", "FileName", "FileUrl", "Required", "UploadedAtUtc"
 ) VALUES
 ('33333333-cccc-4ccc-8ccc-ccccccccccc1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- 'plan', 'Kế hoạch tổ chức', 'plan.pdf', 'https://example.com/demo/plan.pdf', true,
- TIMESTAMPTZ '2026-01-16 00:00:00+00'),
+ 'plan', 'Hồ sơ / kế hoạch tổ chức',
+ '20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ 'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/event-docs/20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ true, TIMESTAMPTZ '2026-01-16 00:00:00+00'),
+('33333333-cccc-4ccc-8ccc-cccccccccc10', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+ 'permit', 'Giấy phép / hồ sơ đính kèm',
+ '20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ 'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/event-docs/20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ true, TIMESTAMPTZ '2026-01-16 00:00:00+00'),
 ('33333333-cccc-4ccc-8ccc-ccccccccccc2', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
- 'plan', 'Kế hoạch tổ chức', 'plan.pdf', 'https://example.com/demo/sapa-plan.pdf', true,
- TIMESTAMPTZ '2026-01-18 00:00:00+00'),
+ 'plan', 'Hồ sơ / kế hoạch tổ chức',
+ '20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ 'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/event-docs/20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ true, TIMESTAMPTZ '2026-01-18 00:00:00+00'),
 ('33333333-cccc-4ccc-8ccc-ccccccccccc3', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
- 'plan', 'Kế hoạch tổ chức', 'hcmc-plan.pdf', 'https://example.com/demo/hcmc-plan.pdf', true,
- TIMESTAMPTZ '2026-01-10 00:00:00+00'),
+ 'plan', 'Kế hoạch tổ chức', 'hcmc-plan.pdf',
+ 'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/event-docs/20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ true, TIMESTAMPTZ '2026-01-10 00:00:00+00'),
 ('33333333-cccc-4ccc-8ccc-ccccccccccc4', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa6',
- 'plan', 'Kế hoạch tổ chức', 'mekong-plan.pdf', 'https://example.com/demo/mekong-plan.pdf', true,
- TIMESTAMPTZ '2026-01-20 00:00:00+00')
+ 'plan', 'Kế hoạch tổ chức', 'mekong-plan.pdf',
+ 'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/event-docs/20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ true, TIMESTAMPTZ '2026-01-20 00:00:00+00')
 ON CONFLICT ("Id") DO NOTHING;
 
 -- -----------------------------------------------------------------------------
 -- Sample registrations (không trùng EventId+DistanceId+UserId active)
 -- An → HCMC 5K Confirmed (đã trả + duyệt)
--- Bình → Đà Nẵng 10K PendingPayment (test checkout)
+-- Bình → Quy Nhơn 10K PendingPayment (test checkout)
 -- -----------------------------------------------------------------------------
 INSERT INTO event.event_registrations (
     "Id", "EventId", "DistanceId", "UserId", "Status",
@@ -675,7 +812,9 @@ INSERT INTO event.event_registrations (
     DATE '1998-05-20', 'Male', 172, 68, 'O',
     'Nguyễn Thị Lan', '0902111111',
     'Tee', 'M', 'Black',
-    '["none"]'::jsonb, 'health-an.pdf', 'https://example.com/demo/health-an.pdf',
+    '["none"]'::jsonb,
+    '20261009085141-ef89453832cd486a8e2d275de30c8a6c.png',
+    'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/health-certs/20261009085141-ef89453832cd486a8e2d275de30c8a6c.png',
     true, TIMESTAMPTZ '2026-02-01 10:00:00+00',
     '1001',
     TIMESTAMPTZ '2026-02-01 10:00:00+00', TIMESTAMPTZ '2026-02-02 08:00:00+00'
@@ -690,7 +829,9 @@ INSERT INTO event.event_registrations (
     DATE '1999-08-12', 'Female', 160, 52, 'A',
     'Trần Văn Nam', '0903222222',
     'Tee', 'S', 'White',
-    '["none"]'::jsonb, NULL, NULL,
+    '["none"]'::jsonb,
+    '20261009085141-ef89453832cd486a8e2d275de30c8a6c.png',
+    'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/health-certs/20261009085141-ef89453832cd486a8e2d275de30c8a6c.png',
     true, TIMESTAMPTZ '2026-02-05 09:00:00+00',
     NULL,
     TIMESTAMPTZ '2026-02-05 09:00:00+00', TIMESTAMPTZ '2026-02-05 09:00:00+00'
@@ -752,6 +893,90 @@ INSERT INTO payment.payment_transactions (
     TIMESTAMPTZ '2026-02-01 10:05:00+00'
 )
 ON CONFLICT ("Id") DO NOTHING;
+
+-- -----------------------------------------------------------------------------
+-- Upsert flagship Viet run (volume Postgres đã có data cũ Đà Nẵng → refresh R2)
+-- Chạy được cả lần init mới lẫn re-run trên DB đang sống.
+-- -----------------------------------------------------------------------------
+UPDATE event.race_events SET
+    "Name" = 'VnExpress Marathon Quy Nhon 2026',
+    "Tagline" = 'Chạy đêm thành phố biển — VnExpress Marathon',
+    "BannerImage" = 'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/event-banners/20261010153523-b062278b2115439abd42da13aa689368.JPG',
+    "Location" = 'Quy Nhơn, Bình Định',
+    coord_lat = 13.782967,
+    coord_lng = 109.219663,
+    "EventDate" = DATE '2026-06-21',
+    "StartTime" = TIME '04:00:00',
+    org_name = 'Ban tổ chức VnExpress Marathon Quy Nhơn',
+    org_verified = true,
+    org_account_holder = COALESCE(org_account_holder, 'CONG TY RACE DAY'),
+    org_account_number = COALESCE(org_account_number, '0123456789'),
+    org_bank_name = COALESCE(org_bank_name, 'Vietcombank'),
+    org_bank_branch = COALESCE(org_bank_branch, 'Quy Nhơn'),
+    org_transfer_note = COALESCE(org_transfer_note, 'Giai ngan VnExpress Marathon Quy Nhon'),
+    "TotalRunnersCap" = 12000,
+    weather_temp = '27°C',
+    weather_condition = 'Đêm mát',
+    weather_humidity = '78%',
+    "Description" = 'Giải chạy Việt: VnExpress Marathon Quy Nhơn 2026. Cung đường ven biển, check-in QR, BIB điện tử. Seed FE/Admin với banner & hồ sơ trên R2.',
+    "UpdatedAtUtc" = TIMESTAMPTZ '2026-10-13 00:00:00+00'
+WHERE "Id" = '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
+
+INSERT INTO event.event_distances (
+    "Id", "EventId", "Type", "Name", "DistanceKm",
+    "ElevationGainM", "MaxElevationM", "MinElevationM",
+    "Capacity", "RegisteredCount", "Price", "Currency", "Color",
+    start_name, start_lat, start_lng, finish_name, finish_lat, finish_lng,
+    "RouteGeometryJson"
+) VALUES
+('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb4', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+ '21K', 'Half Marathon', 21.1, 80, 35, 0, 2500, 0, 990000, 'VND', '#F59E0B',
+ 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
+('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb5', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+ '42K', 'Full Marathon', 42.195, 150, 40, 0, 2000, 0, 1450000, 'VND', '#EF4444',
+ 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb)
+ON CONFLICT ("Id") DO NOTHING;
+
+UPDATE event.event_distances SET
+    "Name" = CASE "Id"
+        WHEN '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1' THEN 'Fun Run 5K'
+        WHEN '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2' THEN 'City 10K'
+        ELSE "Name" END,
+    "Price" = CASE "Id"
+        WHEN '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1' THEN 450000
+        WHEN '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2' THEN 650000
+        ELSE "Price" END,
+    start_name = 'Start Quy Nhơn', start_lat = 13.782967, start_lng = 109.219663,
+    finish_name = 'Finish Quy Nhơn', finish_lat = 13.782967, finish_lng = 109.219663
+WHERE "EventId" = '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1'
+  AND "Id" IN (
+    '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+    '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2');
+
+INSERT INTO event.event_documents (
+    "Id", "EventId", "DocumentKey", "Title", "FileName", "FileUrl", "Required", "UploadedAtUtc"
+) VALUES
+('33333333-cccc-4ccc-8ccc-ccccccccccc1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+ 'plan', 'Hồ sơ / kế hoạch tổ chức',
+ '20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ 'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/event-docs/20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ true, TIMESTAMPTZ '2026-01-16 00:00:00+00'),
+('33333333-cccc-4ccc-8ccc-cccccccccc10', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+ 'permit', 'Giấy phép / hồ sơ đính kèm',
+ '20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ 'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/event-docs/20261006082053-8e6f2c0a95404763801228bfaf40ec93.docx',
+ true, TIMESTAMPTZ '2026-01-16 00:00:00+00')
+ON CONFLICT ("Id") DO UPDATE SET
+    "Title" = EXCLUDED."Title",
+    "FileName" = EXCLUDED."FileName",
+    "FileUrl" = EXCLUDED."FileUrl";
+
+UPDATE event.event_registrations SET
+    "HealthCertFileName" = '20261009085141-ef89453832cd486a8e2d275de30c8a6c.png',
+    "HealthCertUrl" = 'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/health-certs/20261009085141-ef89453832cd486a8e2d275de30c8a6c.png'
+WHERE "Id" IN (
+    '44444444-dddd-4ddd-8ddd-ddddddddddd1',
+    '44444444-dddd-4ddd-8ddd-ddddddddddd2');
 
 COMMIT;
 

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
+using RaceDay.Modules.Event.Domain.Staff;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
 
 namespace RaceDay.Modules.Event.Infrastructure.Repositories;
@@ -105,4 +106,41 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
         => await db.Registrations.AddAsync(registration, cancellationToken);
 
     public void Update(EventRegistration registration) => db.Registrations.Update(registration);
+}
+
+public sealed class EventStaffMemberRepository(EventDbContext db) : IEventStaffMemberRepository
+{
+    public Task<EventStaffMember?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => db.StaffMembers.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+    public async Task<IReadOnlyList<EventStaffMember>> ListByEventAsync(
+        Guid eventId,
+        EventStaffRole? role = null,
+        CancellationToken cancellationToken = default)
+    {
+        var q = db.StaffMembers.AsNoTracking().Where(x => x.EventId == eventId);
+        if (role is not null)
+        {
+            q = q.Where(x => x.Role == role);
+        }
+
+        return await q.OrderByDescending(x => x.CreatedAtUtc).ToListAsync(cancellationToken);
+    }
+
+    public Task<bool> ExistsActiveEmailRoleAsync(
+        Guid eventId,
+        EventStaffRole role,
+        string email,
+        CancellationToken cancellationToken = default)
+        => db.StaffMembers.AnyAsync(
+            x => x.EventId == eventId
+                 && x.Role == role
+                 && x.Email == email
+                 && x.Status != EventStaffStatus.Revoked,
+            cancellationToken);
+
+    public async Task AddAsync(EventStaffMember member, CancellationToken cancellationToken = default)
+        => await db.StaffMembers.AddAsync(member, cancellationToken);
+
+    public void Update(EventStaffMember member) => db.StaffMembers.Update(member);
 }

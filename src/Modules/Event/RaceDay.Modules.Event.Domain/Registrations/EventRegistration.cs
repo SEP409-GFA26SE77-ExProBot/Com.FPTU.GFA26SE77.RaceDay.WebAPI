@@ -31,6 +31,10 @@ public sealed class EventRegistration : AggregateRoot
     public DateTime? LiabilityAcceptedAtUtc { get; private set; }
     public string? RejectionReason { get; private set; }
     public string? BibNumber { get; private set; }
+    /// <summary>Giá chốt lúc tạo ĐK (theo phase lúc đó) — checkout/refund bám snapshot này.</summary>
+    public decimal? QuotedAmount { get; private set; }
+    public string? QuotedPhaseKey { get; private set; }
+    public string? QuotedPhaseName { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -110,6 +114,19 @@ public sealed class EventRegistration : AggregateRoot
         return reg;
     }
 
+    public void LockQuotedPrice(decimal amount, string? phaseKey, string? phaseName)
+    {
+        if (amount < 0)
+        {
+            throw new DomainException("Giá vé không hợp lệ.");
+        }
+
+        QuotedAmount = amount;
+        QuotedPhaseKey = string.IsNullOrWhiteSpace(phaseKey) ? null : phaseKey.Trim();
+        QuotedPhaseName = string.IsNullOrWhiteSpace(phaseName) ? null : phaseName.Trim();
+        Touch();
+    }
+
     public void MarkPaidPendingApproval()
     {
         if (Status != RegistrationStatus.PendingPayment)
@@ -157,6 +174,23 @@ public sealed class EventRegistration : AggregateRoot
         if (Status != RegistrationStatus.PendingPayment)
         {
             throw new DomainException("Chỉ hủy được đơn đang chờ thanh toán.");
+        }
+
+        Status = RegistrationStatus.Cancelled;
+        Touch();
+    }
+
+    /// <summary>After paid refund (runner request or post-reject cleanup) — free the registration.</summary>
+    public void MarkCancelledAfterRefund()
+    {
+        if (Status is RegistrationStatus.Cancelled)
+        {
+            return;
+        }
+
+        if (Status is not (RegistrationStatus.PendingApproval or RegistrationStatus.Confirmed or RegistrationStatus.Rejected))
+        {
+            throw new DomainException("Không thể hủy đăng ký đã hoàn ở trạng thái hiện tại.");
         }
 
         Status = RegistrationStatus.Cancelled;

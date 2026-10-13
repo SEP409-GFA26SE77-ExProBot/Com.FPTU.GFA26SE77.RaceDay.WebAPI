@@ -45,6 +45,14 @@ namespace RaceDay.Modules.Payment.Infrastructure.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<decimal?>("DiscountAmount")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal?>("ListAmount")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
                     b.Property<long>("OrderCode")
                         .HasColumnType("bigint");
 
@@ -59,7 +67,21 @@ namespace RaceDay.Modules.Payment.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
-                    b.Property<Guid>("RegistrationId")
+                    b.Property<string>("PromoCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasDefaultValue("Registration");
+
+                    b.Property<Guid?>("ReferenceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RegistrationId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Status")
@@ -81,6 +103,8 @@ namespace RaceDay.Modules.Payment.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OrderCode")
                         .IsUnique();
+
+                    b.HasIndex("ReferenceId");
 
                     b.HasIndex("RegistrationId");
 

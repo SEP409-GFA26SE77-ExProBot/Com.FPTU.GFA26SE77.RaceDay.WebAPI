@@ -10,44 +10,45 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Events;
 
+/// <summary>
+/// Distance payload for create-event wizard (map/route fields optional — not required for permit registration).
+/// </summary>
 public sealed record CreateDistanceInput(
     string Type,
     string Name,
     double DistanceKm,
-    double ElevationGainM,
-    double MaxElevationM,
-    double MinElevationM,
     int Capacity,
     decimal Price,
-    string? Currency,
-    string? Color,
-    NamedGeoPointDto StartLocation,
-    NamedGeoPointDto FinishLocation,
-    IReadOnlyList<CheckpointDto>? Checkpoints,
-    JsonElement? OsrmWaypoints,
-    JsonElement? LeafletPolyline,
-    JsonElement? GeoJson);
+    string? Currency = null,
+    string? Color = null,
+    NamedGeoPointDto? StartLocation = null,
+    NamedGeoPointDto? FinishLocation = null,
+    double? ElevationGainM = null,
+    double? MaxElevationM = null,
+    double? MinElevationM = null);
 
+/// <summary>
+/// Slim create-event command aligned with organizer permit wizard.
+/// Dropped from API surface (unused by FE / not required for permit flow):
+/// weather, permitDocument, ticketPricing, merchandise, rewards, route geometry, checkpoints.
+/// Domain still stores empty JSON / null for those columns when reading seeded events.
+/// </summary>
 public sealed record CreateRaceEventCommand(
     string Name,
     string? Tagline,
     string? BannerImage,
     string Location,
-    GeoPointDto Coordinates,
     DateOnly Date,
     TimeOnly? StartTime,
     string? Description,
     int TotalRunners,
     OrganizerDto Organizer,
-    WeatherDto? Weather,
-    PermitDocumentDto? PermitDocument,
-    object? TicketPricing,
-    object? Merchandise,
     object? Rules,
-    object? Rewards,
     IReadOnlyList<CreateDistanceInput> Distances,
     IReadOnlyList<EventDocumentDto>? Documents,
-    bool SubmitForApproval) : IRequest<RaceEventDto>;
+    bool SubmitForApproval,
+    /// <summary>Optional map pin; omitted → (0,0) until FE collects real coords.</summary>
+    GeoPointDto? Coordinates = null) : IRequest<RaceEventDto>;
 
 public sealed class CreateRaceEventCommandValidator : AbstractValidator<CreateRaceEventCommand>
 {
@@ -57,8 +58,6 @@ public sealed class CreateRaceEventCommandValidator : AbstractValidator<CreateRa
         RuleFor(x => x.Tagline).MaximumLength(300);
         RuleFor(x => x.BannerImage).OptionalHttpUrl();
         RuleFor(x => x.Location).NotEmpty().MaximumLength(300);
-        RuleFor(x => x.Coordinates.Lat).Latitude();
-        RuleFor(x => x.Coordinates.Lng).Longitude();
         RuleFor(x => x.Date).EventDate();
         RuleFor(x => x.Description).MaximumLength(10_000);
         RuleFor(x => x.TotalRunners).InclusiveBetween(0, 500_000);
@@ -69,15 +68,10 @@ public sealed class CreateRaceEventCommandValidator : AbstractValidator<CreateRa
         RuleFor(x => x.Organizer.Website).OptionalHttpUrl();
         RuleFor(x => x.Organizer.LegalEntity).MaximumLength(200);
 
-        When(x => x.PermitDocument is not null, () =>
+        When(x => x.Coordinates is not null, () =>
         {
-            RuleFor(x => x.PermitDocument!.FileUrl).OptionalHttpUrl();
-            RuleFor(x => x.PermitDocument!.FileName).MaximumLength(200);
-            RuleFor(x => x.PermitDocument!.PermitNumber).MaximumLength(100);
-            RuleFor(x => x.PermitDocument!.IssuingAuthority).MaximumLength(200);
-            RuleFor(x => x.PermitDocument!)
-                .Must(p => p.IssueDate is null || p.ValidUntil is null || p.ValidUntil >= p.IssueDate)
-                .WithMessage("Ngày hết hạn giấy phép phải sau hoặc bằng ngày cấp.");
+            RuleFor(x => x.Coordinates!.Lat).Latitude();
+            RuleFor(x => x.Coordinates!.Lng).Longitude();
         });
 
         RuleFor(x => x.Distances).NotEmpty().WithMessage("Cần ít nhất một cự ly.");
@@ -103,34 +97,33 @@ public sealed class CreateDistanceInputValidator : AbstractValidator<CreateDista
         RuleFor(x => x.Type).NotEmpty().MaximumLength(50);
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.DistanceKm).InclusiveBetween(0.1, 500);
-        RuleFor(x => x.ElevationGainM).InclusiveBetween(0, 20_000);
-        RuleFor(x => x.MaxElevationM).InclusiveBetween(-500, 9000);
-        RuleFor(x => x.MinElevationM).InclusiveBetween(-500, 9000);
-        RuleFor(x => x)
-            .Must(x => x.MaxElevationM >= x.MinElevationM)
-            .WithMessage("Độ cao max phải ≥ độ cao min.");
         RuleFor(x => x.Capacity).InclusiveBetween(1, 500_000);
         RuleFor(x => x.Price).GreaterThanOrEqualTo(0).LessThanOrEqualTo(100_000_000);
         RuleFor(x => x.Currency).MaximumLength(10);
         RuleFor(x => x.Color).MaximumLength(30);
 
-        RuleFor(x => x.StartLocation.Name).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.StartLocation.Lat).Latitude();
-        RuleFor(x => x.StartLocation.Lng).Longitude();
-        RuleFor(x => x.FinishLocation.Name).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.FinishLocation.Lat).Latitude();
-        RuleFor(x => x.FinishLocation.Lng).Longitude();
+        When(x => x.ElevationGainM is not null, () =>
+            RuleFor(x => x.ElevationGainM!.Value).InclusiveBetween(0, 20_000));
+        When(x => x.MaxElevationM is not null, () =>
+            RuleFor(x => x.MaxElevationM!.Value).InclusiveBetween(-500, 9000));
+        When(x => x.MinElevationM is not null, () =>
+            RuleFor(x => x.MinElevationM!.Value).InclusiveBetween(-500, 9000));
+        When(x => x.MaxElevationM is not null && x.MinElevationM is not null, () =>
+            RuleFor(x => x)
+                .Must(x => x.MaxElevationM!.Value >= x.MinElevationM!.Value)
+                .WithMessage("Độ cao max phải ≥ độ cao min."));
 
-        When(x => x.Checkpoints is { Count: > 0 }, () =>
+        When(x => x.StartLocation is not null, () =>
         {
-            RuleForEach(x => x.Checkpoints!).ChildRules(cp =>
-            {
-                cp.RuleFor(c => c.Name).NotEmpty().MaximumLength(100);
-                cp.RuleFor(c => c.Km).GreaterThanOrEqualTo(0);
-                cp.RuleFor(c => c.Lat).Latitude();
-                cp.RuleFor(c => c.Lng).Longitude();
-                cp.RuleFor(c => c.Type).NotEmpty().MaximumLength(50);
-            });
+            RuleFor(x => x.StartLocation!.Name).NotEmpty().MaximumLength(200);
+            RuleFor(x => x.StartLocation!.Lat).Latitude();
+            RuleFor(x => x.StartLocation!.Lng).Longitude();
+        });
+        When(x => x.FinishLocation is not null, () =>
+        {
+            RuleFor(x => x.FinishLocation!.Name).NotEmpty().MaximumLength(200);
+            RuleFor(x => x.FinishLocation!.Lat).Latitude();
+            RuleFor(x => x.FinishLocation!.Lng).Longitude();
         });
     }
 }
@@ -161,78 +154,58 @@ public sealed class CreateRaceEventCommandHandler(
             bank?.SwiftCode,
             bank?.TransferNote);
 
-        PermitDocument? permit = null;
-        if (request.PermitDocument is not null)
-        {
-            permit = PermitDocument.Create(
-                request.PermitDocument.FileUrl,
-                request.PermitDocument.FileName,
-                request.PermitDocument.PermitNumber,
-                request.PermitDocument.IssuingAuthority,
-                request.PermitDocument.IssueDate,
-                request.PermitDocument.ValidUntil);
-        }
-
-        WeatherInfo? weather = request.Weather is null
-            ? null
-            : new WeatherInfo(request.Weather.Temp, request.Weather.Condition, request.Weather.Humidity);
+        var lat = request.Coordinates?.Lat ?? 0;
+        var lng = request.Coordinates?.Lng ?? 0;
+        var placeName = request.Location.Trim();
 
         var race = RaceEvent.CreateDraft(
             organizerUserId,
             request.Name,
             request.Location,
             request.Date,
-            new GeoPoint(request.Coordinates.Lat, request.Coordinates.Lng),
+            new GeoPoint(lat, lng),
             organizer,
             request.TotalRunners,
             request.Tagline,
             request.StartTime,
             request.Description,
-            weather,
-            permit,
-            RaceEventDtoMapper.SerializeOptional(request.TicketPricing),
-            RaceEventDtoMapper.SerializeOptional(request.Merchandise),
-            RaceEventDtoMapper.SerializeOptional(request.Rules),
-            RaceEventDtoMapper.SerializeOptional(request.Rewards),
-            request.BannerImage);
+            weather: null,
+            permit: null,
+            ticketPricingJson: null,
+            merchandiseJson: null,
+            rulesJson: RaceEventDtoMapper.SerializeOptional(request.Rules),
+            rewardsJson: null,
+            bannerImage: request.BannerImage);
 
         var distances = request.Distances.Select(d =>
         {
-            var route = JsonSerializer.Serialize(new
-            {
-                osrmWaypoints = d.OsrmWaypoints,
-                leafletPolyline = d.LeafletPolyline,
-                geoJson = d.GeoJson
-            });
-
-            var cps = (d.Checkpoints ?? Array.Empty<CheckpointDto>())
-                .Select(c => (
-                    c.Id,
-                    c.Name,
-                    c.Km,
-                    c.Lat,
-                    c.Lng,
-                    RaceEventDtoMapper.ParseCheckpointType(c.Type),
-                    c.Cutoff,
-                    c.Elevation))
-                .ToList();
+            var start = d.StartLocation;
+            var finish = d.FinishLocation;
+            var startPoint = new NamedGeoPoint(
+                string.IsNullOrWhiteSpace(start?.Name) ? placeName : start.Name,
+                start?.Lat ?? lat,
+                start?.Lng ?? lng);
+            var finishPoint = new NamedGeoPoint(
+                string.IsNullOrWhiteSpace(finish?.Name) ? placeName : finish.Name,
+                finish?.Lat ?? lat,
+                finish?.Lng ?? lng);
 
             return EventDistance.Create(
                 race.Id,
                 d.Type,
                 d.Name,
                 d.DistanceKm,
-                d.ElevationGainM,
-                d.MaxElevationM,
-                d.MinElevationM,
+                d.ElevationGainM ?? 0,
+                d.MaxElevationM ?? 0,
+                d.MinElevationM ?? 0,
                 d.Capacity,
                 d.Price,
                 d.Currency,
                 d.Color,
-                new NamedGeoPoint(d.StartLocation.Name, d.StartLocation.Lat, d.StartLocation.Lng),
-                new NamedGeoPoint(d.FinishLocation.Name, d.FinishLocation.Lat, d.FinishLocation.Lng),
-                route,
-                cps);
+                startPoint,
+                finishPoint,
+                routeGeometryJson: "{}",
+                checkpoints: null);
         }).ToList();
 
         race.ReplaceDistances(distances);
