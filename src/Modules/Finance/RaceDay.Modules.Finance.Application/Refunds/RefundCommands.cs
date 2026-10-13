@@ -1,5 +1,6 @@
 using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Contracts.Finance;
 using RaceDay.Modules.Finance.Application.Abstractions;
 using RaceDay.Modules.Finance.Application.Wallet;
@@ -157,52 +158,23 @@ public sealed class CreateRefundCommandHandler(
     }
 }
 
-/// <summary>Organizer reject after paid → full refund of payment.Amount snapshot.</summary>
+/// <summary>
+/// Trước đây: reject → auto hoàn tiền. Đổi policy: giữ tiền, VĐV sửa hồ sơ và nộp lại.
+/// Hoàn thủ công (nếu BTC muốn) qua luồng refund riêng.
+/// </summary>
 public sealed class RegistrationRejectedRefundHandler(
-    IPaymentFinancePort payments,
-    IRefundRequestRepository refunds,
-    IEventLedgerRepository ledgers,
-    IRegistrationCapacityPort capacity,
-    IFinanceUnitOfWork uow,
-    IPublisher publisher) : INotificationHandler<IntegrationEventOccurred>
+    ILogger<RegistrationRejectedRefundHandler> logger) : INotificationHandler<IntegrationEventOccurred>
 {
-    public async Task Handle(IntegrationEventOccurred notification, CancellationToken cancellationToken)
+    public Task Handle(IntegrationEventOccurred notification, CancellationToken cancellationToken)
     {
-        if (notification.Event is not RaceDay.Modules.Event.Contracts.Events.RegistrationRejectedIntegrationEvent rejected)
+        if (notification.Event is RaceDay.Modules.Event.Contracts.Events.RegistrationRejectedIntegrationEvent rejected)
         {
-            return;
+            logger.LogInformation(
+                "Skip auto-refund on reject registration {RegistrationId} — runner may edit & resubmit. Reason: {Reason}",
+                rejected.RegistrationId,
+                rejected.Reason);
         }
 
-        var payment = await payments.GetPaidByRegistrationAsync(rejected.RegistrationId, cancellationToken);
-        if (payment is null)
-        {
-            // Unpaid reject — still try release if somehow counted (should not).
-            return;
-        }
-
-        if (await refunds.HasOpenForPaymentAsync(payment.PaymentId, cancellationToken))
-        {
-            return;
-        }
-
-        if (string.Equals(payment.Status, "Refunded", StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        var refund = RefundRequest.Create(
-            payment.PaymentId,
-            payment.RegistrationId,
-            rejected.RaceEventId,
-            rejected.UserId,
-            payment.Amount,
-            payment.Amount,
-            100m,
-            $"Organizer từ chối: {rejected.Reason}",
-            autoFromOrganizerReject: true);
-
-        await refunds.AddAsync(refund, cancellationToken);
-        await CreateRefundCommandHandler.CompleteRefundAsync(
-            refund, ledgers, payments, capacity, uow, publisher, cancellationToken);
+        return Task.CompletedTask;
     }
 }

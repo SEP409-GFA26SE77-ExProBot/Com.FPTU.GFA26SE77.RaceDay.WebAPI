@@ -15,7 +15,8 @@ public sealed record LoginResult(
     string Username,
     string FullName,
     string Role,
-    string AccessToken);
+    string AccessToken,
+    bool MustChangePassword = false);
 
 public sealed class LoginCommandValidator : AbstractValidator<LoginCommand>
 {
@@ -54,6 +55,13 @@ public sealed class LoginCommandHandler(
         await eventBus.PublishAsync(new UserLoggedInIntegrationEvent(user.Id, user.Email), cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return new LoginResult(user.Id, user.Email, user.Username, user.FullName, role.RoleName, token);
+        return new LoginResult(
+            user.Id,
+            user.Email,
+            user.Username,
+            user.FullName,
+            role.RoleName,
+            token,
+            user.MustChangePassword);
     }
 }

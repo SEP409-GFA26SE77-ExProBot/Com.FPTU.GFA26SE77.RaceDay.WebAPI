@@ -270,7 +270,7 @@ public sealed class EventDataSeeder(
             startTime: new TimeOnly(4, 0),
             description:
             "Giải chạy Việt: VnExpress Marathon Quy Nhơn 2026. Cung đường ven biển, check-in QR, BIB điện tử. Seed FE/Admin với banner & hồ sơ trên R2.",
-            weather: new WeatherInfo("27°C", "Đêm mát", "78%"),
+            weather: null,
             bannerImage: BannerQuyNhon);
 
         SetId(race, DemoEventQuyNhonId);
@@ -379,7 +379,7 @@ public sealed class EventDataSeeder(
             tagline: "Trail núi Hoàng Liên Sơn",
             startTime: new TimeOnly(6, 0),
             description: "Demo trail Sa Pa — có bannerImage để FE card/carousel hiển thị ảnh thật.",
-            weather: new WeatherInfo("14°C", "Sương mù", "85%"),
+            weather: null,
             bannerImage: bannerSapa);
 
         SetId(sapa, DemoEventSapaId);

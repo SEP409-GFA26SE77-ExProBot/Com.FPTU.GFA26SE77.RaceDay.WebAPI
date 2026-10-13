@@ -181,6 +181,8 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Property(x => x.QuotedAmount).HasPrecision(18, 2);
             entity.Property(x => x.QuotedPhaseKey).HasMaxLength(64);
             entity.Property(x => x.QuotedPhaseName).HasMaxLength(120);
+            entity.Property(x => x.CheckedInAtUtc);
+            entity.Property(x => x.CheckedInByUserId);
             // Cho phép đăng ký lại cùng cự ly sau Rejected/Cancelled (Status lưu string enum name).
             entity.HasIndex(x => new { x.EventId, x.DistanceId, x.UserId })
                 .IsUnique()
