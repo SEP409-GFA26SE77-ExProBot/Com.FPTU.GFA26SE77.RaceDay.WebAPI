@@ -41,6 +41,14 @@ public interface IEventRegistrationRepository
     Task<bool> ExistsForUserDistanceAsync(Guid eventId, Guid distanceId, Guid userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EventRegistration>> ListActiveByUserEventAsync(Guid eventId, Guid userId, CancellationToken cancellationToken = default);
     Task<string> NextBibNumberAsync(Guid eventId, CancellationToken cancellationToken = default);
+    Task<EventRegistration?> GetByEventAndBibAsync(
+        Guid eventId,
+        string bibNumber,
+        CancellationToken cancellationToken = default);
+    Task<EventRegistration?> GetConfirmedByEventAndUserAsync(
+        Guid eventId,
+        Guid userId,
+        CancellationToken cancellationToken = default);
     Task AddAsync(EventRegistration registration, CancellationToken cancellationToken = default);
     void Update(EventRegistration registration);
 }
@@ -98,6 +106,17 @@ public interface IEventStaffMemberRepository
         EventStaffRole role,
         string email,
         CancellationToken cancellationToken = default);
+    Task<bool> ExistsActiveStaffUserAsync(
+        Guid eventId,
+        Guid userId,
+        CancellationToken cancellationToken = default);
     Task AddAsync(EventStaffMember member, CancellationToken cancellationToken = default);
     void Update(EventStaffMember member);
+    Task<IReadOnlyList<EventStaffMember>> ListInvitedByEmailOrUserAsync(
+        string email,
+        Guid userId,
+        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EventStaffMember>> ListActiveByUserIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
 }

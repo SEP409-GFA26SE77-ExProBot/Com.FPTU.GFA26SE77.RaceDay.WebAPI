@@ -141,7 +141,8 @@ public sealed class InviteEventStaffCommandHandler(
     IRaceEventRepository events,
     IEventStaffMemberRepository staff,
     IEventUnitOfWork uow,
-    ICurrentUserAccessor currentUser) : IRequestHandler<InviteEventStaffCommand, EventStaffMemberDto>
+    ICurrentUserAccessor currentUser,
+    IMediator mediator) : IRequestHandler<InviteEventStaffCommand, EventStaffMemberDto>
 {
     public async Task<EventStaffMemberDto> Handle(InviteEventStaffCommand request, CancellationToken cancellationToken)
     {
@@ -153,6 +154,29 @@ public sealed class InviteEventStaffCommandHandler(
             throw new DomainException("Email đã có trong danh sách role này.");
         }
 
+        var race = await events.GetByIdAsync(request.EventId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy giải.");
+
+        var iamRole = role switch
+        {
+            EventStaffRole.Coordinator => "Coordinator",
+            EventStaffRole.Photographer => "Photographer",
+            EventStaffRole.Volunteer => "Volunteer",
+            _ => throw new DomainException("Role nhân sự không hợp lệ.")
+        };
+
+        // NotifyEmail = hộp thư nhận SMTP; IAM email/username được gen (không đụng Runner)
+        var provisioned = await mediator.Send(
+            new RaceDay.Modules.Iam.Application.Users.ProvisionStaff.ProvisionStaffAccountCommand(
+                email,
+                request.Body.FullName,
+                iamRole,
+                request.Body.Phone,
+                race.Name,
+                request.Body.StationLabel),
+            cancellationToken);
+
+        // Lưu email liên hệ (SMTP) trên hồ sơ nhân sự — login dùng username gen trong mail
         var member = EventStaffMember.Invite(
             request.EventId,
             role,
@@ -161,6 +185,7 @@ public sealed class InviteEventStaffCommandHandler(
             request.Body.Phone,
             request.Body.StationId,
             request.Body.StationLabel);
+        member.LinkUser(provisioned.UserId);
         await staff.AddAsync(member, cancellationToken);
         await uow.SaveChangesAsync(cancellationToken);
         return EventStaffMapper.ToDto(member);

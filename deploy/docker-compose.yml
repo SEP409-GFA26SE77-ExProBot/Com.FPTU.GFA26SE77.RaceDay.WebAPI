@@ -56,6 +56,8 @@ services:
       ConnectionStrings__RabbitMq: amqp://guest:guest@rabbitmq:5672
       # Seed banner/docs/certs dùng absolute R2 URL; PublicBaseUrl chỉ cho upload mới.
       Storage__PublicBaseUrl: https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev
+      Frontend__AdminAppUrl: http://localhost:3001
+      Frontend__UserAppUrl: http://localhost:3000/login
       PayOS__PublicApiBaseUrl: http://localhost:5080
     depends_on:
       postgres:

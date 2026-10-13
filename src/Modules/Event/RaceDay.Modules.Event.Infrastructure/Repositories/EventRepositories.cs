@@ -170,6 +170,32 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
         return (max + 1).ToString();
     }
 
+    public async Task<EventRegistration?> GetByEventAndBibAsync(
+        Guid eventId,
+        string bibNumber,
+        CancellationToken cancellationToken = default)
+    {
+        var bib = (bibNumber ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(bib))
+        {
+            return null;
+        }
+
+        return await db.Registrations.FirstOrDefaultAsync(
+            x => x.EventId == eventId && x.BibNumber == bib,
+            cancellationToken);
+    }
+
+    public async Task<EventRegistration?> GetConfirmedByEventAndUserAsync(
+        Guid eventId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => await db.Registrations.FirstOrDefaultAsync(
+            x => x.EventId == eventId
+                 && x.UserId == userId
+                 && x.Status == RegistrationStatus.Confirmed,
+            cancellationToken);
+
     public async Task AddAsync(EventRegistration registration, CancellationToken cancellationToken = default)
         => await db.Registrations.AddAsync(registration, cancellationToken);
 
@@ -207,8 +233,40 @@ public sealed class EventStaffMemberRepository(EventDbContext db) : IEventStaffM
                  && x.Status != EventStaffStatus.Revoked,
             cancellationToken);
 
+    public Task<bool> ExistsActiveStaffUserAsync(
+        Guid eventId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => db.StaffMembers.AnyAsync(
+            x => x.EventId == eventId
+                 && x.UserId == userId
+                 && x.Status == EventStaffStatus.Active,
+            cancellationToken);
+
     public async Task AddAsync(EventStaffMember member, CancellationToken cancellationToken = default)
         => await db.StaffMembers.AddAsync(member, cancellationToken);
 
     public void Update(EventStaffMember member) => db.StaffMembers.Update(member);
+
+    public async Task<IReadOnlyList<EventStaffMember>> ListInvitedByEmailOrUserAsync(
+        string email,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = email.Trim().ToLowerInvariant();
+        return await db.StaffMembers
+            .Where(x =>
+                x.Status == EventStaffStatus.Invited
+                && (x.UserId == userId || x.Email == normalized))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<EventStaffMember>> ListActiveByUserIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => await db.StaffMembers
+            .AsNoTracking()
+            .Where(x => x.UserId == userId && x.Status == EventStaffStatus.Active)
+            .OrderByDescending(x => x.UpdatedAtUtc)
+            .ToListAsync(cancellationToken);
 }

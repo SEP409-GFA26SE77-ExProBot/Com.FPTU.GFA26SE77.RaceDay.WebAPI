@@ -153,6 +153,23 @@ public sealed class EventStaffMember : AggregateRoot
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    /// <summary>Kích hoạt sau lần đăng nhập đầu (khác đăng ký public).</summary>
+    public void Activate(Guid? userId = null)
+    {
+        if (Status == EventStaffStatus.Revoked)
+        {
+            throw new DomainException("Không kích hoạt nhân sự đã gỡ.");
+        }
+
+        if (userId is { } uid && uid != Guid.Empty)
+        {
+            UserId = uid;
+        }
+
+        Status = EventStaffStatus.Active;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
     private static string NormalizeEmail(string? email)
         => (email ?? string.Empty).Trim().ToLowerInvariant();
 

@@ -114,7 +114,10 @@ public sealed record RaceEventListItemDto(
     string OrganizerName,
     int TotalRunners,
     int ActiveRunners,
+    /// <summary>Chip labels (tên cự ly / "12K") — không còn map Type mặt đường.</summary>
     IReadOnlyList<string> DistanceTypes,
+    /// <summary>Km thực tế để FE filter bucket (~5 / ~10 / …).</summary>
+    IReadOnlyList<double> DistanceKms,
     DateTime? RegistrationOpensAtUtc = null);
 
 public static class RaceEventDtoMapper
@@ -169,7 +172,20 @@ public static class RaceEventDtoMapper
         e.Organizer.Name,
         e.TotalRunnersCap,
         e.ActiveRunners,
-        e.Distances.Select(d => d.Type).ToList(),
+        e.Distances
+            .Select(d =>
+                !string.IsNullOrWhiteSpace(d.Name)
+                    ? d.Name.Trim()
+                    : d.DistanceKm > 0
+                        ? $"{d.DistanceKm}K"
+                        : d.Type)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList(),
+        e.Distances
+            .Select(d => d.DistanceKm)
+            .Where(km => km > 0)
+            .ToList(),
         e.RegistrationOpensAtUtc);
 
     public static RaceEventDto ToDetail(RaceEvent e)
@@ -199,22 +215,15 @@ public static class RaceEventDtoMapper
                     e.Organizer.TransferNote)),
             e.TotalRunnersCap,
             e.ActiveRunners,
-            e.Weather is null ? null : new WeatherDto(e.Weather.Temp, e.Weather.Condition, e.Weather.Humidity),
-            e.Permit is null
-                ? null
-                : new PermitDocumentDto(
-                    e.Permit.FileUrl,
-                    e.Permit.FileName,
-                    e.Permit.PermitNumber,
-                    e.Permit.IssuingAuthority,
-                    e.Permit.IssueDate,
-                    e.Permit.ValidUntil),
+            // Soft-surplus: Weather / Permit owned / Merchandise — FE không dùng; SoT giấy phép = event_documents
+            Weather: null,
+            PermitDocument: null,
             e.Description,
             e.RejectionReason,
             e.StartTime,
             e.EndDate?.ToString("yyyy-MM-dd"),
             ParseJson(e.TicketPricingJson),
-            ParseJson(e.MerchandiseJson),
+            Merchandise: null,
             ParseJson(e.RulesJson),
             ParseJson(e.RewardsJson),
             e.Distances.Select(MapDistance).ToList(),
@@ -253,15 +262,8 @@ public static class RaceEventDtoMapper
             d.EndAt,
             new NamedGeoPointDto(d.StartLocation.Name, d.StartLocation.Lat, d.StartLocation.Lng),
             new NamedGeoPointDto(d.FinishLocation.Name, d.FinishLocation.Lat, d.FinishLocation.Lng),
-            d.Checkpoints.OrderBy(c => c.SortOrder).Select(c => new CheckpointDto(
-                c.ExternalId,
-                c.Name,
-                c.Km,
-                c.Lat,
-                c.Lng,
-                ToApiCheckpointType(c.Type),
-                c.Cutoff,
-                c.Elevation)).ToList(),
+            // Soft-surplus: event_checkpoints legacy — SoT = Map CourseJson
+            Array.Empty<CheckpointDto>(),
             osrm,
             poly,
             geo);

@@ -249,6 +249,30 @@ public static class EventModule
             Results.Ok(await mediator.Send(new CancelUnpaidRegistrationCommand(registrationId), ct)))
             .WithSummary("VĐV hủy đơn chờ thanh toán");
 
+        userApi.MapPut("/registrations/{registrationId:guid}/resubmit", async (
+            Guid registrationId, ResubmitRegistrationRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(body.ToCommand(registrationId), ct)))
+            .WithSummary("VĐV đã paid bị từ chối → sửa hồ sơ & nộp lại pending_approval (không TT lại)");
+
+        userApi.MapGet("/staff/me", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListMyStaffAssignmentsQuery(), ct)))
+            .WithSummary("Các giải staff/volunteer đang được assign (Active)");
+
+        userApi.MapPost("/check-in", async (CheckInRequestDto body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new CheckInRegistrationCommand(body.EventId, body.Bib, body.QrPayload), ct)))
+            .WithSummary("Staff/organizer check-in VĐV bằng BIB hoặc QR payload")
+            .WithDescription(
+                "Body: { eventId, bib? , qrPayload? }. QR JSON từ vé: { user_id, bib, event_id, distance }. "
+                + "Quyền: Admin, chủ giải, hoặc staff Active đã LinkUser.");
+
+        // Path riêng (không dùng GET /check-in) — tránh 405 khi container chưa rebuild
+        // hoặc proxy chỉ cho phép POST trên /check-in.
+        userApi.MapGet("/check-ins", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListEventCheckInsQuery(eventId), ct)))
+            .WithSummary("Danh sách VĐV confirmed + trạng thái / thời điểm check-in")
+            .WithDescription("Query: eventId. Quyền giống POST /check-in.");
+
         userApi.MapPost("/{eventId:guid}/registrations", async (
             Guid eventId, CreateRegistrationRequest body, IMediator mediator, CancellationToken ct) =>
         {
@@ -436,6 +460,32 @@ public static class EventModule
     {
         public CreateRegistrationCommand ToCommand(Guid eventId) => new(
             eventId, DistanceId, FullName, Email, Phone, DateOfBirth, Gender, IdNumber,
+            HeightCm, WeightKg, BloodType, EmergencyName, EmergencyPhone,
+            ShirtType, ShirtSize, ShirtColor, MedicalCodes, HealthCertFileName, HealthCertUrl, LiabilityAccepted);
+    }
+
+    private sealed record ResubmitRegistrationRequest(
+        string FullName,
+        string Email,
+        string Phone,
+        DateOnly? DateOfBirth,
+        string? Gender,
+        string? IdNumber,
+        int? HeightCm,
+        int? WeightKg,
+        string? BloodType,
+        string? EmergencyName,
+        string? EmergencyPhone,
+        string? ShirtType,
+        string? ShirtSize,
+        string? ShirtColor,
+        IReadOnlyList<string>? MedicalCodes,
+        string? HealthCertFileName,
+        string? HealthCertUrl,
+        bool LiabilityAccepted)
+    {
+        public ResubmitRejectedRegistrationCommand ToCommand(Guid registrationId) => new(
+            registrationId, FullName, Email, Phone, DateOfBirth, Gender, IdNumber,
             HeightCm, WeightKg, BloodType, EmergencyName, EmergencyPhone,
             ShirtType, ShirtSize, ShirtColor, MedicalCodes, HealthCertFileName, HealthCertUrl, LiabilityAccepted);
     }
