@@ -1,0 +1,9 @@
+﻿{
+  "email": "runner@example.com",
+  "username": "runner01",
+  "password": "MatKhau@123",
+  "fullName": "Nguyễn Văn A",
+  "phone": "0901234567",
+  "gender": 0,
+  "dateOfBirth": "1998-05-20"
+}

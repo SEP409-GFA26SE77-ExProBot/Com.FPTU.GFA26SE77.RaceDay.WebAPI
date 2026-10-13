@@ -98,7 +98,7 @@ builder.Services.AddSwaggerGen(options =>
             3. Runner hoàn: `POST /api/v1/finance/runner/refunds` (số tiền = payment.Amount × % policy)
             4. Organizer reject đăng ký đã trả → hoàn 100% tự động
 
-            Docs: `docs/RaceDay_API_Guide.docx` (View → Navigation Pane)
+            Docs: `docs/RaceDay_API_Guide.docx` ← sync từ `docs/RaceDay_API_Flows.md` + `docs/api-samples/`
             """
     });
 

@@ -45,7 +45,33 @@ public static partial class InputRules
     }
 
     public static bool IsValidOptionalVietnamPhone(string? phone)
-        => string.IsNullOrWhiteSpace(phone) || IsValidVietnamPhone(phone);
+    {
+        if (string.IsNullOrWhiteSpace(phone))
+        {
+            return true;
+        }
+
+        var normalized = NormalizePhone(phone);
+        // Placeholder draft (vd. gói cũ lưu 0000000000) — coi như chưa điền.
+        if (normalized.Length == 0 || normalized.All(static c => c == '0'))
+        {
+            return true;
+        }
+
+        return IsValidVietnamPhone(phone);
+    }
+
+    /// <summary>Chuẩn hóa SĐT; trả empty nếu placeholder toàn số 0.</summary>
+    public static string NormalizeOptionalPhoneOrEmpty(string? phone)
+    {
+        var normalized = NormalizePhone(phone);
+        if (normalized.Length == 0 || normalized.All(static c => c == '0'))
+        {
+            return string.Empty;
+        }
+
+        return normalized;
+    }
 
     public static bool IsValidDateOfBirth(DateOnly? dateOfBirth, DateOnly today)
     {

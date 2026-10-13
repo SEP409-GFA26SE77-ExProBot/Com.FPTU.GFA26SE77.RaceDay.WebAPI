@@ -1,0 +1,22 @@
+﻿{
+  "title": "City 10K",
+  "distanceId": "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+  "distanceKm": 10.05,
+  "waypoints": [{ "lat": 13.782967, "lng": 109.219663 }],
+  "polyline": [
+    { "lat": 13.782967, "lng": 109.219663 },
+    { "lat": 13.785000, "lng": 109.225000 }
+  ],
+  "checkpoints": [
+    {
+      "id": "cp-start",
+      "name": "Xuất phát",
+      "km": 0,
+      "lat": 13.782967,
+      "lng": 109.219663,
+      "type": "start",
+      "cutoff": "04:10"
+    }
+  ],
+  "updatedAt": "2026-10-13T04:00:00Z"
+}

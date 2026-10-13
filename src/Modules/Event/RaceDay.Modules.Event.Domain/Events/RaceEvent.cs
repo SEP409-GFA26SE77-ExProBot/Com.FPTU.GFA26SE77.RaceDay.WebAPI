@@ -133,19 +133,30 @@ public sealed class RaceEvent : AggregateRoot
         Touch();
     }
 
-    public void ReplaceDistances(IEnumerable<EventDistance> distances)
+    /// <summary>Validate quyền + sức chứa gói — không đụng collection (dùng khi persist ngoài EF navigation).</summary>
+    public void AssertCanReplaceDistances(IReadOnlyList<EventDistance> distances)
     {
         EnsureEditable();
-        var list = distances.ToList();
+        if (distances.Count == 0)
+        {
+            throw new DomainException("Cần ít nhất một cự ly.");
+        }
+
         if (PackagePurchaseId.HasValue && TotalRunnersCap > 0)
         {
-            var sum = list.Sum(d => d.Capacity);
+            var sum = distances.Sum(d => d.Capacity);
             if (sum > TotalRunnersCap)
             {
                 throw new DomainException(
                     $"Tổng slot cự ly ({sum}) vượt quy mô gói ({TotalRunnersCap} VĐV).");
             }
         }
+    }
+
+    public void ReplaceDistances(IEnumerable<EventDistance> distances)
+    {
+        var list = distances.ToList();
+        AssertCanReplaceDistances(list);
 
         _distances.Clear();
         foreach (var d in list)
@@ -153,6 +164,13 @@ public sealed class RaceEvent : AggregateRoot
             _distances.Add(d);
         }
 
+        Touch();
+    }
+
+    public void SetTicketPricingJson(string? ticketPricingJson)
+    {
+        EnsureEditable();
+        TicketPricingJson = string.IsNullOrWhiteSpace(ticketPricingJson) ? "{}" : ticketPricingJson;
         Touch();
     }
 

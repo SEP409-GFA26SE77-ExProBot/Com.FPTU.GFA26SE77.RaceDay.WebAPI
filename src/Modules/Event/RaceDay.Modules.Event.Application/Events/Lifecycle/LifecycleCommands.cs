@@ -3,6 +3,7 @@ using MediatR;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Application.Validation;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Events;
@@ -24,6 +25,18 @@ public sealed class SubmitRaceEventCommandHandler(
         if (!currentUser.IsAdmin && race.OrganizerUserId != userId)
         {
             throw new DomainException("Bạn không phải chủ giải này.");
+        }
+
+        if (!InputRules.IsValidVietnamPhone(race.Organizer.Phone))
+        {
+            throw new DomainException(
+                "Cần cập nhật SĐT ban tổ chức hợp lệ (VD: 0901234567) trước khi gửi duyệt.");
+        }
+
+        if (race.Organizer.Email.Contains("pending-", StringComparison.OrdinalIgnoreCase)
+            || race.Organizer.Email.Contains("@update.raceday.vn", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new DomainException("Cần cập nhật email ban tổ chức thật trước khi gửi duyệt.");
         }
 
         race.SubmitForApproval();

@@ -43,11 +43,12 @@ public sealed class PackagePaymentCompletedEventHandler(
             .AddMonths(purchase.DurationMonths)
             .AddDays(7);
 
-        // Liên hệ thật do organizer cập nhật ở Hồ sơ giải — không bịa email/SĐT.
+        // Liên hệ thật do organizer cập nhật ở Hồ sơ giải — không bịa SĐT giả
+        // (trước dùng 0000000000 → fail VietnamPhone khi lưu bank/profile).
         var organizer = OrganizerInfo.Create(
             purchase.OrgName,
             $"pending-{paid.UserId:N}@update.raceday.vn",
-            "0000000000");
+            string.Empty);
 
         var location = string.IsNullOrWhiteSpace(purchase.OrgAddress)
             ? "Chưa cập nhật địa điểm"
