@@ -14,6 +14,23 @@ public interface IRaceEventRepository
     Task<IReadOnlyList<RaceEvent>> ListByOrganizerAsync(Guid organizerUserId, CancellationToken cancellationToken = default);
     Task AddAsync(RaceEvent raceEvent, CancellationToken cancellationToken = default);
     void Update(RaceEvent raceEvent);
+    /// <summary>
+    /// Thay cự ly + ticketPricing bằng ExecuteDelete/Update + AddRange
+    /// (không Clear navigation — tránh concurrency owned Start/Finish).
+    /// </summary>
+    Task PersistDistanceReplaceAsync(
+        Guid eventId,
+        IReadOnlyList<EventDistance> distances,
+        string? ticketPricingJson,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Thay documents bằng ExecuteDelete + AddRange (tránh concurrency khi Clear navigation).
+    /// </summary>
+    Task PersistDocumentsReplaceAsync(
+        Guid eventId,
+        IReadOnlyList<EventDocument> documents,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IEventRegistrationRepository

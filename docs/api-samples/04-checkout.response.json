@@ -1,0 +1,12 @@
+﻿{
+  "id": "55555555-eeee-4eee-8eee-eeeeeeeeeeee",
+  "checkoutUrl": "https://pay.payos.vn/web/...",
+  "amount": 650000,
+  "orderCode": 2602011001,
+  "status": "Pending",
+  "qrCode": "000201010212...",
+  "accountNumber": "0123456789",
+  "accountName": "RACEDAY",
+  "bin": "970436",
+  "transferDescription": "DK 10K"
+}

@@ -58,8 +58,7 @@ public sealed class ReplaceEventDistancesCommandValidator : AbstractValidator<Re
 
 public sealed class ReplaceEventDistancesCommandHandler(
     IRaceEventRepository events,
-    ICurrentUserAccessor currentUser,
-    IEventUnitOfWork unitOfWork) : IRequestHandler<ReplaceEventDistancesCommand, RaceEventDto>
+    ICurrentUserAccessor currentUser) : IRequestHandler<ReplaceEventDistancesCommand, RaceEventDto>
 {
     public async Task<RaceEventDto> Handle(ReplaceEventDistancesCommand request, CancellationToken cancellationToken)
     {
@@ -101,26 +100,21 @@ public sealed class ReplaceEventDistancesCommandHandler(
                 d.EndAt);
         }).ToList();
 
-        race.ReplaceDistances(distances);
+        race.AssertCanReplaceDistances(distances);
 
-        if (request.TicketPricing is not null)
-        {
-            race.UpdateDraftProfile(
-                name: null,
-                tagline: null,
-                location: null,
-                eventDate: null,
-                startTime: null,
-                description: null,
-                bannerImage: null,
-                totalRunnersCap: null,
-                organizer: null,
-                rulesJson: null,
-                ticketPricingJson: RaceEventDtoMapper.SerializeOptional(request.TicketPricing));
-        }
+        var pricingJson = request.TicketPricing is null
+            ? null
+            : RaceEventDtoMapper.SerializeOptional(request.TicketPricing);
 
-        events.Update(race);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        return RaceEventDtoMapper.ToDetail(race);
+        await events.PersistDistanceReplaceAsync(
+            race.Id,
+            distances,
+            pricingJson,
+            cancellationToken);
+
+        var refreshed = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy giải sau khi lưu cự ly.");
+
+        return RaceEventDtoMapper.ToDetail(refreshed);
     }
 }

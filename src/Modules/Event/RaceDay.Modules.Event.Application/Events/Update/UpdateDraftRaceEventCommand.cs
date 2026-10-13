@@ -45,7 +45,8 @@ public sealed class UpdateDraftRaceEventCommandValidator : AbstractValidator<Upd
         {
             RuleFor(x => x.Organizer!.Name).NotEmpty().MaximumLength(200);
             RuleFor(x => x.Organizer!.Email).NotEmpty().EmailAddress().MaximumLength(100);
-            RuleFor(x => x.Organizer!.Phone).NotEmpty().MaximumLength(30).VietnamPhone();
+            // Cho phép trống khi draft từ gói; nếu có SĐT thì phải đúng format VN.
+            RuleFor(x => x.Organizer!.Phone).MaximumLength(30).OptionalVietnamPhone();
         });
         When(x => x.Documents is { Count: > 0 }, () =>
         {
@@ -78,7 +79,7 @@ public sealed class UpdateDraftRaceEventCommandHandler(
             throw new DomainException("Bạn không phải chủ giải này.");
         }
 
-        var hasProfilePatch =
+        var hasScalarPatch =
             request.Name is not null
             || request.Tagline is not null
             || request.Location is not null
@@ -92,10 +93,39 @@ public sealed class UpdateDraftRaceEventCommandHandler(
             || request.Organizer is not null
             || request.Rules is not null
             || request.TicketPricing is not null
-            || request.Rewards is not null
-            || request.Documents is not null;
+            || request.Rewards is not null;
 
-        if (hasProfilePatch)
+        // Documents: ExecuteDelete + AddRange — Clear() navigation gây concurrency (giống cự ly).
+        if (request.Documents is not null)
+        {
+            if (race.Status is not (RaceEventStatus.Draft or RaceEventStatus.Rejected))
+            {
+                throw new DomainException("Không thể chỉnh sửa giải ở trạng thái hiện tại.");
+            }
+
+            var docs = request.Documents.Select(doc =>
+                EventDocument.Create(
+                    race.Id,
+                    doc.DocumentKey,
+                    doc.Title,
+                    doc.FileName,
+                    doc.FileUrl,
+                    doc.Required)).ToList();
+
+            await events.PersistDocumentsReplaceAsync(race.Id, docs, cancellationToken);
+
+            if (!hasScalarPatch && !request.SetRegistrationWindow)
+            {
+                var refreshed = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
+                    ?? throw new DomainException("Không tìm thấy giải sau khi lưu tài liệu.");
+                return RaceEventDtoMapper.ToDetail(refreshed);
+            }
+
+            race = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
+                ?? throw new DomainException("Không tìm thấy giải.");
+        }
+
+        if (hasScalarPatch)
         {
             OrganizerInfo? organizer = null;
             if (request.Organizer is { } org)
@@ -104,7 +134,7 @@ public sealed class UpdateDraftRaceEventCommandHandler(
                 organizer = OrganizerInfo.Create(
                     org.Name,
                     org.Email,
-                    org.Phone,
+                    InputRules.NormalizeOptionalPhoneOrEmpty(org.Phone),
                     org.LegalEntity,
                     org.Website,
                     org.Verified,
@@ -131,18 +161,6 @@ public sealed class UpdateDraftRaceEventCommandHandler(
                 request.Rewards is not null ? RaceEventDtoMapper.SerializeOptional(request.Rewards) : null,
                 request.EndDate,
                 request.ClearEndDate);
-
-            if (request.Documents is not null)
-            {
-                race.ReplaceDocuments(request.Documents.Select(doc =>
-                    EventDocument.Create(
-                        race.Id,
-                        doc.DocumentKey,
-                        doc.Title,
-                        doc.FileName,
-                        doc.FileUrl,
-                        doc.Required)));
-            }
         }
 
         if (request.SetRegistrationWindow)
@@ -150,7 +168,7 @@ public sealed class UpdateDraftRaceEventCommandHandler(
             race.SetRegistrationWindow(request.RegistrationOpensAtUtc, request.RegistrationClosesAtUtc);
         }
 
-        events.Update(race);
+        // Entity đã tracked — không gọi Update() (sẽ đánh dấu children mới thành Modified).
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return RaceEventDtoMapper.ToDetail(race);
     }

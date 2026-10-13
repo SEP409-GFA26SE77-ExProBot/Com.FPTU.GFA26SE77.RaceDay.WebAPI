@@ -4,6 +4,7 @@ using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Modules.Event.Domain.Staff;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
+using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Infrastructure.Repositories;
 
@@ -46,7 +47,74 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
     public async Task AddAsync(RaceEvent raceEvent, CancellationToken cancellationToken = default)
         => await db.RaceEvents.AddAsync(raceEvent, cancellationToken);
 
-    public void Update(RaceEvent raceEvent) => db.RaceEvents.Update(raceEvent);
+    /// <summary>
+    /// Chỉ attach khi entity detached. Entity đã tracked (Include) thì bỏ qua —
+    /// gọi <see cref="DbSet{T}.Update"/> sẽ đánh dấu children mới (có Guid sẵn) thành
+    /// Modified thay vì Added → DbUpdateConcurrencyException khi ReplaceDistances.
+    /// </summary>
+    public void Update(RaceEvent raceEvent)
+    {
+        var entry = db.Entry(raceEvent);
+        if (entry.State == EntityState.Detached)
+        {
+            db.RaceEvents.Update(raceEvent);
+        }
+    }
+
+    public async Task PersistDistanceReplaceAsync(
+        Guid eventId,
+        IReadOnlyList<EventDistance> distances,
+        string? ticketPricingJson,
+        CancellationToken cancellationToken = default)
+    {
+        // Bỏ hết state cũ (Deleted/Modified từ Include) — đây là nguồn concurrency.
+        db.ChangeTracker.Clear();
+
+        await db.Checkpoints
+            .Where(c => db.Distances.Any(d => d.Id == c.DistanceId && d.EventId == eventId))
+            .ExecuteDeleteAsync(cancellationToken);
+
+        await db.Distances
+            .Where(d => d.EventId == eventId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        if (ticketPricingJson is not null)
+        {
+            var updated = await db.RaceEvents
+                .Where(e => e.Id == eventId)
+                .ExecuteUpdateAsync(
+                    s => s
+                        .SetProperty(e => e.TicketPricingJson, ticketPricingJson)
+                        .SetProperty(e => e.UpdatedAtUtc, DateTime.UtcNow),
+                    cancellationToken);
+
+            if (updated == 0)
+            {
+                throw new DomainException("Không tìm thấy giải khi cập nhật giá vé.");
+            }
+        }
+
+        db.Distances.AddRange(distances);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task PersistDocumentsReplaceAsync(
+        Guid eventId,
+        IReadOnlyList<EventDocument> documents,
+        CancellationToken cancellationToken = default)
+    {
+        db.ChangeTracker.Clear();
+
+        await db.Documents
+            .Where(d => d.EventId == eventId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        if (documents.Count > 0)
+        {
+            db.Documents.AddRange(documents);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
 }
 
 public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegistrationRepository
