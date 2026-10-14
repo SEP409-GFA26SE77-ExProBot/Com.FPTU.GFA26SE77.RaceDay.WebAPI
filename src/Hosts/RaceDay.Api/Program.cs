@@ -89,7 +89,7 @@ builder.Services.AddSwaggerGen(options =>
 
             ### E. Organizer map / course (sau khi có event + distances)
             1. `GET/PUT /api/v1/map/events/{eventId}/distances/{distanceId}/course`
-            2. FE True: tắt mock `NEXT_PUBLIC_RACE_MAP_USE_MOCK=false` — OSRM/Nominatim/simulator vẫn chạy phía FE
+            2. FE: tắt mock `NEXT_PUBLIC_RACE_MAP_USE_MOCK=false` — OSRM/simulator phía FE; geocode qua `GET /api/v1/map/geocode`
 
             ### F. Ví / giải ngân / hoàn tiền
             1. Paid → escrow ledger theo giải (`/api/v1/finance/organizer/...`)

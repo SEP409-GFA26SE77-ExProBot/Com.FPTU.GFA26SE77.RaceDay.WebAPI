@@ -25,7 +25,7 @@ public static class ApiTags
         (EventAdmin, "Duyệt / từ chối hồ sơ giải. Bearer Admin. Prefix /api/v1/event/admin"),
         (AuditLog, "Xem audit gần đây (Admin)."),
         (Payment, "PayOS checkout + webhook/mock. Luồng: create registration → checkout → PAID → pending_approval."),
-        (Map, "Course map theo (eventId, distanceId): GET/PUT /api/v1/map/events/.../course. FE organizer setup map + simulator. OSRM/Nominatim vẫn ở FE."),
+        (Map, "Course map theo (eventId, distanceId): GET/PUT /api/v1/map/events/.../course; GET /geocode (Nominatim VN). FE organizer setup map + simulator. OSRM route vẫn phía FE."),
         (Finance, "Escrow theo giải, payout Admin duyệt, hoàn tiền theo payment.Amount × % policy (mở ĐK 100% / đóng ĐK 50% / sau gun 0%)."),
         (Host, "Health / hạ tầng host.")
     ];
