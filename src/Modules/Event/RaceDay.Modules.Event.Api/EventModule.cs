@@ -133,8 +133,11 @@ public static class EventModule
                 eventId, body.Distances, body.TicketPricing), ct);
             return Results.Ok(result);
         })
-        .WithSummary("Thay thế danh sách cự ly (+ ticketPricing tùy chọn)")
-        .WithDescription("Chỉ draft/rejected. Tổng capacity ≤ TotalRunnersCap khi có gói.");
+        .WithSummary("Upsert danh sách cự ly (+ ticketPricing tùy chọn)")
+        .WithDescription(
+            "Chỉ draft/rejected. Gửi id để giữ cự ly (map/staff/reg không gãy); "
+            + "không id = thêm mới; bỏ id khỏi list = xóa (chặn nếu đã có ĐK). "
+            + "Tổng capacity ≤ TotalRunnersCap khi có gói.");
 
         organizerApi.MapPost("/packages/purchases", async (CreatePackagePurchaseRequest body, IMediator mediator, CancellationToken ct) =>
         {

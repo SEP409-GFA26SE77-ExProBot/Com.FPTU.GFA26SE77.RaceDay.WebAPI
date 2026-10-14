@@ -67,16 +67,85 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
         string? ticketPricingJson,
         CancellationToken cancellationToken = default)
     {
-        // Bỏ hết state cũ (Deleted/Modified từ Include) — đây là nguồn concurrency.
+        // Clear tracker — tránh concurrency owned Start/Finish từ Include trước đó.
         db.ChangeTracker.Clear();
 
-        await db.Checkpoints
-            .Where(c => db.Distances.Any(d => d.Id == c.DistanceId && d.EventId == eventId))
-            .ExecuteDeleteAsync(cancellationToken);
-
-        await db.Distances
+        var existing = await db.Distances
             .Where(d => d.EventId == eventId)
-            .ExecuteDeleteAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
+        var existingById = existing.ToDictionary(d => d.Id);
+        var incomingIds = distances.Select(d => d.Id).ToHashSet();
+
+        var removeIds = existing
+            .Where(d => !incomingIds.Contains(d.Id))
+            .Select(d => d.Id)
+            .ToList();
+
+        if (removeIds.Count > 0)
+        {
+            var blocked = await db.Registrations
+                .Where(r => removeIds.Contains(r.DistanceId))
+                .Select(r => r.DistanceId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            if (blocked.Count > 0)
+            {
+                throw new DomainException(
+                    "Không thể xóa cự ly đã có vận động viên đăng ký. Hãy giữ cự ly hoặc chuyển ĐK trước.");
+            }
+
+            await db.Checkpoints
+                .Where(c => removeIds.Contains(c.DistanceId))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await db.Distances
+                .Where(d => removeIds.Contains(d.Id))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            // Map courses + staff station gắn distanceId cũ (cùng Postgres, không FK).
+            foreach (var distId in removeIds)
+            {
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"""DELETE FROM map.race_courses WHERE "DistanceId" = {distId}""",
+                    cancellationToken);
+
+                var prefix = $"map:{distId}:%";
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"""
+                    UPDATE event.event_staff_members
+                    SET "StationId" = NULL, "StationLabel" = NULL
+                    WHERE "EventId" = {eventId}
+                      AND "StationId" LIKE {prefix}
+                    """,
+                    cancellationToken);
+            }
+        }
+
+        foreach (var incoming in distances)
+        {
+            if (existingById.TryGetValue(incoming.Id, out var current))
+            {
+                current.UpdateDetails(
+                    incoming.Type,
+                    incoming.Name,
+                    incoming.DistanceKm,
+                    incoming.ElevationGainM,
+                    incoming.MaxElevationM,
+                    incoming.MinElevationM,
+                    incoming.Capacity,
+                    incoming.Price,
+                    incoming.Currency,
+                    incoming.Color,
+                    incoming.StartLocation,
+                    incoming.FinishLocation,
+                    incoming.StartAt,
+                    incoming.EndAt);
+            }
+            else
+            {
+                db.Distances.Add(incoming);
+            }
+        }
 
         if (ticketPricingJson is not null)
         {
@@ -93,8 +162,15 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
                 throw new DomainException("Không tìm thấy giải khi cập nhật giá vé.");
             }
         }
+        else
+        {
+            await db.RaceEvents
+                .Where(e => e.Id == eventId)
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(e => e.UpdatedAtUtc, DateTime.UtcNow),
+                    cancellationToken);
+        }
 
-        db.Distances.AddRange(distances);
         await db.SaveChangesAsync(cancellationToken);
     }
 

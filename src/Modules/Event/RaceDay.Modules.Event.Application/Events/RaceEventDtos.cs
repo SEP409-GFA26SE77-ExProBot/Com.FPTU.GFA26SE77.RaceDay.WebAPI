@@ -118,7 +118,9 @@ public sealed record RaceEventListItemDto(
     IReadOnlyList<string> DistanceTypes,
     /// <summary>Km thực tế để FE filter bucket (~5 / ~10 / …).</summary>
     IReadOnlyList<double> DistanceKms,
-    DateTime? RegistrationOpensAtUtc = null);
+    DateTime? RegistrationOpensAtUtc = null,
+    /// <summary>Giá thấp nhất hiện tại (phase + base) — FE filter / card «từ …».</summary>
+    decimal? MinPrice = null);
 
 public static class RaceEventDtoMapper
 {
@@ -160,33 +162,47 @@ public static class RaceEventDtoMapper
         _ => "aid"
     };
 
-    public static RaceEventListItemDto ToListItem(RaceEvent e) => new(
-        e.Id,
-        e.Name,
-        e.Tagline,
-        e.BannerImage,
-        e.Location,
-        e.EventDate.ToString("yyyy-MM-dd"),
-        e.EndDate?.ToString("yyyy-MM-dd"),
-        ToApiStatus(e.Status),
-        e.Organizer.Name,
-        e.TotalRunnersCap,
-        e.ActiveRunners,
-        e.Distances
-            .Select(d =>
-                !string.IsNullOrWhiteSpace(d.Name)
-                    ? d.Name.Trim()
-                    : d.DistanceKm > 0
-                        ? $"{d.DistanceKm}K"
-                        : d.Type)
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList(),
-        e.Distances
-            .Select(d => d.DistanceKm)
-            .Where(km => km > 0)
-            .ToList(),
-        e.RegistrationOpensAtUtc);
+    public static RaceEventListItemDto ToListItem(RaceEvent e)
+    {
+        decimal? minPrice = null;
+        if (e.Distances.Count > 0)
+        {
+            minPrice = e.Distances.Min(d =>
+            {
+                var name = !string.IsNullOrWhiteSpace(d.Name) ? d.Name.Trim() : d.Type;
+                return TicketPricingResolver.Resolve(e.TicketPricingJson, name, d.Price).Price;
+            });
+        }
+
+        return new(
+            e.Id,
+            e.Name,
+            e.Tagline,
+            e.BannerImage,
+            e.Location,
+            e.EventDate.ToString("yyyy-MM-dd"),
+            e.EndDate?.ToString("yyyy-MM-dd"),
+            ToApiStatus(e.Status),
+            e.Organizer.Name,
+            e.TotalRunnersCap,
+            e.ActiveRunners,
+            e.Distances
+                .Select(d =>
+                    !string.IsNullOrWhiteSpace(d.Name)
+                        ? d.Name.Trim()
+                        : d.DistanceKm > 0
+                            ? $"{d.DistanceKm}K"
+                            : d.Type)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            e.Distances
+                .Select(d => d.DistanceKm)
+                .Where(km => km > 0)
+                .ToList(),
+            e.RegistrationOpensAtUtc,
+            minPrice);
+    }
 
     public static RaceEventDto ToDetail(RaceEvent e)
     {

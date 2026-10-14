@@ -1,9 +1,11 @@
+using System.Reflection;
 using FluentValidation;
 using MediatR;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Domain.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Events.Update;
@@ -22,7 +24,9 @@ public sealed record ReplaceDistanceInput(
     double? MaxElevationM = null,
     double? MinElevationM = null,
     TimeOnly? StartAt = null,
-    TimeOnly? EndAt = null);
+    TimeOnly? EndAt = null,
+    /// <summary>Id cự ly hiện có — gửi kèm khi sửa để giữ map/staff/reg.</summary>
+    Guid? Id = null);
 
 public sealed record ReplaceEventDistancesCommand(
     Guid EventId,
@@ -71,7 +75,11 @@ public sealed class ReplaceEventDistancesCommandHandler(
             throw new DomainException("Bạn không phải chủ giải này.");
         }
 
-        var distances = request.Distances.Select(d =>
+        var existingIds = race.Distances.Select(d => d.Id).ToHashSet();
+        var seenIncomingIds = new HashSet<Guid>();
+        var distances = new List<EventDistance>(request.Distances.Count);
+
+        foreach (var d in request.Distances)
         {
             var start = d.StartLocation is null
                 ? new NamedGeoPoint("Start", 0, 0)
@@ -80,7 +88,7 @@ public sealed class ReplaceEventDistancesCommandHandler(
                 ? new NamedGeoPoint("Finish", 0, 0)
                 : new NamedGeoPoint(d.FinishLocation.Name, d.FinishLocation.Lat, d.FinishLocation.Lng);
 
-            return EventDistance.Create(
+            var entity = EventDistance.Create(
                 race.Id,
                 d.Type,
                 d.Name,
@@ -98,7 +106,25 @@ public sealed class ReplaceEventDistancesCommandHandler(
                 null,
                 d.StartAt,
                 d.EndAt);
-        }).ToList();
+
+            if (d.Id is Guid keepId)
+            {
+                if (!existingIds.Contains(keepId))
+                {
+                    throw new DomainException(
+                        "Cự ly không thuộc giải này (id không hợp lệ). Tải lại trang rồi thử lại.");
+                }
+
+                if (!seenIncomingIds.Add(keepId))
+                {
+                    throw new DomainException("Trùng id cự ly trong payload.");
+                }
+
+                SetEntityId(entity, keepId);
+            }
+
+            distances.Add(entity);
+        }
 
         race.AssertCanReplaceDistances(distances);
 
@@ -116,5 +142,15 @@ public sealed class ReplaceEventDistancesCommandHandler(
             ?? throw new DomainException("Không tìm thấy giải sau khi lưu cự ly.");
 
         return RaceEventDtoMapper.ToDetail(refreshed);
+    }
+
+    private static void SetEntityId(Entity entity, Guid id)
+    {
+        var prop = typeof(Entity).GetProperty(nameof(Entity.Id), BindingFlags.Instance | BindingFlags.Public)
+            ?? throw new InvalidOperationException("Entity.Id missing.");
+        var set = prop.SetMethod
+            ?? prop.GetSetMethod(nonPublic: true)
+            ?? throw new InvalidOperationException("Entity.Id has no setter.");
+        set.Invoke(entity, [id]);
     }
 }

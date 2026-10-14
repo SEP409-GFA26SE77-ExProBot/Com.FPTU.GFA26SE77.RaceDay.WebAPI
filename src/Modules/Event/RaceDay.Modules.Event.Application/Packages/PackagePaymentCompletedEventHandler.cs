@@ -54,6 +54,8 @@ public sealed class PackagePaymentCompletedEventHandler(
             ? "Chưa cập nhật địa điểm"
             : purchase.OrgAddress!.Trim();
 
+        // OrgIntro giữ trên package_purchases (metadata BTC) — không copy sang
+        // event.description (mô tả giải public; BTC tự điền ở Hồ sơ giải).
         var race = RaceEvent.CreateDraft(
             paid.UserId,
             purchase.OrgName,
@@ -62,7 +64,7 @@ public sealed class PackagePaymentCompletedEventHandler(
             new GeoPoint(0, 0),
             organizer,
             purchase.ParticipantCap,
-            description: string.IsNullOrWhiteSpace(purchase.OrgIntro) ? null : purchase.OrgIntro.Trim());
+            description: null);
 
         race.SetPackageInfo(purchase.Id, expiresAtUtc);
 
