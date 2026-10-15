@@ -163,15 +163,19 @@ public class EventHandlerWorkflowTests
         var regs = Substitute.For<IEventRegistrationRepository>();
         var current = Substitute.For<ICurrentUserAccessor>();
         var uow = Substitute.For<IEventUnitOfWork>();
+        var staff = Substitute.For<IEventStaffMemberRepository>();
+
         events.GetByIdWithDetailsAsync(race.Id, Arg.Any<CancellationToken>()).Returns(race);
         regs.GetByEventAndBibAsync(race.Id, "BIB-9", Arg.Any<CancellationToken>()).Returns(reg);
         current.UserId.Returns(OrganizerId);
 
-        var result = await new FinishRegistrationCommandHandler(events, regs, Substitute.For<IEventStaffMemberRepository>(), current, uow)
-            .Handle(new FinishRegistrationCommand(race.Id, "BIB-9", null), CancellationToken.None);
+        // 1. Truyền distanceId vào Command thay vì null
+        var result = await new FinishRegistrationCommandHandler(events, regs, staff, current, uow)
+            .Handle(new FinishRegistrationCommand(race.Id, "BIB-9", distanceId), CancellationToken.None);
 
         Assert.Equal("finished", result.Status);
-        Assert.False(result.AlreadyFinished);
+        // 2. Đổi AlreadyFinished thành AlreadyScanned khớp với DTO
+        Assert.False(result.AlreadyScanned);
         Assert.True(result.ResultSeconds > 0);
         Assert.NotEqual(default, result.FinishedAtUtc);
         await uow.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());

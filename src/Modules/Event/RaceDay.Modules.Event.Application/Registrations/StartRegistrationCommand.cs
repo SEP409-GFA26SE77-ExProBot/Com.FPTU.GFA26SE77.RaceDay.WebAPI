@@ -7,24 +7,22 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Registrations;
 
-public sealed record StartRequestDto(Guid EventId, string Bib, Guid CheckpointId);
+public sealed record StartRequestDto(Guid EventId, string Bib);
 
 public sealed record StartResultDto(
     Guid RegistrationId,
     Guid EventId,
     string BibNumber,
-    Guid CheckpointId,
-    string CheckpointName,
+    string DistanceLabel,
     DateTime StartedAtUtc,
     bool AlreadyStarted);
 
-public sealed record StartRegistrationCommand(Guid EventId, string Bib, Guid CheckpointId)
+public sealed record StartRegistrationCommand(Guid EventId, string Bib)
     : IRequest<StartResultDto>;
 
 public sealed class StartRegistrationCommandHandler(
     IRaceEventRepository events,
     IEventRegistrationRepository registrations,
-    IRegistrationCheckpointPassageRepository checkpointPassages,
     IEventStaffMemberRepository staff,
     ICurrentUserAccessor currentUser,
     IEventUnitOfWork unitOfWork) : IRequestHandler<StartRegistrationCommand, StartResultDto>
@@ -34,11 +32,16 @@ public sealed class StartRegistrationCommandHandler(
         CancellationToken cancellationToken)
     {
         var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
-        if (request.EventId == Guid.Empty) throw new DomainException("Thiếu eventId.");
-        if (request.CheckpointId == Guid.Empty) throw new DomainException("Thiếu checkpointId.");
+        if (request.EventId == Guid.Empty)
+        {
+            throw new DomainException("Thiếu eventId.");
+        }
 
         var bib = request.Bib?.Trim();
-        if (string.IsNullOrWhiteSpace(bib)) throw new DomainException("Thiếu bib.");
+        if (string.IsNullOrWhiteSpace(bib))
+        {
+            throw new DomainException("Thiếu bib.");
+        }
 
         var race = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy giải.");
@@ -48,7 +51,7 @@ public sealed class StartRegistrationCommandHandler(
             || await staff.ExistsActiveStaffUserAsync(request.EventId, userId, cancellationToken);
         if (!allowed)
         {
-            throw new DomainException("Bạn không có quyền ghi nhận checkpoint cho giải này.");
+            throw new DomainException("Bạn không có quyền ghi nhận xuất phát cho giải này.");
         }
 
         var reg = await registrations.GetByEventAndBibAsync(request.EventId, bib, cancellationToken)
@@ -56,35 +59,23 @@ public sealed class StartRegistrationCommandHandler(
 
         if (reg.Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
         {
-            throw new DomainException("Chỉ VĐV confirmed mới ghi nhận xuất phát được.");
+            throw new DomainException("Chỉ VĐV confirmed/finished mới ghi nhận xuất phát được.");
         }
 
         var distance = race.GetDistance(reg.DistanceId);
-        var checkpoint = distance.Checkpoints.FirstOrDefault(c => c.Id == request.CheckpointId)
-            ?? throw new DomainException("Checkpoint không thuộc cự ly của VĐV.");
-
-        // Lấy hoặc tạo lượt qua vạch Start
-        var existingPassage = await checkpointPassages.GetByRegistrationCheckpointAsync(
-            reg.Id, checkpoint.Id, cancellationToken);
-
-        if (existingPassage is not null)
-        {
-            return new StartResultDto(reg.Id, reg.EventId, reg.BibNumber ?? string.Empty, checkpoint.Id, checkpoint.Name, existingPassage.PassedAtUtc, true);
-        }
 
         var passedAtUtc = DateTime.UtcNow;
+        bool alreadyStarted = !reg.Start(passedAtUtc);
 
-        // 1. Lưu vết passage
-        var passage = RegistrationCheckpointPassage.Create(
-            reg.Id, reg.EventId, reg.DistanceId, checkpoint.Id, passedAtUtc);
-        await checkpointPassages.AddAsync(passage, cancellationToken);
-
-        // 2. Cập nhật StartedAtUtc cho VĐV
-        reg.Start(passedAtUtc);
         registrations.Update(reg);
-
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return new StartResultDto(reg.Id, reg.EventId, reg.BibNumber ?? string.Empty, checkpoint.Id, checkpoint.Name, passedAtUtc, false);
+        return new StartResultDto(
+            reg.Id,
+            reg.EventId,
+            reg.BibNumber ?? string.Empty,
+            $"{distance.Type} · {distance.Name}",
+            reg.StartedAtUtc ?? passedAtUtc,
+            alreadyStarted);
     }
 }
