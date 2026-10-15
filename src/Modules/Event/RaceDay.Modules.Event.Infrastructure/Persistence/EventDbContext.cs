@@ -13,6 +13,7 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
     public DbSet<EventCheckpoint> Checkpoints => Set<EventCheckpoint>();
     public DbSet<EventDocument> Documents => Set<EventDocument>();
     public DbSet<EventRegistration> Registrations => Set<EventRegistration>();
+    public DbSet<RegistrationCheckpointPassage> RegistrationCheckpointPassages => Set<RegistrationCheckpointPassage>();
     public DbSet<EventPackagePurchase> PackagePurchases => Set<EventPackagePurchase>();
     public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
     public DbSet<PackageDurationOption> PackageDurationOptions => Set<PackageDurationOption>();
@@ -183,11 +184,26 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Property(x => x.QuotedPhaseName).HasMaxLength(120);
             entity.Property(x => x.CheckedInAtUtc);
             entity.Property(x => x.CheckedInByUserId);
+            entity.Property(x => x.StartedAtUtc);
+            entity.Property(x => x.FinishedAtUtc);
+            entity.Property(x => x.ResultSeconds);
             // Cho phép đăng ký lại cùng cự ly sau Rejected/Cancelled (Status lưu string enum name).
             entity.HasIndex(x => new { x.EventId, x.DistanceId, x.UserId })
                 .IsUnique()
                 .HasFilter("\"Status\" NOT IN ('Rejected', 'Cancelled')");
             entity.HasIndex(x => x.EventId);
+            entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<RegistrationCheckpointPassage>(entity =>
+        {
+            entity.ToTable("event_registration_checkpoint_passages");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PassedAtUtc);
+            entity.Property(x => x.CreatedAtUtc);
+            entity.HasIndex(x => new { x.RegistrationId, x.CheckpointId }).IsUnique();
+            entity.HasIndex(x => x.EventId);
+            entity.HasIndex(x => x.DistanceId);
             entity.Ignore(x => x.DomainEvents);
         });
 

@@ -257,6 +257,18 @@ public static class EventModule
         userApi.MapGet("/staff/me", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyStaffAssignmentsQuery(), ct)))
             .WithSummary("Các giải staff/volunteer đang được assign (Active)");
+        userApi.MapPost("/start", async (StartRequestDto body, IMediator mediator, CancellationToken ct) =>
+    Results.Ok(await mediator.Send(
+        new StartRegistrationCommand(body.EventId, body.Bib, body.CheckpointId), ct)))
+    .WithSummary("Staff/organizer ghi nhận xuất phát (Start) cho VĐV")
+    .WithDescription("Body: { eventId, bib, checkpointId }. Ghi nhận mốc giờ xuất phát riêng của từng VĐV (Net Time).");
+        userApi.MapPost("/finish", async (FinishRequestDto body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new FinishRegistrationCommand(body.EventId, body.Bib, body.CheckpointId), ct)))
+            .WithSummary("Staff/organizer ghi nhận checkpoint cho VĐV")
+            .WithDescription(
+                "Body: { eventId, bib, checkpointId }. Mỗi checkpoint scan 1 lần (idempotent). "
+                + "Nếu checkpoint là Finish thì tự tính result = finish - start và chuyển status sang finished.");
 
         userApi.MapPost("/check-in", async (CheckInRequestDto body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
