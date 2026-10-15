@@ -50,15 +50,22 @@ public static class DependencyInjection
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.AddFixedWindowLimiter("public", limiter =>
             {
-                limiter.PermitLimit = 100;
+                limiter.PermitLimit = 200;
                 limiter.Window = TimeSpan.FromMinutes(1);
-                limiter.QueueLimit = 0;
+                limiter.QueueLimit = 20;
             });
             options.AddFixedWindowLimiter("admin", limiter =>
             {
-                limiter.PermitLimit = 300;
+                limiter.PermitLimit = 400;
                 limiter.Window = TimeSpan.FromMinutes(1);
-                limiter.QueueLimit = 0;
+                limiter.QueueLimit = 40;
+            });
+            // Organizer workspace (shell + page) gọi nhiều GET /event/{id}
+            options.AddFixedWindowLimiter("authenticated", limiter =>
+            {
+                limiter.PermitLimit = 400;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 40;
             });
         });
 

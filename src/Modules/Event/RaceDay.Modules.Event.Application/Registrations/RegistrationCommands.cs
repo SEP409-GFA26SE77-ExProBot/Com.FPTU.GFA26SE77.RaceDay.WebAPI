@@ -3,6 +3,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Application.Abstractions;
+using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
@@ -44,7 +45,11 @@ public sealed record RegistrationDto(
     double? DistanceKm,
     decimal? Price,
     string? Currency,
-    DateTime CreatedAtUtc);
+    string? PricePhaseKey,
+    string? PricePhaseName,
+    DateTime CreatedAtUtc,
+    DateTime? CheckedInAtUtc = null,
+    Guid? CheckedInByUserId = null);
 
 public static class RegistrationDtoMapper
 {
@@ -93,9 +98,13 @@ public static class RegistrationDtoMapper
             race?.Name,
             distance is null ? null : $"{distance.Type} · {distance.Name}",
             distance?.DistanceKm,
-            distance?.Price,
+            r.QuotedAmount ?? distance?.Price,
             distance?.Currency,
-            r.CreatedAtUtc);
+            r.QuotedPhaseKey,
+            r.QuotedPhaseName,
+            r.CreatedAtUtc,
+            r.CheckedInAtUtc,
+            r.CheckedInByUserId);
     }
 }
 
@@ -135,7 +144,7 @@ public sealed class CreateRegistrationCommandValidator : AbstractValidator<Creat
         RuleFor(x => x.IdNumber).MaximumLength(20).OptionalIdNumber();
         RuleFor(x => x.HeightCm).OptionalHeightCm();
         RuleFor(x => x.WeightKg).OptionalWeightKg();
-        RuleFor(x => x.BloodType).MaximumLength(5).OptionalBloodType();
+        RuleFor(x => x.BloodType).MaximumLength(10).OptionalBloodType();
         RuleFor(x => x.EmergencyName).MaximumLength(100);
         RuleFor(x => x.EmergencyPhone).MaximumLength(20).OptionalVietnamPhone();
         RuleFor(x => x.ShirtType).MaximumLength(50);
@@ -166,6 +175,15 @@ public sealed class CreateRegistrationCommandHandler(
         if (!distance.HasAvailableSlot)
         {
             throw new DomainException("Cự ly đã hết slot.");
+        }
+
+        var mine = await registrations.ListByUserAsync(userId, cancellationToken);
+        var rejectedPaid = mine.FirstOrDefault(x =>
+            x.EventId == request.EventId && x.Status == RegistrationStatus.Rejected);
+        if (rejectedPaid is not null)
+        {
+            throw new DomainException(
+                "Bạn có đơn đã thanh toán bị BTC từ chối. Hãy sửa hồ sơ và nộp lại (không tạo đơn mới).");
         }
 
         var active = await registrations.ListActiveByUserEventAsync(request.EventId, userId, cancellationToken);
@@ -219,6 +237,13 @@ public sealed class CreateRegistrationCommandHandler(
             request.HealthCertFileName,
             request.HealthCertUrl,
             request.LiabilityAccepted);
+
+        // Chốt giá theo phase tại thời điểm tạo ĐK — checkout/PayOS/refund bám snapshot này.
+        var quoted = TicketPricingResolver.Resolve(
+            race.TicketPricingJson,
+            distance.Name,
+            distance.Price);
+        reg.LockQuotedPrice(quoted.Price, quoted.PhaseKey, quoted.PhaseName);
 
         // Status = PendingPayment — FE gọi Payment checkout; slot tăng sau khi paid.
         await registrations.AddAsync(reg, cancellationToken);
@@ -434,6 +459,108 @@ public sealed class RejectRegistrationCommandHandler(
         {
             logger.LogError(ex, "Failed to send rejection email for registration {RegistrationId}", reg.Id);
         }
+
+        EventDistance? distance = null;
+        try { distance = race.GetDistance(reg.DistanceId); } catch { /* ignore */ }
+        return RegistrationDtoMapper.ToDto(reg, race, distance);
+    }
+}
+
+public sealed record ResubmitRejectedRegistrationCommand(
+    Guid RegistrationId,
+    string FullName,
+    string Email,
+    string Phone,
+    DateOnly? DateOfBirth,
+    string? Gender,
+    string? IdNumber,
+    int? HeightCm,
+    int? WeightKg,
+    string? BloodType,
+    string? EmergencyName,
+    string? EmergencyPhone,
+    string? ShirtType,
+    string? ShirtSize,
+    string? ShirtColor,
+    IReadOnlyList<string>? MedicalCodes,
+    string? HealthCertFileName,
+    string? HealthCertUrl,
+    bool LiabilityAccepted) : IRequest<RegistrationDto>;
+
+public sealed class ResubmitRejectedRegistrationCommandValidator
+    : AbstractValidator<ResubmitRejectedRegistrationCommand>
+{
+    public ResubmitRejectedRegistrationCommandValidator()
+    {
+        RuleFor(x => x.RegistrationId).NotEmpty();
+        RuleFor(x => x.FullName).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(100);
+        RuleFor(x => x.Phone).NotEmpty().MaximumLength(20).VietnamPhone();
+        RuleFor(x => x.DateOfBirth).DateOfBirth();
+        RuleFor(x => x.Gender).MaximumLength(20).OptionalGenderLabel();
+        RuleFor(x => x.IdNumber).MaximumLength(20).OptionalIdNumber();
+        RuleFor(x => x.HeightCm).OptionalHeightCm();
+        RuleFor(x => x.WeightKg).OptionalWeightKg();
+        RuleFor(x => x.BloodType).MaximumLength(10).OptionalBloodType();
+        RuleFor(x => x.EmergencyName).MaximumLength(100);
+        RuleFor(x => x.EmergencyPhone).MaximumLength(20).OptionalVietnamPhone();
+        RuleFor(x => x.ShirtType).MaximumLength(50);
+        RuleFor(x => x.ShirtSize).MaximumLength(20);
+        RuleFor(x => x.ShirtColor).MaximumLength(50);
+        RuleFor(x => x.HealthCertFileName).MaximumLength(200);
+        RuleFor(x => x.HealthCertUrl).OptionalHttpUrl();
+        RuleFor(x => x.LiabilityAccepted).Equal(true)
+            .WithMessage("Cần chấp nhận điều khoản trách nhiệm.");
+    }
+}
+
+public sealed class ResubmitRejectedRegistrationCommandHandler(
+    IRaceEventRepository events,
+    IEventRegistrationRepository registrations,
+    ICurrentUserAccessor currentUser,
+    IEventUnitOfWork unitOfWork) : IRequestHandler<ResubmitRejectedRegistrationCommand, RegistrationDto>
+{
+    public async Task<RegistrationDto> Handle(
+        ResubmitRejectedRegistrationCommand request,
+        CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        var reg = await registrations.GetByIdAsync(request.RegistrationId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy đăng ký.");
+
+        if (reg.UserId != userId && !currentUser.IsAdmin)
+        {
+            throw new DomainException("Không thể sửa đăng ký của người khác.");
+        }
+
+        var race = await events.GetByIdWithDetailsAsync(reg.EventId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy giải.");
+
+        race.EnsureAcceptsRegistration();
+
+        var medicalJson = JsonSerializer.Serialize(request.MedicalCodes ?? Array.Empty<string>());
+        reg.UpdateProfileAndResubmit(
+            request.FullName,
+            request.Email,
+            request.Phone,
+            request.DateOfBirth,
+            request.Gender,
+            request.IdNumber,
+            request.HeightCm,
+            request.WeightKg,
+            request.BloodType,
+            request.EmergencyName,
+            request.EmergencyPhone,
+            request.ShirtType,
+            request.ShirtSize,
+            request.ShirtColor,
+            medicalJson,
+            request.HealthCertFileName,
+            request.HealthCertUrl,
+            request.LiabilityAccepted);
+
+        registrations.Update(reg);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
         EventDistance? distance = null;
         try { distance = race.GetDistance(reg.DistanceId); } catch { /* ignore */ }

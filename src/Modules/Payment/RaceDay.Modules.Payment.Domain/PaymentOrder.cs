@@ -58,13 +58,24 @@ public sealed class PaymentTransaction : Entity
     }
 }
 
+public enum PaymentPurpose
+{
+    Registration = 0,
+    EventPackage = 1
+}
+
 public sealed class PaymentOrder : AggregateRoot
 {
     private readonly List<PaymentTransaction> _transactions = [];
 
-    public Guid RegistrationId { get; private set; }
+    public PaymentPurpose Purpose { get; private set; } = PaymentPurpose.Registration;
+    public Guid? RegistrationId { get; private set; }
+    public Guid? ReferenceId { get; private set; }
     public Guid UserId { get; private set; }
     public decimal Amount { get; private set; }
+    public decimal? ListAmount { get; private set; }
+    public decimal? DiscountAmount { get; private set; }
+    public string? PromoCode { get; private set; }
     public string Currency { get; private set; } = "VND";
     public string? PaymentMethod { get; private set; }
     public PaymentStatus Status { get; private set; } = PaymentStatus.Pending;
@@ -102,9 +113,54 @@ public sealed class PaymentOrder : AggregateRoot
         var now = DateTime.UtcNow;
         return new PaymentOrder
         {
+            Purpose = PaymentPurpose.Registration,
             RegistrationId = registrationId,
             UserId = userId,
             Amount = amount,
+            ListAmount = amount,
+            DiscountAmount = 0,
+            PromoCode = null,
+            Currency = string.IsNullOrWhiteSpace(currency) ? "VND" : currency.Trim().ToUpperInvariant(),
+            PaymentMethod = "PayOS",
+            PaymentGateway = "PayOS",
+            Status = PaymentStatus.Pending,
+            OrderCode = orderCode,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        };
+    }
+
+    public static PaymentOrder CreateForPackage(
+        Guid referenceId,
+        Guid userId,
+        decimal listAmount,
+        decimal discountAmount,
+        string? promoCode,
+        string currency,
+        long orderCode)
+    {
+        if (referenceId == Guid.Empty || userId == Guid.Empty)
+        {
+            throw new DomainException("Tham chiếu thanh toán không hợp lệ.");
+        }
+
+        var charged = listAmount - discountAmount;
+        if (charged <= 0)
+        {
+            throw new DomainException("Số tiền phải > 0.");
+        }
+
+        var now = DateTime.UtcNow;
+        return new PaymentOrder
+        {
+            Purpose = PaymentPurpose.EventPackage,
+            ReferenceId = referenceId,
+            RegistrationId = null,
+            UserId = userId,
+            Amount = charged,
+            ListAmount = listAmount,
+            DiscountAmount = discountAmount,
+            PromoCode = promoCode?.Trim().ToUpperInvariant(),
             Currency = string.IsNullOrWhiteSpace(currency) ? "VND" : currency.Trim().ToUpperInvariant(),
             PaymentMethod = "PayOS",
             PaymentGateway = "PayOS",
@@ -197,15 +253,41 @@ public sealed class PaymentOrder : AggregateRoot
         Touch();
     }
 
-    public void MarkRefunded()
+    public PaymentTransaction MarkRefunded(
+        decimal refundAmount,
+        string? gatewayTransactionId,
+        string? rawJson)
     {
+        if (Status == PaymentStatus.Refunded)
+        {
+            return _transactions.LastOrDefault(t =>
+                       string.Equals(t.TransactionType, "refund", StringComparison.OrdinalIgnoreCase)
+                       && t.Status == PaymentTransactionStatus.Succeeded)
+                   ?? throw new DomainException("Payment đã refund nhưng thiếu transaction.");
+        }
+
         if (Status != PaymentStatus.Paid)
         {
             throw new DomainException("Chỉ refund payment đã paid.");
         }
 
+        if (refundAmount <= 0 || refundAmount > Amount)
+        {
+            throw new DomainException("Số tiền hoàn không hợp lệ.");
+        }
+
         Status = PaymentStatus.Refunded;
+        var tx = PaymentTransaction.Create(
+            Id,
+            $"ref-{OrderCode}",
+            gatewayTransactionId,
+            "refund",
+            PaymentTransactionStatus.Succeeded,
+            refundAmount,
+            rawJson);
+        _transactions.Add(tx);
         Touch();
+        return tx;
     }
 
     private void Touch() => UpdatedAtUtc = DateTime.UtcNow;

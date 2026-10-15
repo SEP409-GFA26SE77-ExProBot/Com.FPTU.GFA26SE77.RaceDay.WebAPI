@@ -161,14 +161,17 @@ internal static class RegistrationEmailTemplates
         RaceEvent race,
         string reason)
     {
-        var subject = $"[RaceDay] Hồ sơ chưa được duyệt · {race.Name}";
+        var subject = $"[RaceDay] Hồ sơ cần chỉnh sửa · {race.Name}";
         var plain =
             $"""
             RaceDay — Thông báo duyệt hồ sơ
 
             Xin chào {reg.FullName},
-            Rất tiếc, đăng ký tham gia {race.Name} chưa được duyệt.
+            Hồ sơ đăng ký {race.Name} chưa được duyệt lần này.
             Lý do: {reason}
+
+            Bạn đã thanh toán — không cần trả lại tiền. Hãy vào «Vé của tôi» trên RaceDay,
+            chỉnh sửa thông tin / giấy tờ theo lý do trên rồi nộp lại để BTC duyệt tiếp.
 
             Liên hệ BTC: {race.Organizer.Email} / {race.Organizer.Phone}
             — Đội ngũ RaceDay
@@ -176,12 +179,14 @@ internal static class RegistrationEmailTemplates
 
         var html = Wrap(
             eyebrow: "THÔNG BÁO DUYỆT",
-            headline: "Hồ sơ chưa được duyệt",
-            lead: $"Xin chào <strong style=\"color:#0f172a;\">{Esc(reg.FullName)}</strong>, đăng ký <strong style=\"color:#0f172a;\">{Esc(race.Name)}</strong> chưa được chấp nhận lần này.",
+            headline: "Hồ sơ cần chỉnh sửa & nộp lại",
+            lead: $"Xin chào <strong style=\"color:#0f172a;\">{Esc(reg.FullName)}</strong>, đăng ký <strong style=\"color:#0f172a;\">{Esc(race.Name)}</strong> chưa được chấp nhận. Vui lòng sửa hồ sơ theo lý do bên dưới rồi nộp lại.",
             bodyHtml:
             $"""
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0;border:1px solid #fed7aa;border-radius:12px;overflow:hidden;background:#fff7ed;">
               {Row("Lý do", reason)}
+              {Row("Thanh toán", "Đã giữ — không cần thanh toán lại khi nộp lại hồ sơ")}
+              {Row("Việc cần làm", "Vào Vé của tôi → Chỉnh sửa & nộp lại")}
               {Row("BTC", $"{race.Organizer.Name} · {race.Organizer.Email}")}
             </table>
             """);

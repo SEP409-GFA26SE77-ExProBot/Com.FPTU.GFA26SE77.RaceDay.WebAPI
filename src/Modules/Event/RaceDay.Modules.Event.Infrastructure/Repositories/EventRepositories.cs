@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
+using RaceDay.Modules.Event.Domain.Staff;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
+using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Infrastructure.Repositories;
 
@@ -45,7 +47,74 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
     public async Task AddAsync(RaceEvent raceEvent, CancellationToken cancellationToken = default)
         => await db.RaceEvents.AddAsync(raceEvent, cancellationToken);
 
-    public void Update(RaceEvent raceEvent) => db.RaceEvents.Update(raceEvent);
+    /// <summary>
+    /// Chỉ attach khi entity detached. Entity đã tracked (Include) thì bỏ qua —
+    /// gọi <see cref="DbSet{T}.Update"/> sẽ đánh dấu children mới (có Guid sẵn) thành
+    /// Modified thay vì Added → DbUpdateConcurrencyException khi ReplaceDistances.
+    /// </summary>
+    public void Update(RaceEvent raceEvent)
+    {
+        var entry = db.Entry(raceEvent);
+        if (entry.State == EntityState.Detached)
+        {
+            db.RaceEvents.Update(raceEvent);
+        }
+    }
+
+    public async Task PersistDistanceReplaceAsync(
+        Guid eventId,
+        IReadOnlyList<EventDistance> distances,
+        string? ticketPricingJson,
+        CancellationToken cancellationToken = default)
+    {
+        // Bỏ hết state cũ (Deleted/Modified từ Include) — đây là nguồn concurrency.
+        db.ChangeTracker.Clear();
+
+        await db.Checkpoints
+            .Where(c => db.Distances.Any(d => d.Id == c.DistanceId && d.EventId == eventId))
+            .ExecuteDeleteAsync(cancellationToken);
+
+        await db.Distances
+            .Where(d => d.EventId == eventId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        if (ticketPricingJson is not null)
+        {
+            var updated = await db.RaceEvents
+                .Where(e => e.Id == eventId)
+                .ExecuteUpdateAsync(
+                    s => s
+                        .SetProperty(e => e.TicketPricingJson, ticketPricingJson)
+                        .SetProperty(e => e.UpdatedAtUtc, DateTime.UtcNow),
+                    cancellationToken);
+
+            if (updated == 0)
+            {
+                throw new DomainException("Không tìm thấy giải khi cập nhật giá vé.");
+            }
+        }
+
+        db.Distances.AddRange(distances);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task PersistDocumentsReplaceAsync(
+        Guid eventId,
+        IReadOnlyList<EventDocument> documents,
+        CancellationToken cancellationToken = default)
+    {
+        db.ChangeTracker.Clear();
+
+        await db.Documents
+            .Where(d => d.EventId == eventId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        if (documents.Count > 0)
+        {
+            db.Documents.AddRange(documents);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
 }
 
 public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegistrationRepository
@@ -101,8 +170,103 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
         return (max + 1).ToString();
     }
 
+    public async Task<EventRegistration?> GetByEventAndBibAsync(
+        Guid eventId,
+        string bibNumber,
+        CancellationToken cancellationToken = default)
+    {
+        var bib = (bibNumber ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(bib))
+        {
+            return null;
+        }
+
+        return await db.Registrations.FirstOrDefaultAsync(
+            x => x.EventId == eventId && x.BibNumber == bib,
+            cancellationToken);
+    }
+
+    public async Task<EventRegistration?> GetConfirmedByEventAndUserAsync(
+        Guid eventId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => await db.Registrations.FirstOrDefaultAsync(
+            x => x.EventId == eventId
+                 && x.UserId == userId
+                 && x.Status == RegistrationStatus.Confirmed,
+            cancellationToken);
+
     public async Task AddAsync(EventRegistration registration, CancellationToken cancellationToken = default)
         => await db.Registrations.AddAsync(registration, cancellationToken);
 
     public void Update(EventRegistration registration) => db.Registrations.Update(registration);
+}
+
+public sealed class EventStaffMemberRepository(EventDbContext db) : IEventStaffMemberRepository
+{
+    public Task<EventStaffMember?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => db.StaffMembers.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+    public async Task<IReadOnlyList<EventStaffMember>> ListByEventAsync(
+        Guid eventId,
+        EventStaffRole? role = null,
+        CancellationToken cancellationToken = default)
+    {
+        var q = db.StaffMembers.AsNoTracking().Where(x => x.EventId == eventId);
+        if (role is not null)
+        {
+            q = q.Where(x => x.Role == role);
+        }
+
+        return await q.OrderByDescending(x => x.CreatedAtUtc).ToListAsync(cancellationToken);
+    }
+
+    public Task<bool> ExistsActiveEmailRoleAsync(
+        Guid eventId,
+        EventStaffRole role,
+        string email,
+        CancellationToken cancellationToken = default)
+        => db.StaffMembers.AnyAsync(
+            x => x.EventId == eventId
+                 && x.Role == role
+                 && x.Email == email
+                 && x.Status != EventStaffStatus.Revoked,
+            cancellationToken);
+
+    public Task<bool> ExistsActiveStaffUserAsync(
+        Guid eventId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => db.StaffMembers.AnyAsync(
+            x => x.EventId == eventId
+                 && x.UserId == userId
+                 && x.Status == EventStaffStatus.Active,
+            cancellationToken);
+
+    public async Task AddAsync(EventStaffMember member, CancellationToken cancellationToken = default)
+        => await db.StaffMembers.AddAsync(member, cancellationToken);
+
+    public void Update(EventStaffMember member) => db.StaffMembers.Update(member);
+
+    public async Task<IReadOnlyList<EventStaffMember>> ListInvitedByEmailOrUserAsync(
+        string email,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+    {
+        var normalized = email.Trim().ToLowerInvariant();
+        return await db.StaffMembers
+            .Where(x =>
+                x.Status == EventStaffStatus.Invited
+                && (x.UserId == userId || x.Email == normalized))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<EventStaffMember>> ListActiveByUserIdAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => await db.StaffMembers
+            .AsNoTracking()
+            .Where(x => x.UserId == userId && x.Status == EventStaffStatus.Active)
+            .OrderByDescending(x => x.UpdatedAtUtc)
+            .ToListAsync(cancellationToken);
 }

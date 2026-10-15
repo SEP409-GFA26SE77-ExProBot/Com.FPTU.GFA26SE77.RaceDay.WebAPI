@@ -18,7 +18,13 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options)
         {
             entity.ToTable("payments");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(40).HasDefaultValue(PaymentPurpose.Registration);
+            entity.Property(x => x.RegistrationId);
+            entity.Property(x => x.ReferenceId);
             entity.Property(x => x.Amount).HasPrecision(15, 2);
+            entity.Property(x => x.ListAmount).HasPrecision(15, 2);
+            entity.Property(x => x.DiscountAmount).HasPrecision(15, 2);
+            entity.Property(x => x.PromoCode).HasMaxLength(50);
             entity.Property(x => x.Currency).HasMaxLength(10).IsRequired();
             entity.Property(x => x.PaymentMethod).HasMaxLength(50);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
@@ -26,6 +32,7 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options)
             entity.Property(x => x.TransactionReference).HasMaxLength(255);
             entity.Property(x => x.CheckoutUrl).HasMaxLength(1000);
             entity.HasIndex(x => x.RegistrationId);
+            entity.HasIndex(x => x.ReferenceId);
             entity.HasIndex(x => x.OrderCode).IsUnique();
             entity.HasIndex(x => x.UserId);
             entity.HasMany(x => x.Transactions)

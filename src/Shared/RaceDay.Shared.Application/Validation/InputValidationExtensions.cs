@@ -42,7 +42,7 @@ public static class InputValidationExtensions
     public static IRuleBuilderOptions<T, string?> OptionalBloodType<T>(this IRuleBuilder<T, string?> rule)
         => rule
             .Must(InputRules.IsValidOptionalBloodType)
-            .WithMessage("Nhóm máu không hợp lệ (VD: A+, O-, AB+).");
+            .WithMessage("Nhóm máu không hợp lệ (VD: O, A, B, AB hoặc O+/A-/…).");
 
     public static IRuleBuilderOptions<T, string?> OptionalGenderLabel<T>(this IRuleBuilder<T, string?> rule)
         => rule

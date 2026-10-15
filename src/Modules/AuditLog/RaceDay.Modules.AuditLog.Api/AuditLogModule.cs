@@ -16,7 +16,7 @@ public static class AuditLogModule
 {
     public static IServiceCollection AddAuditLogModule(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(IamAuditEventHandler).Assembly));
+        // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddAuditLogInfrastructure(configuration);
         return services;
     }
