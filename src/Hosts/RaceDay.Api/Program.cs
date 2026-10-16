@@ -3,6 +3,7 @@ using Microsoft.OpenApi;
 using RaceDay.Modules.AuditLog.Api;
 using RaceDay.Modules.AuditLog.Application.EventHandlers;
 using RaceDay.Modules.Event.Api;
+using RaceDay.Modules.Emergency.Api;
 using RaceDay.Modules.Finance.Api;
 using RaceDay.Modules.Finance.Application.Wallet;
 using RaceDay.Modules.Iam.Api;
@@ -175,6 +176,7 @@ app.MapAuditLogEndpoints();
 app.MapPaymentEndpoints();
 app.MapMapEndpoints();
 app.MapFinanceEndpoints();
+app.MapEmergencyEndpoints();
 
 app.Run();
 

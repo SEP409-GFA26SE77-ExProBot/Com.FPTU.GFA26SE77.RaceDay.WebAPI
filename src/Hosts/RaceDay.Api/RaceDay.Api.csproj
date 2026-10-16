@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\Modules\Payment\RaceDay.Modules.Payment.Api\RaceDay.Modules.Payment.Api.csproj" />
     <ProjectReference Include="..\..\Modules\Map\RaceDay.Modules.Map.Api\RaceDay.Modules.Map.Api.csproj" />
     <ProjectReference Include="..\..\Modules\Finance\RaceDay.Modules.Finance.Api\RaceDay.Modules.Finance.Api.csproj" />
+    <ProjectReference Include="..\..\Modules\Emergency\RaceDay.Modules.Emergency.Api\RaceDay.Modules.Emergency.Api.csproj" />
     <ProjectReference Include="..\..\Shared\RaceDay.Shared.Web\RaceDay.Shared.Web.csproj" />
 
 

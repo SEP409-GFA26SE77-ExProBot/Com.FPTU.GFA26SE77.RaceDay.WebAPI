@@ -1,5 +1,8 @@
 <Solution>
   <Folder Name="/src/" />
+  <Folder Name="/src/Modules/Emergency/">
+    <Project Path="src/Modules/Emergency/RaceDay.Modules.Emergency.Api/RaceDay.Modules.Emergency.Api.csproj" />
+  </Folder>
   <Folder Name="/src/Gateways/">
     <Project Path="src/Gateways/RaceDay.ApiGateway/RaceDay.ApiGateway.csproj" />
   </Folder>
