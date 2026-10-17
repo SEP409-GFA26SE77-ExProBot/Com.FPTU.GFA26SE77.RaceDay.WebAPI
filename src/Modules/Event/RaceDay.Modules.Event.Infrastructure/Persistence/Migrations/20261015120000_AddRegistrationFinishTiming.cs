@@ -1,4 +1,3 @@
-using System;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
@@ -15,79 +14,51 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // 1. Thêm 2 cột timing vào bảng event_registrations
-            migrationBuilder.AddColumn<DateTime>(
-                name: "FinishedAtUtc",
-                schema: "event",
-                table: "event_registrations",
-                type: "timestamp with time zone",
-                nullable: true);
+            // Idempotent: DB đã có cột/bảng từ lần migrate trước / migration trùng.
+            migrationBuilder.Sql(
+                """
+                ALTER TABLE event.event_registrations
+                    ADD COLUMN IF NOT EXISTS "FinishedAtUtc" timestamp with time zone NULL;
 
-            migrationBuilder.AddColumn<long>(
-                name: "ResultSeconds",
-                schema: "event",
-                table: "event_registrations",
-                type: "bigint",
-                nullable: true);
+                ALTER TABLE event.event_registrations
+                    ADD COLUMN IF NOT EXISTS "ResultSeconds" bigint NULL;
 
-            // 2. Tạo bảng với đúng tên: event_registration_checkpoint_passages
-            migrationBuilder.CreateTable(
-                name: "event_registration_checkpoint_passages",
-                schema: "event",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    RegistrationId = table.Column<Guid>(type: "uuid", nullable: false),
-                    EventId = table.Column<Guid>(type: "uuid", nullable: false),
-                    DistanceId = table.Column<Guid>(type: "uuid", nullable: false),
-                    CheckpointId = table.Column<Guid>(type: "uuid", nullable: false),
-                    PassedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_event_registration_checkpoint_passages", x => x.Id);
-                });
+                CREATE TABLE IF NOT EXISTS event.event_registration_checkpoint_passages
+                (
+                    "Id" uuid NOT NULL,
+                    "RegistrationId" uuid NOT NULL,
+                    "EventId" uuid NOT NULL,
+                    "DistanceId" uuid NOT NULL,
+                    "CheckpointId" uuid NOT NULL,
+                    "PassedAtUtc" timestamp with time zone NOT NULL,
+                    "CreatedAtUtc" timestamp with time zone NOT NULL,
+                    CONSTRAINT "PK_event_registration_checkpoint_passages" PRIMARY KEY ("Id")
+                );
 
-            // 3. Tạo Indexes khớp với DbContext
-            migrationBuilder.CreateIndex(
-                name: "IX_event_registration_checkpoint_passages_RegistrationId_CheckpointId",
-                schema: "event",
-                table: "event_registration_checkpoint_passages",
-                columns: new[] { "RegistrationId", "CheckpointId" },
-                unique: true);
+                CREATE UNIQUE INDEX IF NOT EXISTS "IX_event_registration_checkpoint_passages_RegistrationId_CheckpointId"
+                    ON event.event_registration_checkpoint_passages ("RegistrationId", "CheckpointId");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_event_registration_checkpoint_passages_EventId",
-                schema: "event",
-                table: "event_registration_checkpoint_passages",
-                column: "EventId");
+                CREATE INDEX IF NOT EXISTS "IX_event_registration_checkpoint_passages_EventId"
+                    ON event.event_registration_checkpoint_passages ("EventId");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_event_registration_checkpoint_passages_DistanceId",
-                schema: "event",
-                table: "event_registration_checkpoint_passages",
-                column: "DistanceId");
+                CREATE INDEX IF NOT EXISTS "IX_event_registration_checkpoint_passages_DistanceId"
+                    ON event.event_registration_checkpoint_passages ("DistanceId");
+                """);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            // Rollback bảng trước
-            migrationBuilder.DropTable(
-                name: "event_registration_checkpoint_passages",
-                schema: "event");
+            migrationBuilder.Sql(
+                """
+                DROP TABLE IF EXISTS event.event_registration_checkpoint_passages;
 
-            // Rollback các cột sau
-            migrationBuilder.DropColumn(
-                name: "FinishedAtUtc",
-                schema: "event",
-                table: "event_registrations");
+                ALTER TABLE event.event_registrations
+                    DROP COLUMN IF EXISTS "FinishedAtUtc";
 
-            migrationBuilder.DropColumn(
-                name: "ResultSeconds",
-                schema: "event",
-                table: "event_registrations");
+                ALTER TABLE event.event_registrations
+                    DROP COLUMN IF EXISTS "ResultSeconds";
+                """);
         }
     }
 }
