@@ -1,60 +1,28 @@
-﻿using System;
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
+    /// <remarks>
+    /// Bảng <c>event_registration_checkpoint_passages</c> đã được tạo bởi
+    /// <c>20261015120000_AddRegistrationFinishTiming</c>. Migration này từng
+    /// CreateTable trùng → Postgres 42P07 khi <c>MigrateAsync</c> sau pull.
+    /// Giữ migration (history/snapshot) nhưng Up/Down no-op.
+    /// </remarks>
     public partial class FixPendingModelChanges : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.CreateTable(
-                name: "event_registration_checkpoint_passages",
-                schema: "event",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    RegistrationId = table.Column<Guid>(type: "uuid", nullable: false),
-                    EventId = table.Column<Guid>(type: "uuid", nullable: false),
-                    DistanceId = table.Column<Guid>(type: "uuid", nullable: false),
-                    CheckpointId = table.Column<Guid>(type: "uuid", nullable: false),
-                    PassedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_event_registration_checkpoint_passages", x => x.Id);
-                });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_event_registration_checkpoint_passages_DistanceId",
-                schema: "event",
-                table: "event_registration_checkpoint_passages",
-                column: "DistanceId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_event_registration_checkpoint_passages_EventId",
-                schema: "event",
-                table: "event_registration_checkpoint_passages",
-                column: "EventId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_event_registration_checkpoint_passages_RegistrationId_Check~",
-                schema: "event",
-                table: "event_registration_checkpoint_passages",
-                columns: new[] { "RegistrationId", "CheckpointId" },
-                unique: true);
+            // no-op — tránh "relation already exists"
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "event_registration_checkpoint_passages",
-                schema: "event");
+            // no-op — rollback bảng thuộc AddRegistrationFinishTiming
         }
     }
 }
