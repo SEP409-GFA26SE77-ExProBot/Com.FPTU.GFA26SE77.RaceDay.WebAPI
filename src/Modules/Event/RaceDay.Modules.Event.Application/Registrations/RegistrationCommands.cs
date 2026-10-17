@@ -49,7 +49,9 @@ public sealed record RegistrationDto(
     string? PricePhaseName,
     DateTime CreatedAtUtc,
     DateTime? CheckedInAtUtc = null,
-    Guid? CheckedInByUserId = null);
+    Guid? CheckedInByUserId = null,
+    DateTime? FinishedAtUtc = null,
+    long? ResultSeconds = null);
 
 public static class RegistrationDtoMapper
 {
@@ -58,6 +60,7 @@ public static class RegistrationDtoMapper
         RegistrationStatus.PendingPayment => "pending_payment",
         RegistrationStatus.PendingApproval => "pending_approval",
         RegistrationStatus.Confirmed => "confirmed",
+        RegistrationStatus.Finished => "finished",
         RegistrationStatus.Rejected => "rejected",
         RegistrationStatus.Cancelled => "cancelled",
         _ => status.ToString().ToLowerInvariant()
@@ -104,7 +107,9 @@ public static class RegistrationDtoMapper
             r.QuotedPhaseName,
             r.CreatedAtUtc,
             r.CheckedInAtUtc,
-            r.CheckedInByUserId);
+            r.CheckedInByUserId,
+            r.FinishedAtUtc,
+            r.ResultSeconds);
     }
 }
 

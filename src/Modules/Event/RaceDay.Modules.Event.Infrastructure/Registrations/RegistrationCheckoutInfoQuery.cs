@@ -36,6 +36,7 @@ public sealed class RegistrationCheckoutInfoQuery(EventDbContext db) : IRegistra
             RegistrationStatus.PendingPayment => "pending_payment",
             RegistrationStatus.PendingApproval => "pending_approval",
             RegistrationStatus.Confirmed => "confirmed",
+            RegistrationStatus.Finished => "finished",
             RegistrationStatus.Rejected => "rejected",
             RegistrationStatus.Cancelled => "cancelled",
             _ => reg.Status.ToString().ToLowerInvariant()

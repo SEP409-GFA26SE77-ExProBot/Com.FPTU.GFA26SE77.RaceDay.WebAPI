@@ -536,6 +536,9 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("FinishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -591,6 +594,9 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<long?>("ResultSeconds")
+                        .HasColumnType("bigint");
+
                     b.Property<string>("ShirtColor")
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
@@ -602,6 +608,9 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<string>("ShirtType")
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
+
+                    b.Property<DateTime?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -626,6 +635,42 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .HasFilter("\"Status\" NOT IN ('Rejected', 'Cancelled')");
 
                     b.ToTable("event_registrations", "event");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Registrations.RegistrationCheckpointPassage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CheckpointId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DistanceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("PassedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RegistrationId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DistanceId");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("RegistrationId", "CheckpointId")
+                        .IsUnique();
+
+                    b.ToTable("event_registration_checkpoint_passages", "event");
                 });
 
             modelBuilder.Entity("RaceDay.Modules.Event.Domain.Staff.EventStaffMember", b =>

@@ -53,6 +53,15 @@ public interface IEventRegistrationRepository
     void Update(EventRegistration registration);
 }
 
+public interface IRegistrationCheckpointPassageRepository
+{
+    Task<RegistrationCheckpointPassage?> GetByRegistrationCheckpointAsync(
+        Guid registrationId,
+        Guid checkpointId,
+        CancellationToken cancellationToken = default);
+    Task AddAsync(RegistrationCheckpointPassage passage, CancellationToken cancellationToken = default);
+}
+
 public interface IEventPackagePurchaseRepository
 {
     Task<EventPackagePurchase?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);

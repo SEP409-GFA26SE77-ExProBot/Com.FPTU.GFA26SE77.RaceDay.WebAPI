@@ -257,7 +257,20 @@ public static class EventModule
         userApi.MapGet("/staff/me", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyStaffAssignmentsQuery(), ct)))
             .WithSummary("Các giải staff/volunteer đang được assign (Active)");
-
+        // Endpoint /start
+        userApi.MapPost("/start", async (StartRequestDto body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new StartRegistrationCommand(body.EventId, body.Bib), ct)))
+            .WithSummary("Staff/organizer ghi nhận xuất phát (Start) cho VĐV")
+            .WithDescription("Body: { eventId, bib }.")
+            .Produces<StartResultDto>(StatusCodes.Status200OK);
+        // Endpoint /finish
+        userApi.MapPost("/finish", async (FinishRequestDto body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new FinishRegistrationCommand(body.EventId, body.Bib, body.DistanceId), ct)))
+            .WithSummary("Staff/organizer ghi nhận finish cho VĐV")
+            .WithDescription("Body: { eventId, bib, distanceId }.")
+            .Produces<FinishResultDto>(StatusCodes.Status200OK);
         userApi.MapPost("/check-in", async (CheckInRequestDto body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
                 new CheckInRegistrationCommand(body.EventId, body.Bib, body.QrPayload), ct)))

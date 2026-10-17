@@ -65,6 +65,7 @@ public sealed class EventFinanceQuery(EventDbContext db) : IEventFinanceQuery
             .Where(x => x.EventId == eventId &&
                         (x.Status == RegistrationStatus.PendingApproval ||
                          x.Status == RegistrationStatus.Confirmed ||
+                         x.Status == RegistrationStatus.Finished ||
                          x.Status == RegistrationStatus.Rejected ||
                          x.Status == RegistrationStatus.Cancelled))
             .Select(x => x.Id)
@@ -89,6 +90,7 @@ public sealed class EventFinanceQuery(EventDbContext db) : IEventFinanceQuery
         RegistrationStatus.PendingPayment => "pending_payment",
         RegistrationStatus.PendingApproval => "pending_approval",
         RegistrationStatus.Confirmed => "confirmed",
+        RegistrationStatus.Finished => "finished",
         RegistrationStatus.Rejected => "rejected",
         RegistrationStatus.Cancelled => "cancelled",
         _ => s.ToString().ToLowerInvariant()

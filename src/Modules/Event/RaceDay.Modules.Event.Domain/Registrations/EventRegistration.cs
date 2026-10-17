@@ -38,9 +38,15 @@ public sealed class EventRegistration : AggregateRoot
     /// <summary>UTC khi staff/organizer quét QR check-in cổng.</summary>
     public DateTime? CheckedInAtUtc { get; private set; }
     public Guid? CheckedInByUserId { get; private set; }
+    public DateTime? FinishedAtUtc { get; private set; }
+    public long? ResultSeconds { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+
+    public DateTime? StartedAtUtc { get; private set; }
+
+   
     private EventRegistration()
     {
     }
@@ -294,6 +300,59 @@ public sealed class EventRegistration : AggregateRoot
         return true;
     }
 
+    /// <summary>
+    /// Ghi nhận finish cho VĐV. Idempotent: quét lại không ghi đè lần đầu.
+    /// </summary>
+    public bool Finish(DateTime finishedAtUtc, long resultSeconds)
+    {
+        if (Status == RegistrationStatus.Finished)
+        {
+            return false;
+        }
+
+        if (Status != RegistrationStatus.Confirmed)
+        {
+            throw new DomainException("Chỉ VĐV đã được duyệt (confirmed) mới finish được.");
+        }
+
+        if (finishedAtUtc.Kind != DateTimeKind.Utc)
+        {
+            finishedAtUtc = DateTime.SpecifyKind(finishedAtUtc, DateTimeKind.Utc);
+        }
+
+        if (resultSeconds < 0)
+        {
+            throw new DomainException("Kết quả finish không hợp lệ.");
+        }
+
+        FinishedAtUtc = finishedAtUtc;
+        ResultSeconds = resultSeconds;
+        Status = RegistrationStatus.Finished;
+        Touch();
+        return true;
+    }
+    public bool Start(DateTime startedAtUtc)
+    {
+        if (Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
+        {
+            throw new DomainException("Chỉ VĐV confirmed mới có thể ghi nhận xuất phát.");
+        }
+
+        // Đã quét start trước đó rồi thì bỏ qua
+        if (StartedAtUtc.HasValue)
+        {
+            return false;
+        }
+
+        if (startedAtUtc.Kind != DateTimeKind.Utc)
+        {
+            startedAtUtc = DateTime.SpecifyKind(startedAtUtc, DateTimeKind.Utc);
+        }
+
+        StartedAtUtc = startedAtUtc;
+        Touch();
+        return true;
+    }
     private void Touch() => UpdatedAtUtc = DateTime.UtcNow;
 }
 

@@ -193,13 +193,27 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
         => await db.Registrations.FirstOrDefaultAsync(
             x => x.EventId == eventId
                  && x.UserId == userId
-                 && x.Status == RegistrationStatus.Confirmed,
+                 && (x.Status == RegistrationStatus.Confirmed || x.Status == RegistrationStatus.Finished),
             cancellationToken);
 
     public async Task AddAsync(EventRegistration registration, CancellationToken cancellationToken = default)
         => await db.Registrations.AddAsync(registration, cancellationToken);
 
     public void Update(EventRegistration registration) => db.Registrations.Update(registration);
+}
+
+public sealed class RegistrationCheckpointPassageRepository(EventDbContext db) : IRegistrationCheckpointPassageRepository
+{
+    public Task<RegistrationCheckpointPassage?> GetByRegistrationCheckpointAsync(
+        Guid registrationId,
+        Guid checkpointId,
+        CancellationToken cancellationToken = default)
+        => db.RegistrationCheckpointPassages.FirstOrDefaultAsync(
+            x => x.RegistrationId == registrationId && x.CheckpointId == checkpointId,
+            cancellationToken);
+
+    public async Task AddAsync(RegistrationCheckpointPassage passage, CancellationToken cancellationToken = default)
+        => await db.RegistrationCheckpointPassages.AddAsync(passage, cancellationToken);
 }
 
 public sealed class EventStaffMemberRepository(EventDbContext db) : IEventStaffMemberRepository

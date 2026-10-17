@@ -29,6 +29,7 @@ public enum RegistrationStatus
     PendingPayment = 0,
     PendingApproval = 1,
     Confirmed = 2,
-    Rejected = 3,
-    Cancelled = 4
+    Finished = 3,
+    Rejected = 4,
+    Cancelled = 5
 }
