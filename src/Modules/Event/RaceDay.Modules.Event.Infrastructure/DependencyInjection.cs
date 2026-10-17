@@ -40,6 +40,12 @@ public static class DependencyInjection
             PackageCheckoutInfoQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventDistanceAccessQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventDistanceAccessQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventOrganizerAccessQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventOrganizerAccessQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IRunnerRaceDayQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.RunnerRaceDayQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventSosOpsAccessQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventSosOpsAccessQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IEventFinanceQuery,
             RaceDay.Modules.Event.Infrastructure.Finance.EventFinanceQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IRegistrationCapacityPort,

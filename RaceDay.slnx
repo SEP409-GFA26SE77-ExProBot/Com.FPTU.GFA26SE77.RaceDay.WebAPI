@@ -49,6 +49,13 @@
     <Project Path="src/Modules/Finance/RaceDay.Modules.Finance.Domain/RaceDay.Modules.Finance.Domain.csproj" />
     <Project Path="src/Modules/Finance/RaceDay.Modules.Finance.Infrastructure/RaceDay.Modules.Finance.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Device/">
+    <Project Path="src/Modules/Device/RaceDay.Modules.Device.Api/RaceDay.Modules.Device.Api.csproj" />
+    <Project Path="src/Modules/Device/RaceDay.Modules.Device.Application/RaceDay.Modules.Device.Application.csproj" />
+    <Project Path="src/Modules/Device/RaceDay.Modules.Device.Contracts/RaceDay.Modules.Device.Contracts.csproj" />
+    <Project Path="src/Modules/Device/RaceDay.Modules.Device.Domain/RaceDay.Modules.Device.Domain.csproj" />
+    <Project Path="src/Modules/Device/RaceDay.Modules.Device.Infrastructure/RaceDay.Modules.Device.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/_Template/">
     <Project Path="src/Modules/_Template/RaceDay.Modules._Template.Api/RaceDay.Modules._Template.Api.csproj" />
     <Project Path="src/Modules/_Template/RaceDay.Modules._Template.Application/RaceDay.Modules._Template.Application.csproj" />

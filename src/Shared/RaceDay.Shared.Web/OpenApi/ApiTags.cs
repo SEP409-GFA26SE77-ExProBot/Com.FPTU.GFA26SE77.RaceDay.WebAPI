@@ -13,7 +13,8 @@ public static class ApiTags
     public const string Payment = "8. Payment";
     public const string Map = "9. Map — Course / route";
     public const string Finance = "10. Finance — Ví / giải ngân / hoàn";
-    public const string Host = "11. Host";
+    public const string Device = "11. Device — Wear link + SOS";
+    public const string Host = "12. Host";
 
     public static IReadOnlyList<(string Name, string Description)> All { get; } =
     [
@@ -27,6 +28,7 @@ public static class ApiTags
         (Payment, "PayOS checkout + webhook/mock. Luồng: create registration → checkout → PAID → pending_approval."),
         (Map, "Course map theo (eventId, distanceId): GET/PUT /api/v1/map/events/.../course; GET /geocode (Nominatim VN). FE organizer setup map + simulator. OSRM route vẫn phía FE."),
         (Finance, "Escrow theo giải, payout Admin duyệt, hoàn tiền theo payment.Amount × % policy (mở ĐK 100% / đóng ĐK 50% / sau gun 0%)."),
+        (Device, "Wear Device Flow (RFC 8628): auth/code + auth/token; runner link/approve; SOS scope sos:create; organizer ack/resolve."),
         (Host, "Health / hạ tầng host.")
     ];
 
@@ -42,7 +44,8 @@ public static class ApiTags
         Payment => "8",
         Map => "9",
         Finance => "10",
-        Host => "11",
+        Device => "11",
+        Host => "12",
         _ => "99"
     };
 }
