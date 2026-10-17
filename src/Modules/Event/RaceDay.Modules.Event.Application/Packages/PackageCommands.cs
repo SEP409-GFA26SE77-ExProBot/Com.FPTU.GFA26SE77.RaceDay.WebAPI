@@ -140,6 +140,38 @@ public sealed class GetPackagePurchaseQueryHandler(
     }
 }
 
+// ── Cancel purchase (pending only) ────────────────────────────────
+
+public sealed record CancelPackagePurchaseCommand(Guid PurchaseId) : IRequest<PackagePurchaseDto>;
+
+public sealed class CancelPackagePurchaseCommandHandler(
+    IEventPackagePurchaseRepository purchases,
+    ICurrentUserAccessor currentUser,
+    IEventUnitOfWork unitOfWork) : IRequestHandler<CancelPackagePurchaseCommand, PackagePurchaseDto>
+{
+    public async Task<PackagePurchaseDto> Handle(CancelPackagePurchaseCommand request, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        var purchase = await purchases.GetByIdAsync(request.PurchaseId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy gói mua.");
+
+        if (purchase.OrganizerUserId != userId && !currentUser.IsAdmin)
+        {
+            throw new DomainException("Không có quyền hủy gói này.");
+        }
+
+        if (purchase.Status == PackagePurchaseStatus.Cancelled)
+        {
+            return PackagePurchaseDtoMapper.ToDto(purchase);
+        }
+
+        purchase.MarkCancelled();
+        purchases.Update(purchase);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return PackagePurchaseDtoMapper.ToDto(purchase);
+    }
+}
+
 // ── Get catalog (async — promo from DB) ───────────────────────────
 
 public sealed record GetPackageCatalogQuery : IRequest<EventPackageCatalog.CatalogResponse>;

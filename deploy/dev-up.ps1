@@ -44,7 +44,7 @@ $EnvFile = Join-Path $RepoRoot ".env"
 $SepParent = Split-Path $RepoRoot -Parent
 
 if (-not $FePath) {
-    $FePath = Join-Path $SepParent "SEP_True_Frontend_User"
+    $FePath = Join-Path $SepParent "SEP_Pull_Dev_FE_User"
 }
 if (-not $FeAdminPath) {
     $FeAdminPath = Join-Path $SepParent "SEP_FronteEnd_Admin\Com.FPTU.GFA26SE77.RaceDay.AdminWeb"

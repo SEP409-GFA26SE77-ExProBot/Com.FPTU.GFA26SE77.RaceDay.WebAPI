@@ -100,7 +100,10 @@ public sealed record RaceEventDto(
     DateTime? RegistrationOpensAtUtc,
     DateTime? RegistrationClosesAtUtc,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    string? BibPrefix = null,
+    int? BibRangeStart = null,
+    int? BibRangeEnd = null);
 
 public sealed record RaceEventListItemDto(
     Guid Id,
@@ -249,7 +252,10 @@ public static class RaceEventDtoMapper
             e.RegistrationOpensAtUtc,
             e.RegistrationClosesAtUtc,
             e.CreatedAtUtc,
-            e.UpdatedAtUtc);
+            e.UpdatedAtUtc,
+            e.BibPrefix,
+            e.BibRangeStart,
+            e.BibRangeEnd);
     }
 
     private static DistanceDto MapDistance(EventDistance d)

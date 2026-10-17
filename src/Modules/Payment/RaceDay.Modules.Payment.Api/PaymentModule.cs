@@ -84,6 +84,12 @@ public static class PaymentModule
                 + "Nếu PayOS status=PAID → đăng ký chuyển pending_approval. "
                 + "Khuyến nghị vẫn cấu hình webhook public (ngrok) cho production.");
 
+        api.MapPost("/{paymentId:guid}/cancel", async (Guid paymentId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new CancelPendingPaymentCommand(paymentId), ct)))
+            .RequireAuthorization(AuthPolicies.PublicUser)
+            .WithSummary("Hủy payment đang pending (chủ đơn)")
+            .WithDescription("FE nút «Hủy thanh toán» — live + mock. Không hủy khi đã paid.");
+
         // Mock PayOS UI — cùng hành vi live: pay → ConfirmPaymentPaid → redirect returnUrl?code=00&status=PAID&orderCode=
         api.MapGet("/mock-checkout/{paymentId:guid}", async (
             Guid paymentId,

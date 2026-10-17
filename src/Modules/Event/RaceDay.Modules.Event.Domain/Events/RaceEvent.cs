@@ -39,6 +39,12 @@ public sealed class RaceEvent : AggregateRoot
     public DateTime? RegistrationOpensAtUtc { get; private set; }
     /// <summary>Lịch đóng ĐK (UTC). Không được sau PackageExpiresAtUtc.</summary>
     public DateTime? RegistrationClosesAtUtc { get; private set; }
+    /// <summary>Tiền tố BIB theo giải (vd. HCM26-). Null/empty = chỉ số thuần.</summary>
+    public string? BibPrefix { get; private set; }
+    /// <summary>Số bắt đầu dải BIB (mặc định cấp phát từ 1001 nếu null).</summary>
+    public int? BibRangeStart { get; private set; }
+    /// <summary>Số kết thúc dải BIB (null = không giới hạn trên).</summary>
+    public int? BibRangeEnd { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public DateTime? SubmittedAtUtc { get; private set; }
@@ -500,6 +506,58 @@ public sealed class RaceEvent : AggregateRoot
         if (rewardsJson is not null)
             RewardsJson = string.IsNullOrWhiteSpace(rewardsJson) ? "{}" : rewardsJson;
 
+        Touch();
+    }
+
+    /// <summary>
+    /// Ghi đè cấu hình BIB theo giải. Cho phép sau khi Admin duyệt (cấp BIB lúc duyệt VĐV).
+    /// </summary>
+    public void SetBibConfig(string? prefix, int? rangeStart, int? rangeEnd)
+    {
+        EnsurePackageNotExpired(DateTime.UtcNow);
+        if (Status is RaceEventStatus.Completed
+            or RaceEventStatus.Cancelled
+            or RaceEventStatus.Suspended)
+        {
+            throw new DomainException("Không thể đổi cấu hình BIB ở trạng thái hiện tại.");
+        }
+
+        string? normalizedPrefix = null;
+        var p = (prefix ?? string.Empty).Trim().ToUpperInvariant();
+        if (p.Length > 0)
+        {
+            if (p.Length > 12)
+            {
+                throw new DomainException("Prefix BIB tối đa 12 ký tự.");
+            }
+
+            if (!System.Text.RegularExpressions.Regex.IsMatch(p, @"^[A-Z0-9]+-?$"))
+            {
+                throw new DomainException(
+                    "Prefix BIB chỉ gồm chữ/số (A–Z, 0–9), có thể kết thúc bằng '-'.");
+            }
+
+            normalizedPrefix = p;
+        }
+
+        if (rangeStart.HasValue && rangeStart.Value < 1)
+        {
+            throw new DomainException("Số BIB bắt đầu phải ≥ 1.");
+        }
+
+        if (rangeEnd.HasValue && rangeEnd.Value < 1)
+        {
+            throw new DomainException("Số BIB kết thúc phải ≥ 1.");
+        }
+
+        if (rangeStart.HasValue && rangeEnd.HasValue && rangeEnd.Value < rangeStart.Value)
+        {
+            throw new DomainException("Dải BIB: số kết thúc phải ≥ số bắt đầu.");
+        }
+
+        BibPrefix = normalizedPrefix;
+        BibRangeStart = rangeStart;
+        BibRangeEnd = rangeEnd;
         Touch();
     }
 

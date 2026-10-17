@@ -222,6 +222,9 @@ public sealed class CreateRaceEventCommandHandler(
         }
 
         await events.AddAsync(race, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        // Publish sau commit → RaceEventCreatedEventHandler → IAM gán Organizer.
         await eventBus.PublishAsync(
             new RaceEventCreatedIntegrationEvent(race.Id, race.Name, race.OrganizerUserId),
             cancellationToken);
@@ -232,7 +235,6 @@ public sealed class CreateRaceEventCommandHandler(
                 cancellationToken);
         }
 
-        await unitOfWork.SaveChangesAsync(cancellationToken);
         return RaceEventDtoMapper.ToDetail(race);
     }
 }

@@ -373,6 +373,36 @@ public sealed class GetPaymentByIdQueryHandler(
     }
 }
 
+/// <summary>Hủy payment pending (live + mock) — owner only.</summary>
+public sealed record CancelPendingPaymentCommand(Guid PaymentId) : IRequest<PaymentDto>;
+
+public sealed class CancelPendingPaymentCommandHandler(
+    IPaymentRepository payments,
+    ICurrentUserAccessor currentUser,
+    IPaymentUnitOfWork unitOfWork) : IRequestHandler<CancelPendingPaymentCommand, PaymentDto>
+{
+    public async Task<PaymentDto> Handle(CancelPendingPaymentCommand request, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        var payment = await payments.GetByIdAsync(request.PaymentId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy payment.");
+
+        if (payment.UserId != userId && !currentUser.IsAdmin)
+        {
+            throw new DomainException("Không có quyền hủy payment này.");
+        }
+
+        if (payment.Status == PaymentStatus.Cancelled)
+        {
+            return PaymentDtoMapper.ToDto(payment);
+        }
+
+        payment.MarkCancelled();
+        payments.Update(payment);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return PaymentDtoMapper.ToDto(payment);
+    }
+}
 
 /// <summary>
 /// Poll PayOS for PAID — dùng khi test local chưa có webhook public (ngrok).
