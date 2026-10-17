@@ -1,0 +1,519 @@
+using FluentValidation;
+using MediatR;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using RaceDay.Modules.Event.Application.Events;
+using RaceDay.Modules.Event.Application.Events.Update;
+using RaceDay.Modules.Event.Application.Packages;
+using RaceDay.Modules.Event.Application.Registrations;
+using RaceDay.Modules.Event.Application.Staff;
+using RaceDay.Modules.Event.Infrastructure;
+using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Web.Auth;
+using RaceDay.Shared.Web.OpenApi;
+
+namespace RaceDay.Modules.Event.Api;
+
+public static class EventModule
+{
+    public static IServiceCollection AddEventModule(this IServiceCollection services, IConfiguration configuration)
+    {
+        // MediatR đăng ký tập trung ở Host (Program.cs)
+        services.AddValidatorsFromAssembly(typeof(CreateRaceEventCommand).Assembly);
+        services.AddEventInfrastructure(configuration);
+        return services;
+    }
+
+    public static IEndpointRouteBuilder MapEventEndpoints(this IEndpointRouteBuilder app)
+    {
+        var publicApi = app.MapGroup("/api/v1/event")
+            .WithTags(ApiTags.EventPublic)
+            .RequireRateLimiting("public");
+
+        publicApi.MapGet("/", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListPublicEventsQuery(), ct)))
+            .WithSummary("Danh sách giải public (đã duyệt / mở ĐK)");
+
+        publicApi.MapGet("/{eventId:guid}", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetRaceEventByIdQuery(eventId), ct)))
+            .WithSummary("Chi tiết giải public");
+
+        publicApi.MapGet("/packages/catalog", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetPackageCatalogQuery(), ct)))
+            .WithSummary("Bảng giá gói sự kiện (public) — promo codes from DB");
+
+        // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
+        // không bắt role ORGANIZER riêng (không cần duyệt tài khoản organizer).
+        var organizerApi = app.MapGroup("/api/v1/event/organizer")
+            .WithTags(ApiTags.EventOrganizer)
+            .RequireAuthorization(AuthPolicies.PublicUser)
+            .RequireRateLimiting("authenticated");
+
+        organizerApi.MapGet("/mine", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListOrganizerEventsQuery(), ct)))
+            .WithSummary("Danh sách giải của tôi (organizer)");
+
+        organizerApi.MapPost("/uploads", async (
+            IFormFile file,
+            string? purpose,
+            IFileStorage storage,
+            CancellationToken ct) =>
+        {
+            if (file.Length == 0)
+            {
+                return Results.BadRequest(new { message = "File trống." });
+            }
+
+            // Separate R2/local prefixes: banner ≠ hồ sơ giấy phép ≠ runner health-certs.
+            var folder = ResolveOrganizerUploadFolder(purpose);
+            if (folder is null)
+            {
+                return Results.BadRequest(new
+                {
+                    message = "purpose không hợp lệ. Dùng: banner | document (mặc định document)."
+                });
+            }
+
+            await using var stream = file.OpenReadStream();
+            var stored = await storage.UploadAsync(
+                stream,
+                file.FileName,
+                string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                folder: folder,
+                ct);
+            return Results.Ok(stored);
+        })
+        .DisableAntiforgery()
+        .WithSummary("Organizer upload → fileUrl (banner hoặc hồ sơ)")
+        .WithDescription(
+            "Query purpose=banner → folder event-banners; "
+            + "purpose=document (default) → event-docs. "
+            + "Runner giấy khám: POST /api/v1/event/uploads → health-certs.");
+
+        organizerApi.MapPost("/", async (CreateRaceEventCommand command, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(command, ct);
+            return Results.Created($"/api/v1/event/{result.Id}", result);
+        })
+        .WithSummary("Tạo giải (JSON) — wizard cấp phép + cự ly")
+        .WithDescription(
+            "Auth: user đã đăng nhập (PublicUser). "
+            + "Body gọn: name, location, date, startTime?, totalRunners, organizer (+ beneficiaryAccount khi gửi duyệt), "
+            + "distances[] (type/name/km/capacity/price; start/finish/elevation optional), "
+            + "documents[] sau /organizer/uploads, rules (checklist an toàn), submitForApproval. "
+            + "coordinates optional (mặc định 0,0). Không nhận weather/permitDocument/ticketPricing/merchandise/rewards/route.")
+        .Accepts<CreateRaceEventCommand>("application/json")
+        .Produces<RaceEventDto>(StatusCodes.Status201Created);
+
+        organizerApi.MapPut("/{eventId:guid}/profile", async (Guid eventId, UpdateDraftProfileRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(new UpdateDraftRaceEventCommand(
+                eventId, body.Name, body.Tagline, body.Location, body.Date,
+                body.StartTime, body.Description, body.BannerImage,
+                body.TotalRunners, body.Organizer, body.Rules,
+                body.TicketPricing, body.Rewards,
+                body.SetRegistrationWindow,
+                body.RegistrationOpensAtUtc, body.RegistrationClosesAtUtc,
+                body.Documents, body.EndDate, body.ClearEndDate,
+                body.SetBibConfig, body.BibPrefix, body.BibRangeStart, body.BibRangeEnd), ct);
+            return Results.Ok(result);
+        })
+        .WithSummary("Cập nhật hồ sơ giải draft/rejected (partial update)")
+        .WithDescription(
+            "Organizer điền dần: name, tagline, location, date, startTime, description, bannerImage, "
+            + "totalRunners, organizer (bank), rules, ticketPricing, rewards, documents. "
+            + "setRegistrationWindow + registrationOpensAtUtc/ClosesAtUtc (closes ≤ packageExpires). "
+            + "setBibConfig + bibPrefix/bibRangeStart/bibRangeEnd (cấp BIB theo giải; được sửa cả sau duyệt).");
+
+        organizerApi.MapPut("/{eventId:guid}/distances", async (
+            Guid eventId, ReplaceDistancesRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(new ReplaceEventDistancesCommand(
+                eventId, body.Distances, body.TicketPricing), ct);
+            return Results.Ok(result);
+        })
+        .WithSummary("Upsert danh sách cự ly (+ ticketPricing tùy chọn)")
+        .WithDescription(
+            "Chỉ draft/rejected. Gửi id để giữ cự ly (map/staff/reg không gãy); "
+            + "không id = thêm mới; bỏ id khỏi list = xóa (chặn nếu đã có ĐK). "
+            + "Tổng capacity ≤ TotalRunnersCap khi có gói.");
+
+        organizerApi.MapPost("/packages/purchases", async (CreatePackagePurchaseRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(new CreatePackagePurchaseCommand(
+                body.OrgName, body.OrgIntro, body.OrgAddress, body.InvoiceInfo,
+                body.DurationMonths, body.ParticipantCap, body.PromoCode), ct);
+            return Results.Created($"/api/v1/event/organizer/packages/purchases/{result.Id}", result);
+        })
+        .WithSummary("Tạo đơn mua gói sự kiện → pending_payment")
+        .WithDescription(
+            "Organizer chọn gói (tháng × sức chứa) + thông tin BTC + promo. "
+            + "Tiếp: POST /api/v1/payment/checkout/package.")
+        .Produces<PackagePurchaseDto>(StatusCodes.Status201Created);
+
+        organizerApi.MapGet("/packages/purchases/{purchaseId:guid}", async (Guid purchaseId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetPackagePurchaseQuery(purchaseId), ct)))
+            .WithSummary("Chi tiết đơn mua gói sự kiện");
+
+        organizerApi.MapPost("/packages/purchases/{purchaseId:guid}/cancel", async (Guid purchaseId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new CancelPackagePurchaseCommand(purchaseId), ct)))
+            .WithSummary("Hủy đơn mua gói đang chờ thanh toán")
+            .WithDescription("Chỉ pending_payment. FE: nút «Hủy thanh toán» trên checkout gói.");
+
+        organizerApi.MapPost("/{eventId:guid}/submit", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new SubmitRaceEventCommand(eventId), ct)))
+            .WithSummary("Gửi duyệt từ Draft / Rejected");
+
+        organizerApi.MapPost("/{eventId:guid}/open-registration", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new OpenRegistrationCommand(eventId), ct)))
+            .WithSummary("Mở đăng ký VĐV — bước riêng sau khi admin đã duyệt (Approved)")
+            .WithDescription(
+                "Duyệt giải không tự mở ĐK. Sau approve, status = approved (public có thể xem). "
+                + "Gọi API này để chuyển → registration-open thì VĐV mới POST .../registrations được.");
+
+        organizerApi.MapPost("/{eventId:guid}/close-registration", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new CloseRegistrationCommand(eventId), ct)))
+            .WithSummary("Đóng đăng ký VĐV (registration-open → closed)");
+
+        organizerApi.MapGet("/{eventId:guid}/registrations", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListEventRegistrationsQuery(eventId), ct)))
+            .WithSummary("Danh sách đăng ký của giải");
+
+        organizerApi.MapPost("/registrations/{registrationId:guid}/approve", async (
+            Guid registrationId, ApproveRegistrationRequest? body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ApproveRegistrationCommand(registrationId, body?.BibNumber), ct)))
+            .WithSummary("Duyệt đăng ký VĐV (bibNumber null → tự cấp số)");
+
+        organizerApi.MapPost("/registrations/{registrationId:guid}/reject", async (
+            Guid registrationId, RejectRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new RejectRegistrationCommand(registrationId, body.Reason), ct)))
+            .WithSummary("Từ chối đăng ký VĐV");
+
+        organizerApi.MapGet("/{eventId:guid}/staff", async (
+            Guid eventId, string? role, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListEventStaffQuery(eventId, role), ct)))
+            .WithSummary("Danh sách nhân sự giải (coordinator|photographer|volunteer)");
+
+        organizerApi.MapPost("/{eventId:guid}/staff/invite", async (
+            Guid eventId, InviteEventStaffRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new InviteEventStaffCommand(eventId, body), ct)))
+            .WithSummary("Mời nhân sự qua email");
+
+        organizerApi.MapPost("/{eventId:guid}/staff", async (
+            Guid eventId, AddEventStaffRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new AddEventStaffCommand(eventId, body), ct)))
+            .WithSummary("Thêm nhân sự trực tiếp (active)");
+
+        organizerApi.MapPatch("/{eventId:guid}/staff/{memberId:guid}/station", async (
+            Guid eventId, Guid memberId, AssignEventStaffStationRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new AssignEventStaffStationCommand(eventId, memberId, body), ct)))
+            .WithSummary("Gán checkpoint / điểm tiếp tế / nhiệm vụ");
+
+        organizerApi.MapDelete("/{eventId:guid}/staff/{memberId:guid}", async (
+            Guid eventId, Guid memberId, IMediator mediator, CancellationToken ct) =>
+        {
+            await mediator.Send(new RevokeEventStaffCommand(eventId, memberId), ct);
+            return Results.NoContent();
+        })
+            .WithSummary("Gỡ nhân sự khỏi giải");
+
+        var userApi = app.MapGroup("/api/v1/event")
+            .WithTags(ApiTags.EventRunner)
+            .RequireAuthorization(AuthPolicies.PublicUser)
+            .RequireRateLimiting("public");
+
+        userApi.MapPost("/uploads", async (
+            IFormFile file,
+            IFileStorage storage,
+            CancellationToken ct) =>
+        {
+            if (file.Length == 0)
+            {
+                return Results.BadRequest(new { message = "File trống." });
+            }
+
+            await using var stream = file.OpenReadStream();
+            var stored = await storage.UploadAsync(
+                stream,
+                file.FileName,
+                string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                folder: "health-certs",
+                ct);
+            return Results.Ok(stored);
+        })
+        .DisableAntiforgery()
+        .WithSummary("VĐV upload giấy khám → fileUrl");
+
+        userApi.MapGet("/registrations/mine", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListMyRegistrationsQuery(), ct)))
+            .WithSummary("Đăng ký của tôi (FE /my-registrations)");
+
+        userApi.MapGet("/registrations/{registrationId:guid}", async (Guid registrationId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetMyRegistrationByIdQuery(registrationId), ct)))
+            .WithSummary("Chi tiết đăng ký / ticket (BIB + qrPayload khi confirmed)");
+
+        userApi.MapPost("/registrations/{registrationId:guid}/cancel", async (Guid registrationId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new CancelUnpaidRegistrationCommand(registrationId), ct)))
+            .WithSummary("VĐV hủy đơn chờ thanh toán");
+
+        userApi.MapPut("/registrations/{registrationId:guid}/resubmit", async (
+            Guid registrationId, ResubmitRegistrationRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(body.ToCommand(registrationId), ct)))
+            .WithSummary("VĐV đã paid bị từ chối → sửa hồ sơ & nộp lại pending_approval (không TT lại)");
+
+        userApi.MapGet("/staff/me", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListMyStaffAssignmentsQuery(), ct)))
+            .WithSummary("Các giải staff/volunteer đang được assign (Active)");
+        // Endpoint /start
+        userApi.MapPost("/start", async (StartRequestDto body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new StartRegistrationCommand(body.EventId, body.Bib), ct)))
+            .WithSummary("Staff/organizer ghi nhận xuất phát (Start) cho VĐV")
+            .WithDescription("Body: { eventId, bib }.")
+            .Produces<StartResultDto>(StatusCodes.Status200OK);
+        // Endpoint /finish
+        userApi.MapPost("/finish", async (FinishRequestDto body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new FinishRegistrationCommand(body.EventId, body.Bib, body.DistanceId), ct)))
+            .WithSummary("Staff/organizer ghi nhận finish cho VĐV")
+            .WithDescription("Body: { eventId, bib, distanceId }.")
+            .Produces<FinishResultDto>(StatusCodes.Status200OK);
+        userApi.MapPost("/check-in", async (CheckInRequestDto body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new CheckInRegistrationCommand(body.EventId, body.Bib, body.QrPayload), ct)))
+            .WithSummary("Staff/organizer check-in VĐV bằng BIB hoặc QR payload")
+            .WithDescription(
+                "Body: { eventId, bib? , qrPayload? }. QR JSON từ vé: { user_id, bib, event_id, distance }. "
+                + "Quyền: Admin, chủ giải, hoặc staff Active đã LinkUser.");
+
+        // Path riêng (không dùng GET /check-in) — tránh 405 khi container chưa rebuild
+        // hoặc proxy chỉ cho phép POST trên /check-in.
+        userApi.MapGet("/check-ins", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListEventCheckInsQuery(eventId), ct)))
+            .WithSummary("Danh sách VĐV confirmed + trạng thái / thời điểm check-in")
+            .WithDescription("Query: eventId. Quyền giống POST /check-in.");
+
+        userApi.MapPost("/{eventId:guid}/registrations", async (
+            Guid eventId, CreateRegistrationRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(body.ToCommand(eventId), ct);
+            return Results.Created($"/api/v1/event/registrations/{result.Id}", result);
+        })
+        .WithSummary("VĐV tạo đăng ký → pending_payment")
+        .WithDescription(
+            "Giải phải registration-open. Tiếp: POST /api/v1/payment/checkout. "
+            + "PayOS PAID → pending_approval. Organizer approve → confirmed + bib + qrPayload.");
+
+        var adminApi = app.MapGroup("/api/v1/event/admin")
+            .WithTags(ApiTags.EventAdmin)
+            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireRateLimiting("admin");
+
+        adminApi.MapGet("/pending", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListPendingEventsQuery(), ct)))
+            .WithSummary("Danh sách giải chờ duyệt");
+
+        adminApi.MapGet("/{eventId:guid}", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetRaceEventByIdQuery(eventId), ct)))
+            .WithSummary("Chi tiết giải (kể cả chưa public)");
+
+        adminApi.MapPost("/{eventId:guid}/approve", async (
+            Guid eventId, ApproveEventRequest? body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ApproveRaceEventCommand(eventId, body?.OpenRegistration ?? false), ct)))
+            .WithSummary("Duyệt giải (mặc định KHÔNG mở ĐK)")
+            .WithDescription(
+                "Chỉ chuyển PendingApproval → Approved. Muốn mở ĐK ngay: body { \"openRegistration\": true }. "
+                + "Không thì organizer/admin gọi POST .../open-registration sau.");
+
+        adminApi.MapPost("/{eventId:guid}/reject", async (
+            Guid eventId, RejectRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new RejectRaceEventCommand(eventId, body.Reason), ct)))
+            .WithSummary("Từ chối giải (cần reason)");
+
+        // ── Admin promo-code management ───────────────────────────────
+
+        var promoApi = app.MapGroup("/api/v1/event/admin/promos")
+            .WithTags(ApiTags.EventAdmin)
+            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireRateLimiting("admin");
+
+        promoApi.MapGet("/", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListPromoCodesQuery(), ct)))
+            .WithSummary("Danh sách tất cả promo codes (Admin)");
+
+        promoApi.MapPost("/", async (CreatePromoCodeRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(
+                new CreatePromoCodeCommand(body.Code, body.PercentOff, body.ExpiresAtUtc, body.MaxRedemptions), ct);
+            return Results.Created($"/api/v1/event/admin/promos/{result.Id}", result);
+        })
+        .WithSummary("Tạo promo code mới (Admin)")
+        .Produces<PromoCodeDto>(StatusCodes.Status201Created);
+
+        promoApi.MapPatch("/{promoId:guid}", async (Guid promoId, UpdatePromoCodeRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(new UpdatePromoCodeCommand(
+                promoId,
+                body.Active,
+                body.ExpiresAtUtc,
+                body.ClearExpiry ?? false,
+                body.MaxRedemptions,
+                body.ClearMaxRedemptions ?? false), ct);
+            return Results.Ok(result);
+        })
+        .WithSummary("Cập nhật promo code (activate/deactivate/expiry/max) (Admin)");
+
+        // ── Admin package duration / capacity catalog ─────────────────
+
+        var durationApi = app.MapGroup("/api/v1/event/admin/package-durations")
+            .WithTags(ApiTags.EventAdmin)
+            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireRateLimiting("admin");
+
+        durationApi.MapGet("/", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListPackageDurationsQuery(), ct)))
+            .WithSummary("Danh sách thời hạn gói (Admin)");
+
+        durationApi.MapPost("/", async (CreatePackageDurationRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(
+                new CreatePackageDurationCommand(body.Name, body.Months, body.Price, body.SortOrder), ct);
+            return Results.Created($"/api/v1/event/admin/package-durations/{result.Id}", result);
+        })
+        .WithSummary("Tạo thời hạn gói (name, months, price)")
+        .Produces<PackageDurationOptionDto>(StatusCodes.Status201Created);
+
+        durationApi.MapPatch("/{id:guid}", async (Guid id, UpdatePackageDurationRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new UpdatePackageDurationCommand(
+                id, body.Name, body.Price, body.SortOrder, body.Active), ct)))
+            .WithSummary("Cập nhật thời hạn gói (Admin)");
+
+        var capacityApi = app.MapGroup("/api/v1/event/admin/package-capacities")
+            .WithTags(ApiTags.EventAdmin)
+            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireRateLimiting("admin");
+
+        capacityApi.MapGet("/", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListPackageCapacitiesQuery(), ct)))
+            .WithSummary("Danh sách quy mô VĐV gói (Admin)");
+
+        capacityApi.MapPost("/", async (CreatePackageCapacityRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(
+                new CreatePackageCapacityCommand(body.Name, body.MaxParticipants, body.AddOnFee, body.SortOrder), ct);
+            return Results.Created($"/api/v1/event/admin/package-capacities/{result.Id}", result);
+        })
+        .WithSummary("Tạo quy mô VĐV gói (name, maxParticipants, addOnFee)")
+        .Produces<PackageCapacityOptionDto>(StatusCodes.Status201Created);
+
+        capacityApi.MapPatch("/{id:guid}", async (Guid id, UpdatePackageCapacityRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new UpdatePackageCapacityCommand(
+                id, body.Name, body.AddOnFee, body.SortOrder, body.Active), ct)))
+            .WithSummary("Cập nhật quy mô VĐV gói (Admin)");
+
+        return app;
+    }
+
+    /// <summary>Maps upload purpose → storage folder prefix (same bucket, different keys).</summary>
+    private static string? ResolveOrganizerUploadFolder(string? purpose) =>
+        (purpose ?? "document").Trim().ToLowerInvariant() switch
+        {
+            "" or "document" or "doc" or "docs" => "event-docs",
+            "banner" or "image" or "cover" => "event-banners",
+            _ => null
+        };
+
+    private sealed record RejectRequest(string Reason);
+    private sealed record ApproveEventRequest(bool OpenRegistration = false);
+    private sealed record ApproveRegistrationRequest(string? BibNumber);
+    private sealed record CreatePromoCodeRequest(string Code, decimal PercentOff, DateTime? ExpiresAtUtc, int? MaxRedemptions);
+    private sealed record UpdatePromoCodeRequest(bool? Active, DateTime? ExpiresAtUtc, bool? ClearExpiry, int? MaxRedemptions, bool? ClearMaxRedemptions);
+    private sealed record CreatePackageDurationRequest(string Name, int Months, decimal Price, int? SortOrder);
+    private sealed record UpdatePackageDurationRequest(string? Name, decimal? Price, int? SortOrder, bool? Active);
+    private sealed record CreatePackageCapacityRequest(string Name, int MaxParticipants, decimal AddOnFee, int? SortOrder);
+    private sealed record UpdatePackageCapacityRequest(string? Name, decimal? AddOnFee, int? SortOrder, bool? Active);
+
+    private sealed record UpdateDraftProfileRequest(
+        string? Name,
+        string? Tagline,
+        string? Location,
+        DateOnly? Date,
+        TimeOnly? StartTime,
+        string? Description,
+        string? BannerImage,
+        int? TotalRunners,
+        OrganizerDto? Organizer,
+        object? Rules,
+        object? TicketPricing = null,
+        object? Rewards = null,
+        bool SetRegistrationWindow = false,
+        DateTime? RegistrationOpensAtUtc = null,
+        DateTime? RegistrationClosesAtUtc = null,
+        IReadOnlyList<EventDocumentDto>? Documents = null,
+        DateOnly? EndDate = null,
+        bool ClearEndDate = false,
+        bool SetBibConfig = false,
+        string? BibPrefix = null,
+        int? BibRangeStart = null,
+        int? BibRangeEnd = null);
+
+    private sealed record ReplaceDistancesRequest(
+        IReadOnlyList<ReplaceDistanceInput> Distances,
+        object? TicketPricing = null);
+
+    private sealed record CreateRegistrationRequest(
+        Guid DistanceId,
+        string FullName,
+        string Email,
+        string Phone,
+        DateOnly? DateOfBirth,
+        string? Gender,
+        string? IdNumber,
+        int? HeightCm,
+        int? WeightKg,
+        string? BloodType,
+        string? EmergencyName,
+        string? EmergencyPhone,
+        string? ShirtType,
+        string? ShirtSize,
+        string? ShirtColor,
+        IReadOnlyList<string>? MedicalCodes,
+        string? HealthCertFileName,
+        string? HealthCertUrl,
+        bool LiabilityAccepted)
+    {
+        public CreateRegistrationCommand ToCommand(Guid eventId) => new(
+            eventId, DistanceId, FullName, Email, Phone, DateOfBirth, Gender, IdNumber,
+            HeightCm, WeightKg, BloodType, EmergencyName, EmergencyPhone,
+            ShirtType, ShirtSize, ShirtColor, MedicalCodes, HealthCertFileName, HealthCertUrl, LiabilityAccepted);
+    }
+
+    private sealed record ResubmitRegistrationRequest(
+        string FullName,
+        string Email,
+        string Phone,
+        DateOnly? DateOfBirth,
+        string? Gender,
+        string? IdNumber,
+        int? HeightCm,
+        int? WeightKg,
+        string? BloodType,
+        string? EmergencyName,
+        string? EmergencyPhone,
+        string? ShirtType,
+        string? ShirtSize,
+        string? ShirtColor,
+        IReadOnlyList<string>? MedicalCodes,
+        string? HealthCertFileName,
+        string? HealthCertUrl,
+        bool LiabilityAccepted)
+    {
+        public ResubmitRejectedRegistrationCommand ToCommand(Guid registrationId) => new(
+            registrationId, FullName, Email, Phone, DateOfBirth, Gender, IdNumber,
+            HeightCm, WeightKg, BloodType, EmergencyName, EmergencyPhone,
+            ShirtType, ShirtSize, ShirtColor, MedicalCodes, HealthCertFileName, HealthCertUrl, LiabilityAccepted);
+    }
+}

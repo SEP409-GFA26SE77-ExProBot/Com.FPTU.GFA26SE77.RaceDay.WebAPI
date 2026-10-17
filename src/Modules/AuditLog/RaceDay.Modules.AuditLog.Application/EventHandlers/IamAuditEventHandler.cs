@@ -19,10 +19,10 @@ public sealed class IamAuditEventHandler(
         {
             UserCreatedIntegrationEvent e => AuditEntry.Create(
                 "UserCreated", "system", "User", e.UserId.ToString(),
-                JsonSerializer.Serialize(new { e.Email, e.FullName })),
+                JsonSerializer.Serialize(new { e.Email, e.Username, e.FullName })),
             UserUpdatedIntegrationEvent e => AuditEntry.Create(
                 "UserUpdated", "system", "User", e.UserId.ToString(),
-                JsonSerializer.Serialize(new { e.Email, e.FullName })),
+                JsonSerializer.Serialize(new { e.Email, e.Username, e.FullName })),
             UserDeletedIntegrationEvent e => AuditEntry.Create(
                 "UserDeleted", "system", "User", e.UserId.ToString(),
                 JsonSerializer.Serialize(new { e.Email })),

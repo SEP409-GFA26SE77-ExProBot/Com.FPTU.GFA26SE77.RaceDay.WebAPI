@@ -16,6 +16,13 @@ public sealed class UserRepository(IamDbContext dbContext)
             .FirstOrDefaultAsync(x => x.Email == normalized, cancellationToken);
     }
 
+    public Task<User?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default)
+    {
+        var normalized = username.Trim().ToLowerInvariant();
+        return Set.Include(x => x.Profile)
+            .FirstOrDefaultAsync(x => x.Username == normalized, cancellationToken);
+    }
+
     public Task<User?> GetByIdWithProfileAsync(Guid id, CancellationToken cancellationToken = default)
         => Set.Include(x => x.Profile).FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
 

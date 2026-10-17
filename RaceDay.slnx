@@ -14,6 +14,13 @@
     <Project Path="src/Modules/AuditLog/RaceDay.Modules.AuditLog.Domain/RaceDay.Modules.AuditLog.Domain.csproj" />
     <Project Path="src/Modules/AuditLog/RaceDay.Modules.AuditLog.Infrastructure/RaceDay.Modules.AuditLog.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Event/">
+    <Project Path="src/Modules/Event/RaceDay.Modules.Event.Api/RaceDay.Modules.Event.Api.csproj" />
+    <Project Path="src/Modules/Event/RaceDay.Modules.Event.Application/RaceDay.Modules.Event.Application.csproj" />
+    <Project Path="src/Modules/Event/RaceDay.Modules.Event.Contracts/RaceDay.Modules.Event.Contracts.csproj" />
+    <Project Path="src/Modules/Event/RaceDay.Modules.Event.Domain/RaceDay.Modules.Event.Domain.csproj" />
+    <Project Path="src/Modules/Event/RaceDay.Modules.Event.Infrastructure/RaceDay.Modules.Event.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/Iam/">
     <Project Path="src/Modules/Iam/RaceDay.Modules.Iam.Api/RaceDay.Modules.Iam.Api.csproj" />
     <Project Path="src/Modules/Iam/RaceDay.Modules.Iam.Application/RaceDay.Modules.Iam.Application.csproj" />
@@ -27,6 +34,20 @@
     <Project Path="src/Modules/Payment/RaceDay.Modules.Payment.Contracts/RaceDay.Modules.Payment.Contracts.csproj" />
     <Project Path="src/Modules/Payment/RaceDay.Modules.Payment.Domain/RaceDay.Modules.Payment.Domain.csproj" />
     <Project Path="src/Modules/Payment/RaceDay.Modules.Payment.Infrastructure/RaceDay.Modules.Payment.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Map/">
+    <Project Path="src/Modules/Map/RaceDay.Modules.Map.Api/RaceDay.Modules.Map.Api.csproj" />
+    <Project Path="src/Modules/Map/RaceDay.Modules.Map.Application/RaceDay.Modules.Map.Application.csproj" />
+    <Project Path="src/Modules/Map/RaceDay.Modules.Map.Contracts/RaceDay.Modules.Map.Contracts.csproj" />
+    <Project Path="src/Modules/Map/RaceDay.Modules.Map.Domain/RaceDay.Modules.Map.Domain.csproj" />
+    <Project Path="src/Modules/Map/RaceDay.Modules.Map.Infrastructure/RaceDay.Modules.Map.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Finance/">
+    <Project Path="src/Modules/Finance/RaceDay.Modules.Finance.Api/RaceDay.Modules.Finance.Api.csproj" />
+    <Project Path="src/Modules/Finance/RaceDay.Modules.Finance.Application/RaceDay.Modules.Finance.Application.csproj" />
+    <Project Path="src/Modules/Finance/RaceDay.Modules.Finance.Contracts/RaceDay.Modules.Finance.Contracts.csproj" />
+    <Project Path="src/Modules/Finance/RaceDay.Modules.Finance.Domain/RaceDay.Modules.Finance.Domain.csproj" />
+    <Project Path="src/Modules/Finance/RaceDay.Modules.Finance.Infrastructure/RaceDay.Modules.Finance.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/src/Modules/_Template/">
     <Project Path="src/Modules/_Template/RaceDay.Modules._Template.Api/RaceDay.Modules._Template.Api.csproj" />
@@ -42,6 +63,7 @@
     <Project Path="src/Shared/RaceDay.Shared.Web/RaceDay.Shared.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/RaceDay.Modules.Event.UnitTests/RaceDay.Modules.Event.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Iam.UnitTests/RaceDay.Modules.Iam.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Shared.UnitTests/RaceDay.Shared.UnitTests.csproj" />
   </Folder>

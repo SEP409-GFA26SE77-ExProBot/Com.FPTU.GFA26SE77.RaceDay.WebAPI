@@ -24,12 +24,13 @@ public class CreateUserCommandHandlerTests
         var bus = Substitute.For<IEventBus>();
 
         users.GetByEmailAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((User?)null);
+        users.GetByUsernameAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((User?)null);
         roles.GetByIdAsync(RoleId, Arg.Any<CancellationToken>()).Returns(Role.Restore(RoleId, "User", null));
         hasher.Hash("Password1!").Returns("hashed");
 
         var handler = new CreateUserCommandHandler(users, roles, hasher, uow, bus);
         var id = await handler.Handle(
-            new CreateUserCommand("new@raceday.vn", "Password1!", "New User", RoleId, null, null, GenderDto.Male, UserStatusDto.Active),
+            new CreateUserCommand("new@raceday.vn", "newuser", "Password1!", "New User", RoleId, null, null, GenderDto.Male, UserStatusDto.Active),
             CancellationToken.None);
 
         Assert.NotEqual(Guid.Empty, id);
@@ -43,13 +44,13 @@ public class CreateUserCommandHandlerTests
     {
         var users = Substitute.For<IUserRepository>();
         var roles = Substitute.For<IRoleRepository>();
-        var existing = User.Create("dup@raceday.vn", "h", "Dup", RoleId);
+        var existing = User.Create("dup@raceday.vn", "dupuser", "h", "Dup", RoleId);
         users.GetByEmailAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(existing);
 
         var handler = new CreateUserCommandHandler(users, roles, Substitute.For<IPasswordHasher>(), Substitute.For<IUnitOfWork>(), Substitute.For<IEventBus>());
 
         var ex = await Assert.ThrowsAsync<DomainException>(() => handler.Handle(
-            new CreateUserCommand("dup@raceday.vn", "Password1!", "Dup", RoleId, null, null, GenderDto.Unknown, UserStatusDto.Active),
+            new CreateUserCommand("dup@raceday.vn", "other", "Password1!", "Dup", RoleId, null, null, GenderDto.Unknown, UserStatusDto.Active),
             CancellationToken.None));
 
         Assert.Contains("Email đã được đăng ký", ex.Message);
@@ -61,12 +62,13 @@ public class CreateUserCommandHandlerTests
         var users = Substitute.For<IUserRepository>();
         var roles = Substitute.For<IRoleRepository>();
         users.GetByEmailAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((User?)null);
+        users.GetByUsernameAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((User?)null);
         roles.GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns((Role?)null);
 
         var handler = new CreateUserCommandHandler(users, roles, Substitute.For<IPasswordHasher>(), Substitute.For<IUnitOfWork>(), Substitute.For<IEventBus>());
 
         var ex = await Assert.ThrowsAsync<DomainException>(() => handler.Handle(
-            new CreateUserCommand("x@raceday.vn", "Password1!", "X", RoleId, null, null, GenderDto.Unknown, UserStatusDto.Active),
+            new CreateUserCommand("x@raceday.vn", "xuser", "Password1!", "X", RoleId, null, null, GenderDto.Unknown, UserStatusDto.Active),
             CancellationToken.None));
 
         Assert.Contains("Role không tồn tại", ex.Message);

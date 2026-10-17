@@ -30,6 +30,7 @@ public sealed class ForgotPasswordCommandHandler(
 
         await otpService.IssueAndSendAsync(
             user.Email,
+            user.Username,
             user.Id,
             OtpPurpose.PasswordReset,
             cancellationToken);

@@ -8,6 +8,8 @@ public sealed class Profile : Entity
     public string? Description { get; private set; }
     public string? ContactEmail { get; private set; }
     public string? ContactPhone { get; private set; }
+    /// <summary>URL ảnh đại diện (R2 / local uploads).</summary>
+    public string? AvatarUrl { get; private set; }
     public VerificationStatus VerificationStatus { get; private set; } = VerificationStatus.None;
     public DateTime? VerifiedAt { get; private set; }
     public string? VerifiedBy { get; private set; }
@@ -33,6 +35,11 @@ public sealed class Profile : Entity
         Description = description;
         ContactEmail = contactEmail;
         ContactPhone = contactPhone;
+    }
+
+    public void SetAvatarUrl(string? avatarUrl)
+    {
+        AvatarUrl = string.IsNullOrWhiteSpace(avatarUrl) ? null : avatarUrl.Trim();
     }
 
     public void MarkVerified(string verifiedBy)

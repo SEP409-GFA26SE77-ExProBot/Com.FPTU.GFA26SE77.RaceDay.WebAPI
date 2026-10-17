@@ -11,7 +11,7 @@ public class CommandValidatorTests
     public void CreateUser_InvalidEmail_Fails()
     {
         var result = new CreateUserCommandValidator().TestValidate(
-            new CreateUserCommand("bad", "Password1!", "Name", Guid.NewGuid(), null, null, GenderDto.Male, UserStatusDto.Active));
+            new CreateUserCommand("bad", "uname", "Password1!", "Name", Guid.NewGuid(), null, null, GenderDto.Male, UserStatusDto.Active));
         result.ShouldHaveValidationErrorFor(x => x.Email);
     }
 
@@ -19,8 +19,16 @@ public class CommandValidatorTests
     public void CreateUser_ShortPassword_Fails()
     {
         var result = new CreateUserCommandValidator().TestValidate(
-            new CreateUserCommand("a@b.com", "short", "Name", Guid.NewGuid(), null, null, GenderDto.Male, UserStatusDto.Active));
+            new CreateUserCommand("a@b.com", "uname", "short", "Name", Guid.NewGuid(), null, null, GenderDto.Male, UserStatusDto.Active));
         result.ShouldHaveValidationErrorFor(x => x.Password);
+    }
+
+    [Fact]
+    public void CreateUser_InvalidUsername_Fails()
+    {
+        var result = new CreateUserCommandValidator().TestValidate(
+            new CreateUserCommand("a@b.com", "bad name!", "Password1!", "Name", Guid.NewGuid(), null, null, GenderDto.Male, UserStatusDto.Active));
+        result.ShouldHaveValidationErrorFor(x => x.Username);
     }
 
     [Fact]

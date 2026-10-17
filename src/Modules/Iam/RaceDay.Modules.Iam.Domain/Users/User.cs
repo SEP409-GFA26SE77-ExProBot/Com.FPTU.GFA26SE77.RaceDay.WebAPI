@@ -6,7 +6,11 @@ namespace RaceDay.Modules.Iam.Domain.Users;
 
 public sealed class User : AggregateRoot
 {
+    public const int UsernameMinLength = 3;
+    public const int UsernameMaxLength = 50;
+
     public string Email { get; private set; } = string.Empty;
+    public string Username { get; private set; } = string.Empty;
     public Guid RoleId { get; private set; }
     public string PasswordHash { get; private set; } = string.Empty;
     public string FullName { get; private set; } = string.Empty;
@@ -15,6 +19,8 @@ public sealed class User : AggregateRoot
     public Gender Gender { get; private set; } = Gender.Unknown;
     public UserStatus Status { get; private set; } = UserStatus.Pending;
     public bool EmailVerified { get; private set; }
+    /// <summary>Tài khoản cấp bởi BTC/admin — nhắc đổi mật khẩu sau lần đăng nhập đầu.</summary>
+    public bool MustChangePassword { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
     public Profile? Profile { get; private set; }
@@ -25,6 +31,7 @@ public sealed class User : AggregateRoot
 
     public static User Create(
         string email,
+        string username,
         string passwordHash,
         string fullName,
         Guid roleId,
@@ -37,6 +44,8 @@ public sealed class User : AggregateRoot
         {
             throw new DomainException("Email không được để trống.");
         }
+
+        var normalizedUsername = NormalizeUsername(username);
 
         if (string.IsNullOrWhiteSpace(fullName))
         {
@@ -52,6 +61,7 @@ public sealed class User : AggregateRoot
         var user = new User
         {
             Email = email.Trim().ToLowerInvariant(),
+            Username = normalizedUsername,
             PasswordHash = passwordHash,
             FullName = fullName.Trim(),
             RoleId = roleId,
@@ -65,8 +75,59 @@ public sealed class User : AggregateRoot
         };
 
         user.Profile = Profile.CreateForUser(user.Id, description: $"Hồ sơ của {user.FullName}", contactEmail: user.Email, contactPhone: phone);
-        user.Raise(new UserCreatedDomainEvent(user.Id, user.Email, user.FullName));
+        user.Raise(new UserCreatedDomainEvent(user.Id, user.Email, user.Username, user.FullName));
         return user;
+    }
+
+    public void ChangeUsername(string username)
+    {
+        Username = NormalizeUsername(username);
+        UpdatedAt = DateTime.UtcNow;
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
+    }
+
+    /// <summary>
+    /// Re-register before email OTP verify: replace username/password/profile; keep same user id + email.
+    /// </summary>
+    public void ReplaceUnverifiedRegistration(
+        string username,
+        string passwordHash,
+        string fullName,
+        string? phone,
+        DateOnly? dateOfBirth,
+        Gender gender)
+    {
+        if (EmailVerified)
+        {
+            throw new DomainException("Email đã được đăng ký.");
+        }
+
+        if (Status == UserStatus.Locked)
+        {
+            throw new DomainException("Tài khoản đã bị khóa.");
+        }
+
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            throw new DomainException("Họ tên không được để trống.");
+        }
+
+        if (string.IsNullOrWhiteSpace(passwordHash))
+        {
+            throw new DomainException("Password hash không hợp lệ.");
+        }
+
+        Username = NormalizeUsername(username);
+        PasswordHash = passwordHash;
+        FullName = fullName.Trim();
+        Phone = phone;
+        DateOfBirth = dateOfBirth;
+        Gender = gender;
+        Status = UserStatus.Pending;
+        EmailVerified = false;
+        UpdatedAt = DateTime.UtcNow;
+        Profile?.UpdateContact($"Hồ sơ của {FullName}", Email, phone);
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
     }
 
     public void UpdateProfile(
@@ -89,7 +150,19 @@ public sealed class User : AggregateRoot
         Gender = gender;
         UpdatedAt = DateTime.UtcNow;
         Profile?.UpdateContact(profileDescription, contactEmail, contactPhone);
-        Raise(new UserUpdatedDomainEvent(Id, Email, FullName));
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
+    }
+
+    public void SetAvatarUrl(string? avatarUrl)
+    {
+        if (Profile is null)
+        {
+            throw new DomainException("Hồ sơ chưa được khởi tạo.");
+        }
+
+        Profile.SetAvatarUrl(avatarUrl);
+        UpdatedAt = DateTime.UtcNow;
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
     }
 
     public void ChangeRole(Guid roleId)
@@ -101,14 +174,14 @@ public sealed class User : AggregateRoot
 
         RoleId = roleId;
         UpdatedAt = DateTime.UtcNow;
-        Raise(new UserUpdatedDomainEvent(Id, Email, FullName));
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
     }
 
     public void SetStatus(UserStatus status)
     {
         Status = status;
         UpdatedAt = DateTime.UtcNow;
-        Raise(new UserUpdatedDomainEvent(Id, Email, FullName));
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
     }
 
     public void Lock()
@@ -143,8 +216,26 @@ public sealed class User : AggregateRoot
         }
 
         PasswordHash = passwordHash;
+        MustChangePassword = false;
         UpdatedAt = DateTime.UtcNow;
         Raise(new PasswordChangedDomainEvent(Id, Email));
+    }
+
+    public void RequirePasswordChange()
+    {
+        MustChangePassword = true;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void ClearMustChangePassword()
+    {
+        if (!MustChangePassword)
+        {
+            return;
+        }
+
+        MustChangePassword = false;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     /// <summary>Marks email verified and activates account when it was Pending.</summary>
@@ -179,10 +270,36 @@ public sealed class User : AggregateRoot
             throw new DomainException("Tài khoản chưa xác thực email. Vui lòng nhập OTP.");
         }
     }
+
+    public static string NormalizeUsername(string username)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            throw new DomainException("Tên đăng nhập không được để trống.");
+        }
+
+        var normalized = username.Trim().ToLowerInvariant();
+        if (normalized.Length < UsernameMinLength || normalized.Length > UsernameMaxLength)
+        {
+            throw new DomainException($"Tên đăng nhập phải từ {UsernameMinLength}–{UsernameMaxLength} ký tự.");
+        }
+
+        foreach (var ch in normalized)
+        {
+            if (char.IsAsciiLetterOrDigit(ch) || ch is '_' or '.' or '-')
+            {
+                continue;
+            }
+
+            throw new DomainException("Tên đăng nhập chỉ gồm chữ, số, dấu chấm, gạch dưới hoặc gạch ngang.");
+        }
+
+        return normalized;
+    }
 }
 
-public sealed record UserCreatedDomainEvent(Guid UserId, string Email, string FullName) : DomainEvent;
-public sealed record UserUpdatedDomainEvent(Guid UserId, string Email, string FullName) : DomainEvent;
+public sealed record UserCreatedDomainEvent(Guid UserId, string Email, string Username, string FullName) : DomainEvent;
+public sealed record UserUpdatedDomainEvent(Guid UserId, string Email, string Username, string FullName) : DomainEvent;
 public sealed record UserLockedDomainEvent(Guid UserId, string Email) : DomainEvent;
 public sealed record UserUnlockedDomainEvent(Guid UserId, string Email) : DomainEvent;
 public sealed record UserEmailVerifiedDomainEvent(Guid UserId, string Email) : DomainEvent;

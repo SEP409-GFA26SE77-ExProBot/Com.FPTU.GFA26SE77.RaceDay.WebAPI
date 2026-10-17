@@ -1,20 +1,59 @@
+using MediatR;
 using Microsoft.OpenApi;
 using RaceDay.Modules.AuditLog.Api;
+using RaceDay.Modules.AuditLog.Application.EventHandlers;
+using RaceDay.Modules.Event.Api;
+using RaceDay.Modules.Finance.Api;
+using RaceDay.Modules.Finance.Application.Wallet;
 using RaceDay.Modules.Iam.Api;
+using RaceDay.Modules.Iam.Application.Auth.Register;
+using RaceDay.Modules.Event.Application.Events;
+using RaceDay.Modules.Map.Api;
+using RaceDay.Modules.Map.Application.Courses;
 using RaceDay.Modules.Payment.Api;
+using RaceDay.Modules.Payment.Application;
 using RaceDay.Shared.Infrastructure;
 using RaceDay.Shared.Web;
+using RaceDay.Shared.Web.OpenApi;
+using Swashbuckle.AspNetCore.SwaggerUI;
 
 LoadDotEnv();
 
 var builder = WebApplication.CreateBuilder(args);
+var allowedCorsOrigins = GetAllowedCorsOrigins(builder.Configuration["ALLOWS_CORS"]);
+
+// Một lần AddMediatR cho mọi module — tránh miss INotificationHandler (finance ledger sau PayOS).
+builder.Services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(RegisterUserCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(CreateRaceEventCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(IamAuditEventHandler).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(CreateCheckoutCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(GetCourseQuery).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(GetOrganizerWalletQuery).Assembly);
+});
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy
+            .WithOrigins(allowedCorsOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
 
 builder.Services.AddSharedInfrastructure(builder.Configuration);
 builder.Services.AddSharedWeb(builder.Configuration);
 
 builder.Services.AddIamModule(builder.Configuration);
+builder.Services.AddEventModule(builder.Configuration);
 builder.Services.AddAuditLogModule(builder.Configuration);
 builder.Services.AddPaymentModule(builder.Configuration);
+builder.Services.AddMapModule(builder.Configuration);
+builder.Services.AddFinanceModule(builder.Configuration);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -23,15 +62,53 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "RaceDay API",
         Version = "v1",
-        Description = "RaceDay modular monolith — endpoints grouped by module tags"
+        Description =
+            """
+            API nhóm theo **luồng nghiệp vụ** (xem Tags bên dưới). Không gọi lung tung — làm theo happy path.
+
+            ### A. Auth (bắt buộc trước)
+            1. `POST /api/v1/iam/auth/register` → OTP email
+            2. `POST /api/v1/iam/auth/verify-email`
+            3. `POST /api/v1/iam/auth/login` (username + password) → copy `accessToken` → nút **Authorize**
+            - Seed admin (dev): `admin@raceday.vn` / `MatKhau@123`
+
+            ### B. Organizer tạo giải (FE wizard 4 bước)
+            1. Upload hồ sơ: `POST /api/v1/event/organizer/uploads`
+            2. Tạo giải: `POST /api/v1/event/organizer/` (`submitForApproval=true`)
+            3. (Tuỳ chọn) `.../submit`, `.../open-registration`
+
+            ### C. Admin duyệt giải (chưa mở ĐK)
+            1. `GET /api/v1/event/admin/pending`
+            2. `POST .../approve` → status **approved** (mặc định **không** mở ĐK)
+            3. `POST /api/v1/event/organizer/{id}/open-registration` → **registration-open**
+
+            ### D. Runner đăng ký + PayOS (registration-open)
+            1. `POST /api/v1/event/{eventId}/registrations` → `pending_payment`
+            2. `POST /api/v1/payment/checkout` → mở `checkoutUrl` (mock hoặc PayOS)
+            3. PAID → `pending_approval` → organizer approve → `confirmed` + bib + `qrPayload`
+            4. `GET /api/v1/event/registrations/mine`
+
+            ### E. Organizer map / course (sau khi có event + distances)
+            1. `GET/PUT /api/v1/map/events/{eventId}/distances/{distanceId}/course`
+            2. FE: tắt mock `NEXT_PUBLIC_RACE_MAP_USE_MOCK=false` — OSRM/simulator phía FE; geocode qua `GET /api/v1/map/geocode`
+
+            ### F. Ví / giải ngân / hoàn tiền
+            1. Paid → escrow ledger theo giải (`/api/v1/finance/organizer/...`)
+            2. Organizer xin rút → Admin `.../finance/admin/payouts/{id}/approve`
+            3. Runner hoàn: `POST /api/v1/finance/runner/refunds` (số tiền = payment.Amount × % policy)
+            4. Organizer reject đăng ký đã trả → hoàn 100% tự động
+
+            Docs: `docs/RaceDay_API_Guide.docx` ← sync từ `docs/RaceDay_API_Flows.md` + `docs/api-samples/`
+            """
     });
 
-    // Stable Swagger UI order (matches Map*Endpoints composition).
+    options.DocumentFilter<FlowTagsDocumentFilter>();
+
     options.TagActionsBy(api =>
         api.ActionDescriptor.EndpointMetadata
             .OfType<TagsAttribute>()
             .SelectMany(t => t.Tags)
-            .DefaultIfEmpty("Host")
+            .DefaultIfEmpty(ApiTags.Host)
             .ToList());
     options.DocInclusionPredicate((_, _) => true);
     options.OrderActionsBy(api =>
@@ -41,15 +118,8 @@ builder.Services.AddSwaggerGen(options =>
                 .OfType<TagsAttribute>()
                 .SelectMany(t => t.Tags)
                 .FirstOrDefault()
-            ?? "Host";
-        var order = tag switch
-        {
-            "IAM" => "1",
-            "AuditLog" => "2",
-            "Payment" => "3",
-            _ => "9"
-        };
-        return $"{order}:{tag}:{api.HttpMethod}:{api.RelativePath}";
+            ?? ApiTags.Host;
+        return $"{ApiTags.SortKey(tag)}:{tag}:{api.HttpMethod}:{api.RelativePath}";
     });
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -59,7 +129,7 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "JWT từ POST /api/v1/iam/auth/login — dán accessToken vào đây."
+        Description = "JWT từ POST /api/v1/iam/auth/login — dán accessToken vào đây (chỉ token, không cần chữ Bearer)."
     });
 
     options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
@@ -77,6 +147,10 @@ if (app.Environment.IsDevelopment())
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "RaceDay API v1");
         options.RoutePrefix = "swagger";
+        options.DocumentTitle = "RaceDay API — theo luồng nghiệp vụ";
+        options.DocExpansion(DocExpansion.List);
+        options.DefaultModelsExpandDepth(-1);
+        options.DisplayRequestDuration();
     });
 }
 
@@ -86,15 +160,21 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseSharedWeb();
+app.UseCors("AllowFrontend");
+app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "RaceDay.Api" }))
-    .WithTags("Host");
+    .WithTags(ApiTags.Host)
+    .WithSummary("Health check host");
 
 app.MapIamEndpoints();
+app.MapEventEndpoints();
 app.MapAuditLogEndpoints();
 app.MapPaymentEndpoints();
+app.MapMapEndpoints();
+app.MapFinanceEndpoints();
 
 app.Run();
 
@@ -112,6 +192,14 @@ static void LoadDotEnv()
 
         dir = dir.Parent;
     }
+}
+
+static string[] GetAllowedCorsOrigins(string? configuredOrigins)
+{
+    const string defaultOrigins = "http://localhost:3000,http://localhost:3001,http://localhost:51356";
+
+    return (string.IsNullOrWhiteSpace(configuredOrigins) ? defaultOrigins : configuredOrigins)
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }
 
 public partial class Program;

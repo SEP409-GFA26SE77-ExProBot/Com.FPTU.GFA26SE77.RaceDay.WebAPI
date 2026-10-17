@@ -50,6 +50,8 @@ public sealed class IamDbContext(DbContextOptions<IamDbContext> options) : DbCon
             entity.Property(x => x.Id).HasColumnName("user_id");
             entity.Property(x => x.Email).HasColumnName("email").HasMaxLength(100).IsRequired();
             entity.HasIndex(x => x.Email).IsUnique();
+            entity.Property(x => x.Username).HasColumnName("username").HasMaxLength(50).IsRequired();
+            entity.HasIndex(x => x.Username).IsUnique();
             entity.Property(x => x.RoleId).HasColumnName("role_id").IsRequired();
             entity.Property(x => x.PasswordHash).HasColumnName("password_hash").HasMaxLength(255).IsRequired();
             entity.Property(x => x.FullName).HasColumnName("full_name").HasMaxLength(100).IsRequired();
@@ -58,6 +60,7 @@ public sealed class IamDbContext(DbContextOptions<IamDbContext> options) : DbCon
             entity.Property(x => x.Gender).HasColumnName("gender").HasConversion<short>();
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<short>();
             entity.Property(x => x.EmailVerified).HasColumnName("email_verified");
+            entity.Property(x => x.MustChangePassword).HasColumnName("must_change_password");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at");
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             entity.Ignore(x => x.DomainEvents);
@@ -81,6 +84,7 @@ public sealed class IamDbContext(DbContextOptions<IamDbContext> options) : DbCon
             entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(255);
             entity.Property(x => x.ContactEmail).HasColumnName("contact_email").HasMaxLength(100);
             entity.Property(x => x.ContactPhone).HasColumnName("contact_phone").HasMaxLength(100);
+            entity.Property(x => x.AvatarUrl).HasColumnName("avatar_url").HasMaxLength(500);
             entity.Property(x => x.VerificationStatus).HasColumnName("verification_status").HasConversion<short>();
             entity.Property(x => x.VerifiedAt).HasColumnName("verified_at");
             entity.Property(x => x.VerifiedBy).HasColumnName("verified_by").HasMaxLength(100);
