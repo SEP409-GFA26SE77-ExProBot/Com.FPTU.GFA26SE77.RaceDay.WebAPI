@@ -10,6 +10,8 @@ using RaceDay.Modules.Iam.Application.Auth.Register;
 using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Map.Api;
 using RaceDay.Modules.Map.Application.Courses;
+using RaceDay.Modules.Device.Api;
+using RaceDay.Modules.Device.Application.Auth;
 using RaceDay.Modules.Payment.Api;
 using RaceDay.Modules.Payment.Application;
 using RaceDay.Shared.Infrastructure;
@@ -31,6 +33,7 @@ builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(CreateCheckoutCommand).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(GetCourseQuery).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(GetOrganizerWalletQuery).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(RequestDeviceCodeCommand).Assembly);
 });
 
 builder.Services.AddCors(options =>
@@ -54,6 +57,7 @@ builder.Services.AddAuditLogModule(builder.Configuration);
 builder.Services.AddPaymentModule(builder.Configuration);
 builder.Services.AddMapModule(builder.Configuration);
 builder.Services.AddFinanceModule(builder.Configuration);
+builder.Services.AddDeviceModule(builder.Configuration);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -97,6 +101,13 @@ builder.Services.AddSwaggerGen(options =>
             2. Organizer xin rút → Admin `.../finance/admin/payouts/{id}/approve`
             3. Runner hoàn: `POST /api/v1/finance/runner/refunds` (số tiền = payment.Amount × % policy)
             4. Organizer reject đăng ký đã trả → hoàn 100% tự động
+
+            ### G. Device (Wear Device Flow + SOS)
+            1. Watch: `POST /api/v1/device/auth/code` → QR
+            2. Runner phone: `GET/POST /api/v1/device/link/{userCode}`
+            3. Watch poll: `POST /api/v1/device/auth/token` → JWT scope `sos:create`
+            4. Watch: `POST /api/v1/device/sos` (+ locations)
+            Docs: `docs/Device_Wear_SOS_API_Flows.md`
 
             Docs: `docs/RaceDay_API_Guide.docx` ← sync từ `docs/RaceDay_API_Flows.md` + `docs/api-samples/`
             """
@@ -175,6 +186,7 @@ app.MapAuditLogEndpoints();
 app.MapPaymentEndpoints();
 app.MapMapEndpoints();
 app.MapFinanceEndpoints();
+app.MapDeviceEndpoints();
 
 app.Run();
 
