@@ -67,16 +67,85 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
         string? ticketPricingJson,
         CancellationToken cancellationToken = default)
     {
-        // Bỏ hết state cũ (Deleted/Modified từ Include) — đây là nguồn concurrency.
+        // Clear tracker — tránh concurrency owned Start/Finish từ Include trước đó.
         db.ChangeTracker.Clear();
 
-        await db.Checkpoints
-            .Where(c => db.Distances.Any(d => d.Id == c.DistanceId && d.EventId == eventId))
-            .ExecuteDeleteAsync(cancellationToken);
-
-        await db.Distances
+        var existing = await db.Distances
             .Where(d => d.EventId == eventId)
-            .ExecuteDeleteAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
+        var existingById = existing.ToDictionary(d => d.Id);
+        var incomingIds = distances.Select(d => d.Id).ToHashSet();
+
+        var removeIds = existing
+            .Where(d => !incomingIds.Contains(d.Id))
+            .Select(d => d.Id)
+            .ToList();
+
+        if (removeIds.Count > 0)
+        {
+            var blocked = await db.Registrations
+                .Where(r => removeIds.Contains(r.DistanceId))
+                .Select(r => r.DistanceId)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            if (blocked.Count > 0)
+            {
+                throw new DomainException(
+                    "Không thể xóa cự ly đã có vận động viên đăng ký. Hãy giữ cự ly hoặc chuyển ĐK trước.");
+            }
+
+            await db.Checkpoints
+                .Where(c => removeIds.Contains(c.DistanceId))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await db.Distances
+                .Where(d => removeIds.Contains(d.Id))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            // Map courses + staff station gắn distanceId cũ (cùng Postgres, không FK).
+            foreach (var distId in removeIds)
+            {
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"""DELETE FROM map.race_courses WHERE "DistanceId" = {distId}""",
+                    cancellationToken);
+
+                var prefix = $"map:{distId}:%";
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"""
+                    UPDATE event.event_staff_members
+                    SET "StationId" = NULL, "StationLabel" = NULL
+                    WHERE "EventId" = {eventId}
+                      AND "StationId" LIKE {prefix}
+                    """,
+                    cancellationToken);
+            }
+        }
+
+        foreach (var incoming in distances)
+        {
+            if (existingById.TryGetValue(incoming.Id, out var current))
+            {
+                current.UpdateDetails(
+                    incoming.Type,
+                    incoming.Name,
+                    incoming.DistanceKm,
+                    incoming.ElevationGainM,
+                    incoming.MaxElevationM,
+                    incoming.MinElevationM,
+                    incoming.Capacity,
+                    incoming.Price,
+                    incoming.Currency,
+                    incoming.Color,
+                    incoming.StartLocation,
+                    incoming.FinishLocation,
+                    incoming.StartAt,
+                    incoming.EndAt);
+            }
+            else
+            {
+                db.Distances.Add(incoming);
+            }
+        }
 
         if (ticketPricingJson is not null)
         {
@@ -93,8 +162,15 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
                 throw new DomainException("Không tìm thấy giải khi cập nhật giá vé.");
             }
         }
+        else
+        {
+            await db.RaceEvents
+                .Where(e => e.Id == eventId)
+                .ExecuteUpdateAsync(
+                    s => s.SetProperty(e => e.UpdatedAtUtc, DateTime.UtcNow),
+                    cancellationToken);
+        }
 
-        db.Distances.AddRange(distances);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -153,21 +229,72 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
 
     public async Task<string> NextBibNumberAsync(Guid eventId, CancellationToken cancellationToken = default)
     {
+        var cfg = await db.RaceEvents.AsNoTracking()
+            .Where(x => x.Id == eventId)
+            .Select(x => new { x.BibPrefix, x.BibRangeStart, x.BibRangeEnd })
+            .FirstOrDefaultAsync(cancellationToken)
+            ?? throw new RaceDay.Shared.Domain.Exceptions.DomainException("Không tìm thấy giải.");
+
+        var prefix = (cfg.BibPrefix ?? string.Empty).Trim();
+        var rangeStart = cfg.BibRangeStart is > 0 ? cfg.BibRangeStart.Value : 1001;
+        var rangeEnd = cfg.BibRangeEnd;
+
         var bibs = await db.Registrations
             .Where(x => x.EventId == eventId && x.BibNumber != null)
             .Select(x => x.BibNumber!)
             .ToListAsync(cancellationToken);
 
-        var max = 1000;
+        var max = rangeStart - 1;
         foreach (var b in bibs)
         {
-            if (int.TryParse(b, out var n) && n > max)
+            if (!TryParseBibSequence(b, prefix, out var n))
+            {
+                continue;
+            }
+
+            if (n > max)
             {
                 max = n;
             }
         }
 
-        return (max + 1).ToString();
+        var next = max + 1;
+        if (next < rangeStart)
+        {
+            next = rangeStart;
+        }
+
+        if (rangeEnd is > 0 && next > rangeEnd.Value)
+        {
+            throw new RaceDay.Shared.Domain.Exceptions.DomainException(
+                string.IsNullOrEmpty(prefix)
+                    ? $"Đã hết số BIB trong dải {rangeStart}–{rangeEnd.Value}."
+                    : $"Đã hết số BIB trong dải {prefix}{rangeStart}–{prefix}{rangeEnd.Value}.");
+        }
+
+        return string.IsNullOrEmpty(prefix) ? next.ToString() : $"{prefix}{next}";
+    }
+
+    private static bool TryParseBibSequence(string bib, string prefix, out int sequence)
+    {
+        sequence = 0;
+        var raw = (bib ?? string.Empty).Trim();
+        if (raw.Length == 0)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(prefix))
+        {
+            return int.TryParse(raw, out sequence);
+        }
+
+        if (!raw.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return int.TryParse(raw[prefix.Length..], out sequence);
     }
 
     public async Task<EventRegistration?> GetByEventAndBibAsync(

@@ -15,8 +15,9 @@ public interface IRaceEventRepository
     Task AddAsync(RaceEvent raceEvent, CancellationToken cancellationToken = default);
     void Update(RaceEvent raceEvent);
     /// <summary>
-    /// Thay cự ly + ticketPricing bằng ExecuteDelete/Update + AddRange
-    /// (không Clear navigation — tránh concurrency owned Start/Finish).
+    /// Upsert cự ly theo Id (có Id thuộc event → update; không Id → insert;
+    /// Id cũ không còn trong list → xóa nếu chưa có registration).
+    /// Giữ Id ổn định để map/staff/reg không gãy. Cập nhật ticketPricing tùy chọn.
     /// </summary>
     Task PersistDistanceReplaceAsync(
         Guid eventId,

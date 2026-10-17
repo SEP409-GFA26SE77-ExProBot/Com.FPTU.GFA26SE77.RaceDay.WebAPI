@@ -63,13 +63,13 @@ public static class DependencyInjection
             services.AddSingleton<IRabbitMqPublisher, NullRabbitMqPublisher>();
         }
 
-        services.AddScoped<IEventBus>(sp =>
-        {
-            var outbox = sp.GetService<IOutboxStore>();
-            return outbox is not null
-                ? ActivatorUtilities.CreateInstance<OutboxEventBus>(sp)
-                : sp.GetRequiredService<MediatorEventBus>();
-        });
+        // Default bus = in-process MediatR (+ RabbitMQ when configured).
+        // Do NOT auto-switch to OutboxEventBus just because IAM registered IOutboxStore:
+        // Event/Payment/Finance publish via IEventBus then SaveChanges on *their* DbContext —
+        // IAM outbox rows never commit → RaceEventCreated / OrganizerRoleRequired silently drop.
+        // OutboxEventBus stays available for modules that enqueue + SaveChanges the same store.
+        services.AddScoped<OutboxEventBus>();
+        services.AddScoped<IEventBus>(sp => sp.GetRequiredService<MediatorEventBus>());
 
         services.AddHostedService<OutboxDispatcher>();
 

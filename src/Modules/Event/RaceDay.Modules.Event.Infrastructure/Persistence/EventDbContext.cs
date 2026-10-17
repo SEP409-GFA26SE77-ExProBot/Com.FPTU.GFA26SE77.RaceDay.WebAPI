@@ -39,6 +39,9 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Property(x => x.RegistrationOpensAtUtc);
             entity.Property(x => x.RegistrationClosesAtUtc);
             entity.Property(x => x.EndDate);
+            entity.Property(x => x.BibPrefix).HasMaxLength(12);
+            entity.Property(x => x.BibRangeStart);
+            entity.Property(x => x.BibRangeEnd);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
             entity.Property(x => x.TicketPricingJson).HasColumnType("jsonb");
             entity.Property(x => x.MerchandiseJson).HasColumnType("jsonb");

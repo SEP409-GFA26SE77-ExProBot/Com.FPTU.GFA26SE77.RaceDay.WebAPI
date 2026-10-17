@@ -1,8 +1,10 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Application.Abstractions;
+using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Payment.Contracts.Events;
+using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Application.Messaging;
 using RaceDay.Shared.Domain.Exceptions;
 
@@ -13,6 +15,7 @@ public sealed class PackagePaymentCompletedEventHandler(
     IPromoCodeRepository promoCodes,
     IRaceEventRepository events,
     IEventUnitOfWork unitOfWork,
+    IEventBus eventBus,
     ILogger<PackagePaymentCompletedEventHandler> logger) : INotificationHandler<IntegrationEventOccurred>
 {
     public async Task Handle(IntegrationEventOccurred notification, CancellationToken cancellationToken)
@@ -54,6 +57,8 @@ public sealed class PackagePaymentCompletedEventHandler(
             ? "Chưa cập nhật địa điểm"
             : purchase.OrgAddress!.Trim();
 
+        // OrgIntro giữ trên package_purchases (metadata BTC) — không copy sang
+        // event.description (mô tả giải public; BTC tự điền ở Hồ sơ giải).
         var race = RaceEvent.CreateDraft(
             paid.UserId,
             purchase.OrgName,
@@ -62,7 +67,7 @@ public sealed class PackagePaymentCompletedEventHandler(
             new GeoPoint(0, 0),
             organizer,
             purchase.ParticipantCap,
-            description: string.IsNullOrWhiteSpace(purchase.OrgIntro) ? null : purchase.OrgIntro.Trim());
+            description: null);
 
         race.SetPackageInfo(purchase.Id, expiresAtUtc);
 
@@ -72,7 +77,14 @@ public sealed class PackagePaymentCompletedEventHandler(
 
         await events.AddAsync(race, cancellationToken);
         purchases.Update(purchase);
+
+        // Commit trước — rồi mới publish (modules.mdc). IEventBus = MediatR in-process
+        // → RaceEventCreatedEventHandler → OrganizerRoleRequired → IAM gán Organizer.
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        await eventBus.PublishAsync(
+            new RaceEventCreatedIntegrationEvent(race.Id, race.Name, race.OrganizerUserId),
+            cancellationToken);
 
         logger.LogInformation(
             "Package purchase {PurchaseId} paid → draft event {EventId} created (no distances; expires {ExpiresAt})",

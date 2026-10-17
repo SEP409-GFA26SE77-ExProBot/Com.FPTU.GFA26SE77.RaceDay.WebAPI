@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Map.Application.Courses;
+using RaceDay.Modules.Map.Application.Geocode;
+using RaceDay.Modules.Map.Infrastructure.Geocode;
 using RaceDay.Modules.Map.Infrastructure.Persistence;
 using RaceDay.Modules.Map.Infrastructure.Repositories;
 
@@ -20,6 +22,14 @@ public static class DependencyInjection
 
         services.AddScoped<IRaceCourseRepository, RaceCourseRepository>();
         services.AddScoped<IMapUnitOfWork, MapUnitOfWork>();
+        services.AddHttpClient(NominatimGeocodeService.HttpClientName, client =>
+        {
+            client.BaseAddress = new Uri("https://nominatim.openstreetmap.org/");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "RaceDay-Api/1.0 (organizer-setup-map; contact=support@raceday.vn)");
+            client.Timeout = TimeSpan.FromSeconds(12);
+        });
+        services.AddScoped<IGeocodeService, NominatimGeocodeService>();
         services.AddHostedService<MapDataSeeder>();
         return services;
     }

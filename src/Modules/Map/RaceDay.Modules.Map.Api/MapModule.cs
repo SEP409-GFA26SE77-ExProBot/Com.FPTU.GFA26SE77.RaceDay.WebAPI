@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RaceDay.Modules.Map.Application.Courses;
+using RaceDay.Modules.Map.Application.Geocode;
 using RaceDay.Modules.Map.Infrastructure;
 using RaceDay.Shared.Web.Auth;
 using RaceDay.Shared.Web.OpenApi;
@@ -30,6 +31,22 @@ public static class MapModule
 
         api.MapGet("/status", () => Results.Ok(new { module = "map", status = "ready" }))
             .WithSummary("Trạng thái module Map");
+
+        api.MapGet("/geocode", async (
+            string? q,
+            IGeocodeService geocode,
+            CancellationToken ct) =>
+        {
+            var result = await geocode.SearchVietnamAsync(q ?? "", ct);
+            if (!string.IsNullOrEmpty(result.Error) && result.Results.Count == 0)
+                return Results.Json(result, statusCode: StatusCodes.Status502BadGateway);
+            return Results.Ok(result);
+        })
+            .RequireAuthorization(AuthPolicies.PublicUser)
+            .WithSummary("Geocode VN (Nominatim proxy) — setup map organizer")
+            .WithDescription(
+                "Thay proxy Next /api/geocode. Query `q` ≥ 2 ký tự, countrycodes=vn, limit 8. "
+                + "Cần Bearer user đăng nhập.");
 
         // Organizer / admin / public (approved+) course
         api.MapGet("/events/{eventId:guid}/distances/{distanceId:guid}/course", async (

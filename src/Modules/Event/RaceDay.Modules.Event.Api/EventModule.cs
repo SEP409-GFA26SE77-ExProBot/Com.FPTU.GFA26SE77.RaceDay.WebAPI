@@ -117,14 +117,16 @@ public static class EventModule
                 body.TicketPricing, body.Rewards,
                 body.SetRegistrationWindow,
                 body.RegistrationOpensAtUtc, body.RegistrationClosesAtUtc,
-                body.Documents, body.EndDate, body.ClearEndDate), ct);
+                body.Documents, body.EndDate, body.ClearEndDate,
+                body.SetBibConfig, body.BibPrefix, body.BibRangeStart, body.BibRangeEnd), ct);
             return Results.Ok(result);
         })
         .WithSummary("Cập nhật hồ sơ giải draft/rejected (partial update)")
         .WithDescription(
             "Organizer điền dần: name, tagline, location, date, startTime, description, bannerImage, "
             + "totalRunners, organizer (bank), rules, ticketPricing, rewards, documents. "
-            + "setRegistrationWindow + registrationOpensAtUtc/ClosesAtUtc (closes ≤ packageExpires).");
+            + "setRegistrationWindow + registrationOpensAtUtc/ClosesAtUtc (closes ≤ packageExpires). "
+            + "setBibConfig + bibPrefix/bibRangeStart/bibRangeEnd (cấp BIB theo giải; được sửa cả sau duyệt).");
 
         organizerApi.MapPut("/{eventId:guid}/distances", async (
             Guid eventId, ReplaceDistancesRequest body, IMediator mediator, CancellationToken ct) =>
@@ -133,8 +135,11 @@ public static class EventModule
                 eventId, body.Distances, body.TicketPricing), ct);
             return Results.Ok(result);
         })
-        .WithSummary("Thay thế danh sách cự ly (+ ticketPricing tùy chọn)")
-        .WithDescription("Chỉ draft/rejected. Tổng capacity ≤ TotalRunnersCap khi có gói.");
+        .WithSummary("Upsert danh sách cự ly (+ ticketPricing tùy chọn)")
+        .WithDescription(
+            "Chỉ draft/rejected. Gửi id để giữ cự ly (map/staff/reg không gãy); "
+            + "không id = thêm mới; bỏ id khỏi list = xóa (chặn nếu đã có ĐK). "
+            + "Tổng capacity ≤ TotalRunnersCap khi có gói.");
 
         organizerApi.MapPost("/packages/purchases", async (CreatePackagePurchaseRequest body, IMediator mediator, CancellationToken ct) =>
         {
@@ -152,6 +157,11 @@ public static class EventModule
         organizerApi.MapGet("/packages/purchases/{purchaseId:guid}", async (Guid purchaseId, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetPackagePurchaseQuery(purchaseId), ct)))
             .WithSummary("Chi tiết đơn mua gói sự kiện");
+
+        organizerApi.MapPost("/packages/purchases/{purchaseId:guid}/cancel", async (Guid purchaseId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new CancelPackagePurchaseCommand(purchaseId), ct)))
+            .WithSummary("Hủy đơn mua gói đang chờ thanh toán")
+            .WithDescription("Chỉ pending_payment. FE: nút «Hủy thanh toán» trên checkout gói.");
 
         organizerApi.MapPost("/{eventId:guid}/submit", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new SubmitRaceEventCommand(eventId), ct)))
@@ -444,7 +454,11 @@ public static class EventModule
         DateTime? RegistrationClosesAtUtc = null,
         IReadOnlyList<EventDocumentDto>? Documents = null,
         DateOnly? EndDate = null,
-        bool ClearEndDate = false);
+        bool ClearEndDate = false,
+        bool SetBibConfig = false,
+        string? BibPrefix = null,
+        int? BibRangeStart = null,
+        int? BibRangeEnd = null);
 
     private sealed record ReplaceDistancesRequest(
         IReadOnlyList<ReplaceDistanceInput> Distances,

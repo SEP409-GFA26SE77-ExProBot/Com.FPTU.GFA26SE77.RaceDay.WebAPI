@@ -81,9 +81,8 @@ public sealed class EventDataSeeder(
             {
                 await SeedPromoCodesAsync(db, cancellationToken);
                 await SeedPackageOptionsAsync(db, cancellationToken);
-                await SeedDemoEventsAsync(db, cancellationToken);
-                await RefreshQuyNhonMediaAsync(db, cancellationToken);
-                logger.LogInformation("Event schema migrated + demo seed checked.");
+                // Demo events + R2 media refresh tắt — tránh tạo lại event/banner sau wipe sạch.
+                logger.LogInformation("Event schema migrated + promo/package seed checked.");
             }
             catch (Exception seedEx)
             {
@@ -102,16 +101,31 @@ public sealed class EventDataSeeder(
 
     private static async Task SeedPromoCodesAsync(EventDbContext db, CancellationToken ct)
     {
-        if (await db.PromoCodes.AnyAsync(ct))
+        var expiresAt = DateTime.UtcNow.AddYears(2);
+        (string Code, decimal Percent)[] seeds =
+        [
+            ("RACEDAY10", 0.10m),
+            ("RACEDAY20", 0.20m),
+            ("RACEDAY50", 0.50m),
+            ("RACEDAY99", 0.99m), // tránh total = 0 (BE/PayOS yêu cầu > 0)
+        ];
+
+        var added = 0;
+        foreach (var (code, percent) in seeds)
         {
-            return;
+            if (await db.PromoCodes.AnyAsync(x => x.Code == code, ct))
+            {
+                continue;
+            }
+
+            db.PromoCodes.Add(PromoCode.Create(code, percent, expiresAt));
+            added++;
         }
 
-        var expiresAt = DateTime.UtcNow.AddYears(2);
-        db.PromoCodes.AddRange(
-            PromoCode.Create("RACEDAY10", 0.10m, expiresAt),
-            PromoCode.Create("RACEDAY20", 0.20m, expiresAt));
-        await db.SaveChangesAsync(ct);
+        if (added > 0)
+        {
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     private static async Task SeedPackageOptionsAsync(EventDbContext db, CancellationToken ct)

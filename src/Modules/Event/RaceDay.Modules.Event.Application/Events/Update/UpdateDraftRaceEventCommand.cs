@@ -27,7 +27,11 @@ public sealed record UpdateDraftRaceEventCommand(
     DateTime? RegistrationClosesAtUtc = null,
     IReadOnlyList<EventDocumentDto>? Documents = null,
     DateOnly? EndDate = null,
-    bool ClearEndDate = false) : IRequest<RaceEventDto>;
+    bool ClearEndDate = false,
+    bool SetBibConfig = false,
+    string? BibPrefix = null,
+    int? BibRangeStart = null,
+    int? BibRangeEnd = null) : IRequest<RaceEventDto>;
 
 public sealed class UpdateDraftRaceEventCommandValidator : AbstractValidator<UpdateDraftRaceEventCommand>
 {
@@ -114,7 +118,7 @@ public sealed class UpdateDraftRaceEventCommandHandler(
 
             await events.PersistDocumentsReplaceAsync(race.Id, docs, cancellationToken);
 
-            if (!hasScalarPatch && !request.SetRegistrationWindow)
+            if (!hasScalarPatch && !request.SetRegistrationWindow && !request.SetBibConfig)
             {
                 var refreshed = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
                     ?? throw new DomainException("Không tìm thấy giải sau khi lưu tài liệu.");
@@ -166,6 +170,11 @@ public sealed class UpdateDraftRaceEventCommandHandler(
         if (request.SetRegistrationWindow)
         {
             race.SetRegistrationWindow(request.RegistrationOpensAtUtc, request.RegistrationClosesAtUtc);
+        }
+
+        if (request.SetBibConfig)
+        {
+            race.SetBibConfig(request.BibPrefix, request.BibRangeStart, request.BibRangeEnd);
         }
 
         // Entity đã tracked — không gọi Update() (sẽ đánh dấu children mới thành Modified).

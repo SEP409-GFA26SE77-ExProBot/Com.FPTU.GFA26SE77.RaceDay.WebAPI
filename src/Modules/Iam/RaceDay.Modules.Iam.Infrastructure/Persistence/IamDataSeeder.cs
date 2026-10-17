@@ -54,8 +54,8 @@ public sealed class IamDataSeeder(
             await SeedUsersAsync(db, hasher, seedPassword, cancellationToken);
         }
 
-        // Idempotent — DB deploy đã có user vẫn bổ sung tài khoản staff ops.
-        await EnsureStaffUsersAsync(db, hasher, seedPassword, cancellationToken);
+        // Staff ops (coord/photo/vol) không auto-seed — tạo khi cần qua ProvisionStaff / admin.
+        // EnsureStaffUsersAsync giữ trong file nhưng không gọi để tránh tái tạo sau wipe.
 
         await UpgradePlaceholderPasswordsAsync(db, hasher, cancellationToken);
         logger.LogInformation("IAM seed completed.");

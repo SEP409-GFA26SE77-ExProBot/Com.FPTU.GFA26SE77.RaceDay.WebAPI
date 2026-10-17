@@ -161,6 +161,65 @@ public sealed class EventDistance : Entity
         return distance;
     }
 
+    /// <summary>Cập nhật thuộc tính cự ly — giữ Id + RegisteredCount (map/staff/reg không gãy).</summary>
+    public void UpdateDetails(
+        string type,
+        string name,
+        double distanceKm,
+        double elevationGainM,
+        double maxElevationM,
+        double minElevationM,
+        int capacity,
+        decimal price,
+        string? currency,
+        string? color,
+        NamedGeoPoint start,
+        NamedGeoPoint finish,
+        TimeOnly? startAt,
+        TimeOnly? endAt)
+    {
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            throw new DomainException("Loại cự ly (type) không được để trống.");
+        }
+
+        if (distanceKm <= 0)
+        {
+            throw new DomainException("Quãng đường phải lớn hơn 0.");
+        }
+
+        if (capacity < 0)
+        {
+            throw new DomainException("Sức chứa cự ly không hợp lệ.");
+        }
+
+        if (capacity < RegisteredCount)
+        {
+            throw new DomainException(
+                $"Sức chứa ({capacity}) không được nhỏ hơn số VĐV đã đăng ký ({RegisteredCount}).");
+        }
+
+        if (startAt.HasValue && endAt.HasValue && endAt.Value < startAt.Value)
+        {
+            throw new DomainException("Giờ kết thúc cự ly phải ≥ giờ xuất phát.");
+        }
+
+        Type = type.Trim();
+        Name = string.IsNullOrWhiteSpace(name) ? type.Trim() : name.Trim();
+        DistanceKm = distanceKm;
+        ElevationGainM = elevationGainM;
+        MaxElevationM = maxElevationM;
+        MinElevationM = minElevationM;
+        Capacity = capacity;
+        Price = price;
+        Currency = string.IsNullOrWhiteSpace(currency) ? "VND" : currency.Trim().ToUpperInvariant();
+        Color = string.IsNullOrWhiteSpace(color) ? "#FC4C02" : color.Trim();
+        StartAt = startAt;
+        EndAt = endAt;
+        StartLocation = start;
+        FinishLocation = finish;
+    }
+
     public void IncrementRegistered()
     {
         if (RegisteredCount >= Capacity && Capacity > 0)
