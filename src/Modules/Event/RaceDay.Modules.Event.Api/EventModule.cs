@@ -46,6 +46,13 @@ public static class EventModule
             .WithSummary("Bảng giá gói sự kiện (public) — promo codes from DB");
 
         // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
+        publicApi.MapGet("/{eventId:guid}/distances/{distanceId:guid}/leaderboard", async (
+            Guid eventId,
+            Guid distanceId,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetDistanceLeaderboardQuery(eventId, distanceId), ct)))
+            .WithSummary("Bảng xếp hạng cự ly (Leaderboard)");
         // không bắt role ORGANIZER riêng (không cần duyệt tài khoản organizer).
         var organizerApi = app.MapGroup("/api/v1/event/organizer")
             .WithTags(ApiTags.EventOrganizer)
@@ -332,7 +339,7 @@ public static class EventModule
             Guid eventId, RejectRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new RejectRaceEventCommand(eventId, body.Reason), ct)))
             .WithSummary("Từ chối giải (cần reason)");
-
+     
         // ── Admin promo-code management ───────────────────────────────
 
         var promoApi = app.MapGroup("/api/v1/event/admin/promos")

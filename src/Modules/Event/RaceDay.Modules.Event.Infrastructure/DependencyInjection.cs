@@ -81,6 +81,8 @@ public sealed class EventDataSeeder(
             {
                 await SeedPromoCodesAsync(db, cancellationToken);
                 await SeedPackageOptionsAsync(db, cancellationToken);
+                await SeedDemoEventsAsync(db, cancellationToken);
+                await SeedLeaderboardDataAsync(db, cancellationToken);
                 // Demo events + R2 media refresh tắt — tránh tạo lại event/banner sau wipe sạch.
                 logger.LogInformation("Event schema migrated + promo/package seed checked.");
             }
@@ -422,5 +424,36 @@ public sealed class EventDataSeeder(
         var prop = entity.GetType().GetProperty("Id")
                    ?? throw new InvalidOperationException("Entity missing Id");
         prop.SetValue(entity, id);
+    }
+    private static async Task SeedLeaderboardDataAsync(EventDbContext db, CancellationToken ct)
+    {
+        if (await db.Registrations.AnyAsync(r => r.EventId == DemoEventQuyNhonId
+            && r.DistanceId == DemoDist5k
+            && r.FullName.StartsWith("Runner Test Leaderboard"), ct))
+        {
+            return;
+        }
+
+        var runners = new List<RaceDay.Modules.Event.Domain.Registrations.EventRegistration>();
+        var startTime = DateTime.UtcNow.AddHours(-1);
+
+        for (int i = 1; i <= 5; i++)
+        {
+            var reg = RaceDay.Modules.Event.Domain.Registrations.EventRegistration.Create(
+                DemoEventQuyNhonId, DemoDist5k, Guid.NewGuid(),
+                $"Runner Test Leaderboard {i}", $"runner{i}@leaderboard.test", "0901234567",
+                null, null, null, null, null, null, null, null, null, null, null, "[]", null, null, true);
+
+            reg.Confirm($"BIB500{i}");
+            reg.Start(startTime);
+
+            long resultSeconds = 1500 + (i * 120);
+            reg.Finish(startTime.AddSeconds(resultSeconds), resultSeconds);
+
+            runners.Add(reg);
+        }
+
+        db.Registrations.AddRange(runners);
+        await db.SaveChangesAsync(ct);
     }
 }
