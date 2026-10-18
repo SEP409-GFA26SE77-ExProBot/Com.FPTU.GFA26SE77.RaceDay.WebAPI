@@ -44,15 +44,19 @@ public static class EventModule
         publicApi.MapGet("/packages/catalog", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetPackageCatalogQuery(), ct)))
             .WithSummary("Bảng giá gói sự kiện (public) — promo codes from DB");
-
         // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
         publicApi.MapGet("/{eventId:guid}/distances/{distanceId:guid}/leaderboard", async (
             Guid eventId,
             Guid distanceId,
+            int? page,
+            int? pageSize,
             IMediator mediator,
             CancellationToken ct) =>
-            Results.Ok(await mediator.Send(new GetDistanceLeaderboardQuery(eventId, distanceId), ct)))
-            .WithSummary("Bảng xếp hạng cự ly (Leaderboard)");
+        {
+            var query = new GetDistanceLeaderboardQuery(eventId, distanceId, page ?? 1, pageSize ?? 50);
+            return Results.Ok(await mediator.Send(query, ct));
+        })
+        .WithSummary("Bảng xếp hạng cự ly (Leaderboard) - Phân trang");
         // không bắt role ORGANIZER riêng (không cần duyệt tài khoản organizer).
         var organizerApi = app.MapGroup("/api/v1/event/organizer")
             .WithTags(ApiTags.EventOrganizer)

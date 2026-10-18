@@ -8,7 +8,7 @@ namespace RaceDay.Modules.Event.Application.Registrations;
 
 public sealed record LeaderboardItemDto(
     int Rank,
-    string EventName,      // Bổ sung tên giải
+    string EventName,
     string DistanceName,
     string Bib,
     string FullName,
@@ -17,14 +17,24 @@ public sealed record LeaderboardItemDto(
     string TotalTime,
     string Pace);
 
-public sealed record GetDistanceLeaderboardQuery(Guid EventId, Guid DistanceId)
-    : IRequest<IReadOnlyList<LeaderboardItemDto>>;
+public sealed record PaginatedLeaderboardDto(
+    IReadOnlyList<LeaderboardItemDto> Items,
+    int TotalCount,
+    int TotalPages,
+    int CurrentPage,
+    int PageSize);
+
+public sealed record GetDistanceLeaderboardQuery(
+    Guid EventId,
+    Guid DistanceId,
+    int Page = 1,
+    int PageSize = 50) : IRequest<PaginatedLeaderboardDto>;
 
 public sealed class GetDistanceLeaderboardQueryHandler(
     IRaceEventRepository events,
-    IEventRegistrationRepository registrations) : IRequestHandler<GetDistanceLeaderboardQuery, IReadOnlyList<LeaderboardItemDto>>
+    IEventRegistrationRepository registrations) : IRequestHandler<GetDistanceLeaderboardQuery, PaginatedLeaderboardDto>
 {
-    public async Task<IReadOnlyList<LeaderboardItemDto>> Handle(
+    public async Task<PaginatedLeaderboardDto> Handle(
         GetDistanceLeaderboardQuery request,
         CancellationToken cancellationToken)
     {
@@ -45,10 +55,21 @@ public sealed class GetDistanceLeaderboardQueryHandler(
             .OrderBy(r => r.ResultSeconds)
             .ToList();
 
-        var leaderboard = new List<LeaderboardItemDto>();
-        int rank = 1;
+        // Tính toán thông số phân trang
+        int totalCount = finishedRunners.Count;
+        int totalPages = (int)Math.Ceiling(totalCount / (double)request.PageSize);
 
-        foreach (var r in finishedRunners)
+        // Cắt data theo trang (Skip & Take)
+        var pagedRunners = finishedRunners
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .ToList();
+
+        var leaderboard = new List<LeaderboardItemDto>();
+        // Tính hạng bắt đầu của trang hiện tại (VD: Trang 2 thì bắt đầu từ hạng 51)
+        int rank = ((request.Page - 1) * request.PageSize) + 1;
+
+        foreach (var r in pagedRunners)
         {
             // Format Total Time (HH:mm:ss)
             var ts = TimeSpan.FromSeconds(r.ResultSeconds!.Value);
@@ -64,9 +85,9 @@ public sealed class GetDistanceLeaderboardQueryHandler(
             }
 
             leaderboard.Add(new LeaderboardItemDto(
-                EventName: race.Name,           
-                DistanceName: distance.Name,
                 Rank: rank++,
+                EventName: race.Name,
+                DistanceName: distance.Name,
                 Bib: r.BibNumber ?? string.Empty,
                 FullName: r.FullName,
                 StartAtUtc: r.StartedAtUtc,
@@ -76,6 +97,6 @@ public sealed class GetDistanceLeaderboardQueryHandler(
             ));
         }
 
-        return leaderboard;
+        return new PaginatedLeaderboardDto(leaderboard, totalCount, totalPages, request.Page, request.PageSize);
     }
 }
