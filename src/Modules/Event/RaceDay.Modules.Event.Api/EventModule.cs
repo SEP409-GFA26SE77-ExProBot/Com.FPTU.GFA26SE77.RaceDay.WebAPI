@@ -53,6 +53,21 @@ public static class EventModule
         }).WithSummary("Danh sách cự ly của giải (public)");
 
         // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
+        // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
+        publicApi.MapGet("/{eventId:guid}/distances/{distanceId:guid}/leaderboard", async (
+            Guid eventId,
+            Guid distanceId,
+            string? gender,    // Thêm tham số gender
+            int? page,
+            int? pageSize,
+            IMediator mediator,
+            CancellationToken ct) =>
+        {
+            // Truyền biến gender vào GetDistanceLeaderboardQuery
+            var query = new GetDistanceLeaderboardQuery(eventId, distanceId, gender, page ?? 1, pageSize ?? 50);
+            return Results.Ok(await mediator.Send(query, ct));
+        })
+        .WithSummary("Bảng xếp hạng cự ly (Phân trang, Lọc Giới tính)");
         // không bắt role ORGANIZER riêng (không cần duyệt tài khoản organizer).
         var organizerApi = app.MapGroup("/api/v1/event/organizer")
             .WithTags(ApiTags.EventOrganizer)
@@ -257,7 +272,10 @@ public static class EventModule
         userApi.MapGet("/registrations/mine", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyRegistrationsQuery(), ct)))
             .WithSummary("Đăng ký của tôi (FE /my-registrations)");
-
+        userApi.MapGet("/leaderboards/mine", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetMyLeaderboardResultsQuery(), ct)))
+            .WithSummary("Bảng xếp hạng / Thành tích cá nhân của Runner đang đăng nhập")
+            .WithDescription("Trả về danh sách kết quả các giải & cự ly mà Runner đã hoàn thành (Finished) kèm thứ hạng (Rank), Total Time, Pace.");
         userApi.MapGet("/registrations/{registrationId:guid}", async (Guid registrationId, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetMyRegistrationByIdQuery(registrationId), ct)))
             .WithSummary("Chi tiết đăng ký / ticket (BIB + qrPayload khi confirmed)");
@@ -339,7 +357,7 @@ public static class EventModule
             Guid eventId, RejectRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new RejectRaceEventCommand(eventId, body.Reason), ct)))
             .WithSummary("Từ chối giải (cần reason)");
-
+     
         // ── Admin promo-code management ───────────────────────────────
 
         var promoApi = app.MapGroup("/api/v1/event/admin/promos")
