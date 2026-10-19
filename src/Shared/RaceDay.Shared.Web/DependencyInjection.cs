@@ -27,7 +27,21 @@ public static class DependencyInjection
         services.AddAuthorizationBuilder()
             .AddPolicy(AuthPolicies.PublicUser, policy => policy.RequireAuthenticatedUser())
             .AddPolicy(AuthPolicies.AdminOnly, policy =>
-                policy.RequireAuthenticatedUser().RequireRole("Admin"));
+                policy.RequireAuthenticatedUser().RequireRole("Admin"))
+            .AddPolicy(AuthPolicies.HumanUser, policy =>
+                policy.RequireAuthenticatedUser().RequireAssertion(ctx =>
+                    !ctx.User.HasClaim("token_use", "wear")
+                    && ctx.User.FindFirst("device_id") is null))
+            .AddPolicy(AuthPolicies.OrganizerOrCoordinator, policy =>
+                policy.RequireAuthenticatedUser()
+                    .RequireAssertion(ctx =>
+                        !ctx.User.HasClaim("token_use", "wear")
+                        && ctx.User.FindFirst("device_id") is null)
+                    .RequireRole("Admin", "Organizer", "Coordinator"))
+            .AddPolicy(AuthPolicies.SosWrite, policy =>
+                policy.RequireAuthenticatedUser()
+                    .RequireClaim("scope", "sos:create")
+                    .RequireClaim("token_use", "wear"));
 
         services.AddCors(options =>
         {
@@ -66,6 +80,18 @@ public static class DependencyInjection
                 limiter.PermitLimit = 400;
                 limiter.Window = TimeSpan.FromMinutes(1);
                 limiter.QueueLimit = 40;
+            });
+            options.AddFixedWindowLimiter("device-code", limiter =>
+            {
+                limiter.PermitLimit = 10;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 0;
+            });
+            options.AddFixedWindowLimiter("device-token", limiter =>
+            {
+                limiter.PermitLimit = 30;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 0;
             });
         });
 
