@@ -64,6 +64,24 @@ public class EventHandlerWorkflowTests
     }
 
     [Fact]
+    public async Task GetRaceEventDistancesById_Returns_DistanceId_Type_And_Kilometers()
+    {
+        var race = PendingRace();
+        var events = Substitute.For<IRaceEventRepository>();
+        var current = Substitute.For<ICurrentUserAccessor>();
+        events.GetByIdWithDetailsAsync(race.Id, Arg.Any<CancellationToken>()).Returns(race);
+        current.UserId.Returns(OrganizerId);
+
+        var result = await new GetRaceEventDistancesByIdQueryHandler(events, current)
+            .Handle(new GetRaceEventDistancesByIdQuery(race.Id), CancellationToken.None);
+
+        var distance = Assert.Single(result);
+        Assert.Equal(race.Distances.First().Id, distance.Id);
+        Assert.Equal("21K", distance.Type);
+        Assert.Equal(21, distance.DistanceKm);
+    }
+
+    [Fact]
     public async Task CreateRegistration_Requires_Open_Event()
     {
         var race = PendingRace();

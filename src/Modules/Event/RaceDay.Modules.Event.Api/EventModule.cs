@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RaceDay.Modules.Event.Application.Events;
@@ -44,6 +45,12 @@ public static class EventModule
         publicApi.MapGet("/packages/catalog", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetPackageCatalogQuery(), ct)))
             .WithSummary("Bảng giá gói sự kiện (public) — promo codes from DB");
+
+        publicApi.MapGet("/distances", async ([FromQuery] Guid eventId, IMediator mediator, CancellationToken ct) =>
+        {
+            var distances = new GetRaceEventDistancesByIdQuery(eventId);
+            return Results.Ok(await mediator.Send(distances, ct));
+        }).WithSummary("Danh sách cự ly của giải (public)");
 
         // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
         // không bắt role ORGANIZER riêng (không cần duyệt tài khoản organizer).
