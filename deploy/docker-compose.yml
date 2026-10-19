@@ -3,7 +3,7 @@ services:
     image: postgres:18-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: Cmnr123456
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     ports:
       # Host 5433: tránh đụng PostgreSQL Windows cài sẵn (thường chiếm 5432)
@@ -50,7 +50,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       # Override host .env (localhost) → tên service trong Docker network
-      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=Cmnr123456
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=postgres
       ConnectionStrings__MongoDb: mongodb://mongodb:27017
       ConnectionStrings__Redis: redis:6379
       ConnectionStrings__RabbitMq: amqp://guest:guest@rabbitmq:5672
