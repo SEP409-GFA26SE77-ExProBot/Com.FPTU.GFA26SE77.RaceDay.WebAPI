@@ -264,7 +264,10 @@ public static class EventModule
         userApi.MapGet("/registrations/mine", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyRegistrationsQuery(), ct)))
             .WithSummary("Đăng ký của tôi (FE /my-registrations)");
-
+        userApi.MapGet("/leaderboards/mine", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetMyLeaderboardResultsQuery(), ct)))
+            .WithSummary("Bảng xếp hạng / Thành tích cá nhân của Runner đang đăng nhập")
+            .WithDescription("Trả về danh sách kết quả các giải & cự ly mà Runner đã hoàn thành (Finished) kèm thứ hạng (Rank), Total Time, Pace.");
         userApi.MapGet("/registrations/{registrationId:guid}", async (Guid registrationId, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetMyRegistrationByIdQuery(registrationId), ct)))
             .WithSummary("Chi tiết đăng ký / ticket (BIB + qrPayload khi confirmed)");
