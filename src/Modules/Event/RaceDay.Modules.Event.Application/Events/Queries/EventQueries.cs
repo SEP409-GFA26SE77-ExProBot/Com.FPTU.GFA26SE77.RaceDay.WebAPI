@@ -37,16 +37,46 @@ public sealed class GetRaceEventByIdQueryHandler(
         var race = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy giải.");
 
-        if (!PublicStatuses.Contains(race.Status))
-        {
-            var userId = currentUser.UserId;
-            if (userId is null || (race.OrganizerUserId != userId && !currentUser.IsAdmin))
-            {
-                throw new DomainException("Không tìm thấy giải.");
-            }
-        }
+        RaceEventAccessPolicy.EnsureCanView(race, currentUser, PublicStatuses);
 
         return RaceEventDtoMapper.ToDetail(race);
+    }
+}
+
+public sealed record RaceEventDistanceDto(Guid Id, string Type, double DistanceKm);
+
+public sealed record GetRaceEventDistancesByIdQuery(Guid EventId)
+    : IRequest<IReadOnlyList<RaceEventDistanceDto>>;
+
+public sealed class GetRaceEventDistancesByIdQueryHandler(
+    IRaceEventRepository events,
+    RaceDay.Shared.Application.Abstractions.ICurrentUserAccessor currentUser)
+    : IRequestHandler<GetRaceEventDistancesByIdQuery, IReadOnlyList<RaceEventDistanceDto>>
+{
+    private static readonly HashSet<RaceEventStatus> PublicStatuses =
+    [
+        // Only allow finished events
+        RaceEventStatus.Approved,
+        RaceEventStatus.RegistrationOpen,
+        RaceEventStatus.Closed,
+        RaceEventStatus.Completed
+    ];
+
+    public async Task<IReadOnlyList<RaceEventDistanceDto>> Handle(
+        GetRaceEventDistancesByIdQuery request,
+        CancellationToken cancellationToken)
+    {
+        var race = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy giải.");
+
+        RaceEventAccessPolicy.EnsureCanView(race, currentUser, PublicStatuses);
+
+        return race.Distances
+            .Select(distance => new RaceEventDistanceDto(
+                distance.Id,
+                distance.Type,
+                distance.DistanceKm))
+            .ToList();
     }
 }
 
@@ -74,5 +104,25 @@ public sealed class ListOrganizerEventsQueryHandler(
         var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
         var items = await events.ListByOrganizerAsync(userId, cancellationToken);
         return items.Select(RaceEventDtoMapper.ToListItem).ToList();
+    }
+}
+
+internal static class RaceEventAccessPolicy
+{
+    public static void EnsureCanView(
+        RaceEvent race,
+        RaceDay.Shared.Application.Abstractions.ICurrentUserAccessor currentUser,
+        IReadOnlySet<RaceEventStatus> publicStatuses)
+    {
+        if (publicStatuses.Contains(race.Status))
+        {
+            return;
+        }
+
+        var userId = currentUser.UserId;
+        if (userId is null || (race.OrganizerUserId != userId && !currentUser.IsAdmin))
+        {
+            throw new DomainException("Không tìm thấy giải.");
+        }
     }
 }
