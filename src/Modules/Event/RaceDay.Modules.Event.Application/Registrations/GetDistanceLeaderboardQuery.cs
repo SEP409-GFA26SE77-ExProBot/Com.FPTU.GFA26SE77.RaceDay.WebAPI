@@ -12,6 +12,7 @@ public sealed record LeaderboardItemDto(
     string DistanceName,
     string Bib,
     string FullName,
+    string? Gender,        // Bổ sung Giới tính
     DateTime? StartAtUtc,
     DateTime? FinishAtUtc,
     string TotalTime,
@@ -27,6 +28,7 @@ public sealed record PaginatedLeaderboardDto(
 public sealed record GetDistanceLeaderboardQuery(
     Guid EventId,
     Guid DistanceId,
+    string? Gender = null, // Thêm tham số lọc giới tính
     int Page = 1,
     int PageSize = 50) : IRequest<PaginatedLeaderboardDto>;
 
@@ -38,44 +40,47 @@ public sealed class GetDistanceLeaderboardQueryHandler(
         GetDistanceLeaderboardQuery request,
         CancellationToken cancellationToken)
     {
-        // Lấy thông tin giải và cự ly để lấy DistanceKm phục vụ tính Pace
         var race = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy giải.");
 
         var distance = race.GetDistance(request.DistanceId);
-
-        // Lấy tất cả đăng ký của giải
         var allRegistrations = await registrations.ListByEventAsync(request.EventId, cancellationToken);
 
-        // Lọc các VĐV đã finish thuộc cự ly này, sắp xếp theo thời gian chạy ngắn nhất
-        var finishedRunners = allRegistrations
+        // Khởi tạo query lọc VĐV hoàn thành
+        var finishedRunnersQuery = allRegistrations
             .Where(r => r.DistanceId == request.DistanceId
                      && r.Status == RegistrationStatus.Finished
-                     && r.ResultSeconds.HasValue)
+                     && r.ResultSeconds.HasValue);
+
+        // Lọc thêm theo giới tính nếu có truyền lên (bỏ qua nếu truyền "All" hoặc để trống)
+        if (!string.IsNullOrWhiteSpace(request.Gender) && !request.Gender.Equals("All", StringComparison.OrdinalIgnoreCase))
+        {
+            finishedRunnersQuery = finishedRunnersQuery.Where(r =>
+                string.Equals(r.Gender, request.Gender, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Sắp xếp theo thành tích
+        var finishedRunners = finishedRunnersQuery
             .OrderBy(r => r.ResultSeconds)
             .ToList();
 
-        // Tính toán thông số phân trang
+        // Phân trang
         int totalCount = finishedRunners.Count;
-        int totalPages = (int)Math.Ceiling(totalCount / (double)request.PageSize);
+        int totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)request.PageSize);
 
-        // Cắt data theo trang (Skip & Take)
         var pagedRunners = finishedRunners
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .ToList();
 
         var leaderboard = new List<LeaderboardItemDto>();
-        // Tính hạng bắt đầu của trang hiện tại (VD: Trang 2 thì bắt đầu từ hạng 51)
         int rank = ((request.Page - 1) * request.PageSize) + 1;
 
         foreach (var r in pagedRunners)
         {
-            // Format Total Time (HH:mm:ss)
             var ts = TimeSpan.FromSeconds(r.ResultSeconds!.Value);
             var totalTimeStr = $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
 
-            // Tính toán và Format Pace (mm:ss /km)
             string paceStr = "--:--";
             if (distance.DistanceKm > 0)
             {
@@ -90,6 +95,7 @@ public sealed class GetDistanceLeaderboardQueryHandler(
                 DistanceName: distance.Name,
                 Bib: r.BibNumber ?? string.Empty,
                 FullName: r.FullName,
+                Gender: r.Gender,       // Trả về giới tính cho UI hiển thị
                 StartAtUtc: r.StartedAtUtc,
                 FinishAtUtc: r.FinishedAtUtc,
                 TotalTime: totalTimeStr,
