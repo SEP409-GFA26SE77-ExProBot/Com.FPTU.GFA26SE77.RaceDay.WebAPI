@@ -95,20 +95,11 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<double>("DistanceKm")
                         .HasColumnType("double precision");
 
-                    b.Property<double>("ElevationGainM")
-                        .HasColumnType("double precision");
-
                     b.Property<TimeOnly?>("EndAt")
                         .HasColumnType("time without time zone");
 
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
-
-                    b.Property<double>("MaxElevationM")
-                        .HasColumnType("double precision");
-
-                    b.Property<double>("MinElevationM")
-                        .HasColumnType("double precision");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -759,66 +750,6 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .WithMany("Distances")
                         .HasForeignKey("EventId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.OwnsOne("RaceDay.Modules.Event.Domain.Events.NamedGeoPoint", "FinishLocation", b1 =>
-                        {
-                            b1.Property<Guid>("EventDistanceId")
-                                .HasColumnType("uuid");
-
-                            b1.Property<double>("Lat")
-                                .HasColumnType("double precision")
-                                .HasColumnName("finish_lat");
-
-                            b1.Property<double>("Lng")
-                                .HasColumnType("double precision")
-                                .HasColumnName("finish_lng");
-
-                            b1.Property<string>("Name")
-                                .IsRequired()
-                                .HasMaxLength(200)
-                                .HasColumnType("character varying(200)")
-                                .HasColumnName("finish_name");
-
-                            b1.HasKey("EventDistanceId");
-
-                            b1.ToTable("event_distances", "event");
-
-                            b1.WithOwner()
-                                .HasForeignKey("EventDistanceId");
-                        });
-
-                    b.OwnsOne("RaceDay.Modules.Event.Domain.Events.NamedGeoPoint", "StartLocation", b1 =>
-                        {
-                            b1.Property<Guid>("EventDistanceId")
-                                .HasColumnType("uuid");
-
-                            b1.Property<double>("Lat")
-                                .HasColumnType("double precision")
-                                .HasColumnName("start_lat");
-
-                            b1.Property<double>("Lng")
-                                .HasColumnType("double precision")
-                                .HasColumnName("start_lng");
-
-                            b1.Property<string>("Name")
-                                .IsRequired()
-                                .HasMaxLength(200)
-                                .HasColumnType("character varying(200)")
-                                .HasColumnName("start_name");
-
-                            b1.HasKey("EventDistanceId");
-
-                            b1.ToTable("event_distances", "event");
-
-                            b1.WithOwner()
-                                .HasForeignKey("EventDistanceId");
-                        });
-
-                    b.Navigation("FinishLocation")
-                        .IsRequired();
-
-                    b.Navigation("StartLocation")
                         .IsRequired();
                 });
 

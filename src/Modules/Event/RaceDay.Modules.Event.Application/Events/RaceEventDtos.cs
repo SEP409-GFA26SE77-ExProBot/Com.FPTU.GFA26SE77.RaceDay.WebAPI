@@ -4,7 +4,6 @@ using RaceDay.Modules.Event.Domain.Events;
 namespace RaceDay.Modules.Event.Application.Events;
 
 public sealed record GeoPointDto(double Lat, double Lng);
-public sealed record NamedGeoPointDto(string Name, double Lat, double Lng);
 public sealed record WeatherDto(string Temp, string Condition, string? Humidity);
 public sealed record BeneficiaryAccountDto(
     string? AccountHolder,
@@ -46,9 +45,6 @@ public sealed record DistanceDto(
     string Type,
     string Name,
     double DistanceKm,
-    double ElevationGainM,
-    double MaxElevationM,
-    double MinElevationM,
     int RunnersCount,
     int Capacity,
     int RegisteredCount,
@@ -57,8 +53,6 @@ public sealed record DistanceDto(
     string Color,
     TimeOnly? StartAt,
     TimeOnly? EndAt,
-    NamedGeoPointDto StartLocation,
-    NamedGeoPointDto FinishLocation,
     IReadOnlyList<CheckpointDto> Checkpoints,
     JsonElement? OsrmWaypoints,
     JsonElement? LeafletPolyline,
@@ -271,9 +265,6 @@ public static class RaceEventDtoMapper
             d.Type,
             d.Name,
             d.DistanceKm,
-            d.ElevationGainM,
-            d.MaxElevationM,
-            d.MinElevationM,
             d.RegisteredCount,
             d.Capacity,
             d.RegisteredCount,
@@ -282,8 +273,6 @@ public static class RaceEventDtoMapper
             d.Color,
             d.StartAt,
             d.EndAt,
-            new NamedGeoPointDto(d.StartLocation.Name, d.StartLocation.Lat, d.StartLocation.Lng),
-            new NamedGeoPointDto(d.FinishLocation.Name, d.FinishLocation.Lat, d.FinishLocation.Lng),
             // Soft-surplus: event_checkpoints legacy — SoT = Map CourseJson
             Array.Empty<CheckpointDto>(),
             osrm,

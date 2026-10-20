@@ -50,7 +50,9 @@ public static class EventModule
         {
             var distances = new GetRaceEventDistancesByIdQuery(eventId);
             return Results.Ok(await mediator.Send(distances, ct));
-        }).WithSummary("Danh sách cự ly của giải (public)");
+        })
+        .WithSummary("Danh sách cự ly tối giản (public) — filter/leaderboard")
+        .WithDescription("Chỉ id, name, distanceKm. Không trả giá vé / startAt / endAt. Organizer setup: GET /organizer/{eventId}/distances.");
 
         // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
         // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
@@ -124,7 +126,7 @@ public static class EventModule
         .WithDescription(
             "Auth: user đã đăng nhập (PublicUser). "
             + "Body gọn: name, location, date, startTime?, totalRunners, organizer (+ beneficiaryAccount khi gửi duyệt), "
-            + "distances[] (type/name/km/capacity/price; start/finish/elevation optional), "
+            + "distances[] (name, distanceKm, capacity, price), "
             + "documents[] sau /organizer/uploads, rules (checklist an toàn), submitForApproval. "
             + "coordinates optional (mặc định 0,0). Không nhận weather/permitDocument/ticketPricing/merchandise/rewards/route.")
         .Accepts<CreateRaceEventCommand>("application/json")
@@ -150,6 +152,15 @@ public static class EventModule
             + "setRegistrationWindow + registrationOpensAtUtc/ClosesAtUtc (closes ≤ packageExpires). "
             + "setBibConfig + bibPrefix/bibRangeStart/bibRangeEnd (cấp BIB theo giải; được sửa cả sau duyệt).");
 
+        organizerApi.MapGet("/{eventId:guid}/distances", async (
+            Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetOrganizerDistancesQuery(eventId), ct)))
+            .WithSummary("Chi tiết cự ly + ticketPricing (organizer)")
+            .WithDescription(
+                "Chủ giải / admin. Trả distances (name, km, capacity, price, startAt, endAt) + ticketPricing. "
+                + "Không lẫn GET public /event/distances (filter tối giản).")
+            .Produces<OrganizerDistancesDetailDto>();
+
         organizerApi.MapPut("/{eventId:guid}/distances", async (
             Guid eventId, ReplaceDistancesRequest body, IMediator mediator, CancellationToken ct) =>
         {
@@ -157,10 +168,11 @@ public static class EventModule
                 eventId, body.Distances, body.TicketPricing), ct);
             return Results.Ok(result);
         })
-        .WithSummary("Upsert danh sách cự ly (+ ticketPricing tùy chọn)")
+        .WithSummary("Cập nhật / thay thế danh sách cự ly (+ ticketPricing)")
         .WithDescription(
-            "Chỉ draft/rejected. Gửi id để giữ cự ly (map/staff/reg không gãy); "
+            "Gửi id để giữ cự ly (map/staff/reg không gãy); "
             + "không id = thêm mới; bỏ id khỏi list = xóa (chặn nếu đã có ĐK). "
+            + "Body: name, distanceKm, capacity, price, startAt?, endAt?. Currency luôn VND. "
             + "Tổng capacity ≤ TotalRunnersCap khi có gói.");
 
         organizerApi.MapPost("/packages/purchases", async (CreatePackagePurchaseRequest body, IMediator mediator, CancellationToken ct) =>

@@ -58,23 +58,20 @@ public sealed class EventDistance : Entity
     private readonly List<EventCheckpoint> _checkpoints = [];
 
     public Guid EventId { get; private set; }
-    public string Type { get; private set; } = string.Empty;
+    /// <summary>Category label (legacy); default road. Not collected by FE wizard.</summary>
+    public string Type { get; private set; } = "road";
     public string Name { get; private set; } = string.Empty;
     public double DistanceKm { get; private set; }
-    public double ElevationGainM { get; private set; }
-    public double MaxElevationM { get; private set; }
-    public double MinElevationM { get; private set; }
     public int Capacity { get; private set; }
     public int RegisteredCount { get; private set; }
     public decimal Price { get; private set; }
+    /// <summary>Platform VN-only — always VND.</summary>
     public string Currency { get; private set; } = "VND";
     public string Color { get; private set; } = "#FC4C02";
     /// <summary>Giờ xuất phát cự ly (ngày giải).</summary>
     public TimeOnly? StartAt { get; private set; }
     /// <summary>Giờ kết thúc / cutoff cự ly (ngày giải).</summary>
     public TimeOnly? EndAt { get; private set; }
-    public NamedGeoPoint StartLocation { get; private set; } = new("Start", 0, 0);
-    public NamedGeoPoint FinishLocation { get; private set; } = new("Finish", 0, 0);
     /// <summary>JSON arrays: osrmWaypoints, leafletPolyline, geoJson — FE map payload.</summary>
     public string RouteGeometryJson { get; private set; } = "{}";
 
@@ -86,28 +83,17 @@ public sealed class EventDistance : Entity
 
     public static EventDistance Create(
         Guid eventId,
-        string type,
         string name,
         double distanceKm,
-        double elevationGainM,
-        double maxElevationM,
-        double minElevationM,
         int capacity,
         decimal price,
-        string? currency,
-        string? color,
-        NamedGeoPoint start,
-        NamedGeoPoint finish,
-        string? routeGeometryJson,
+        string? color = null,
+        string? type = null,
+        string? routeGeometryJson = null,
         IReadOnlyList<(string ExternalId, string Name, double Km, double Lat, double Lng, CheckpointType Type, string? Cutoff, int? Elevation)>? checkpoints = null,
         TimeOnly? startAt = null,
         TimeOnly? endAt = null)
     {
-        if (string.IsNullOrWhiteSpace(type))
-        {
-            throw new DomainException("Loại cự ly (type) không được để trống.");
-        }
-
         if (distanceKm <= 0)
         {
             throw new DomainException("Quãng đường phải lớn hơn 0.");
@@ -118,24 +104,21 @@ public sealed class EventDistance : Entity
             throw new DomainException("Sức chứa cự ly không hợp lệ.");
         }
 
+        var resolvedType = string.IsNullOrWhiteSpace(type) ? "road" : type.Trim();
+
         var distance = new EventDistance
         {
             EventId = eventId,
-            Type = type.Trim(),
-            Name = string.IsNullOrWhiteSpace(name) ? type.Trim() : name.Trim(),
+            Type = resolvedType,
+            Name = string.IsNullOrWhiteSpace(name) ? resolvedType : name.Trim(),
             DistanceKm = distanceKm,
-            ElevationGainM = elevationGainM,
-            MaxElevationM = maxElevationM,
-            MinElevationM = minElevationM,
             Capacity = capacity,
             RegisteredCount = 0,
             Price = price,
-            Currency = string.IsNullOrWhiteSpace(currency) ? "VND" : currency.Trim().ToUpperInvariant(),
+            Currency = "VND",
             Color = string.IsNullOrWhiteSpace(color) ? "#FC4C02" : color.Trim(),
             StartAt = startAt,
             EndAt = endAt,
-            StartLocation = start,
-            FinishLocation = finish,
             RouteGeometryJson = string.IsNullOrWhiteSpace(routeGeometryJson) ? "{}" : routeGeometryJson
         };
 
@@ -163,26 +146,15 @@ public sealed class EventDistance : Entity
 
     /// <summary>Cập nhật thuộc tính cự ly — giữ Id + RegisteredCount (map/staff/reg không gãy).</summary>
     public void UpdateDetails(
-        string type,
         string name,
         double distanceKm,
-        double elevationGainM,
-        double maxElevationM,
-        double minElevationM,
         int capacity,
         decimal price,
-        string? currency,
-        string? color,
-        NamedGeoPoint start,
-        NamedGeoPoint finish,
         TimeOnly? startAt,
-        TimeOnly? endAt)
+        TimeOnly? endAt,
+        string? type = null,
+        string? color = null)
     {
-        if (string.IsNullOrWhiteSpace(type))
-        {
-            throw new DomainException("Loại cự ly (type) không được để trống.");
-        }
-
         if (distanceKm <= 0)
         {
             throw new DomainException("Quãng đường phải lớn hơn 0.");
@@ -204,20 +176,23 @@ public sealed class EventDistance : Entity
             throw new DomainException("Giờ kết thúc cự ly phải ≥ giờ xuất phát.");
         }
 
-        Type = type.Trim();
-        Name = string.IsNullOrWhiteSpace(name) ? type.Trim() : name.Trim();
+        if (!string.IsNullOrWhiteSpace(type))
+        {
+            Type = type.Trim();
+        }
+
+        Name = string.IsNullOrWhiteSpace(name) ? Type : name.Trim();
         DistanceKm = distanceKm;
-        ElevationGainM = elevationGainM;
-        MaxElevationM = maxElevationM;
-        MinElevationM = minElevationM;
         Capacity = capacity;
         Price = price;
-        Currency = string.IsNullOrWhiteSpace(currency) ? "VND" : currency.Trim().ToUpperInvariant();
-        Color = string.IsNullOrWhiteSpace(color) ? "#FC4C02" : color.Trim();
+        Currency = "VND";
+        if (!string.IsNullOrWhiteSpace(color))
+        {
+            Color = color.Trim();
+        }
+
         StartAt = startAt;
         EndAt = endAt;
-        StartLocation = start;
-        FinishLocation = finish;
     }
 
     public void IncrementRegistered()

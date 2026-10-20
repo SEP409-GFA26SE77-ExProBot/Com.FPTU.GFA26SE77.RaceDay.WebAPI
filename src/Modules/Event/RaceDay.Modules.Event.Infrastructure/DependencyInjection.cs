@@ -318,16 +318,13 @@ public sealed class EventDataSeeder(
 
     private static List<EventDistance> BuildQuyNhonDistances(Guid eventId)
     {
-        var start = new NamedGeoPoint("Start Quy Nhơn", 13.782967, 109.219663);
-        var finish = new NamedGeoPoint("Finish Quy Nhơn", 13.782967, 109.219663);
-
-        var d5 = EventDistance.Create(eventId, "5K", "Fun Run 5K", 5, 15, 12, 0, 4000, 450_000m, "VND", "#22c55e", start, finish, "{}");
+        var d5 = EventDistance.Create(eventId, "Fun Run 5K", 5, 4000, 450_000m, "#22c55e", type: "5K", routeGeometryJson: "{}");
         SetId(d5, DemoDist5k);
-        var d10 = EventDistance.Create(eventId, "10K", "City 10K", 10, 30, 18, 0, 3500, 650_000m, "VND", "#0ea5e9", start, finish, "{}");
+        var d10 = EventDistance.Create(eventId, "City 10K", 10, 3500, 650_000m, "#0ea5e9", type: "10K", routeGeometryJson: "{}");
         SetId(d10, DemoDist10k);
-        var d21 = EventDistance.Create(eventId, "21K", "Half Marathon", 21.1, 80, 35, 0, 2500, 990_000m, "VND", "#F59E0B", start, finish, "{}");
+        var d21 = EventDistance.Create(eventId, "Half Marathon", 21.1, 2500, 990_000m, "#F59E0B", type: "21K", routeGeometryJson: "{}");
         SetId(d21, DemoDist21k);
-        var d42 = EventDistance.Create(eventId, "42K", "Full Marathon", 42.195, 150, 40, 0, 2000, 1_450_000m, "VND", "#EF4444", start, finish, "{}");
+        var d42 = EventDistance.Create(eventId, "Full Marathon", 42.195, 2000, 1_450_000m, "#EF4444", type: "42K", routeGeometryJson: "{}");
         SetId(d42, DemoDist42k);
         return [d5, d10, d21, d42];
     }
@@ -339,41 +336,28 @@ public sealed class EventDataSeeder(
             return;
         }
 
-        // Raw SQL — tránh EF OwnsOne StartLocation null khi Add Distances tách khỏi aggregate.
         await db.Database.ExecuteSqlRawAsync(
             """
             INSERT INTO event.event_distances (
                 "Id", "EventId", "Type", "Name", "DistanceKm",
-                "ElevationGainM", "MaxElevationM", "MinElevationM",
                 "Capacity", "RegisteredCount", "Price", "Currency", "Color",
-                start_name, start_lat, start_lng, finish_name, finish_lat, finish_lng,
                 "RouteGeometryJson"
             ) VALUES
             ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1', {0}, '5K', 'Fun Run 5K', 5,
-             15, 12, 0, 4000, 0, 450000, 'VND', '#22c55e',
-             'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{{}}'::jsonb),
+             4000, 0, 450000, 'VND', '#22c55e', '{{}}'::jsonb),
             ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2', {0}, '10K', 'City 10K', 10,
-             30, 18, 0, 3500, 0, 650000, 'VND', '#0ea5e9',
-             'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.7855, 109.221, '{{}}'::jsonb),
+             3500, 0, 650000, 'VND', '#0ea5e9', '{{}}'::jsonb),
             ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb4', {0}, '21K', 'Half Marathon', 21.1,
-             80, 35, 0, 2500, 0, 990000, 'VND', '#F59E0B',
-             'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{{}}'::jsonb),
+             2500, 0, 990000, 'VND', '#F59E0B', '{{}}'::jsonb),
             ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb5', {0}, '42K', 'Full Marathon', 42.195,
-             150, 40, 0, 2000, 0, 1450000, 'VND', '#EF4444',
-             'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{{}}'::jsonb)
+             2000, 0, 1450000, 'VND', '#EF4444', '{{}}'::jsonb)
             ON CONFLICT ("Id") DO UPDATE SET
                 "Name" = EXCLUDED."Name",
                 "Price" = EXCLUDED."Price",
                 "Type" = EXCLUDED."Type",
                 "DistanceKm" = EXCLUDED."DistanceKm",
                 "Capacity" = EXCLUDED."Capacity",
-                "Color" = EXCLUDED."Color",
-                start_name = EXCLUDED.start_name,
-                start_lat = EXCLUDED.start_lat,
-                start_lng = EXCLUDED.start_lng,
-                finish_name = EXCLUDED.finish_name,
-                finish_lat = EXCLUDED.finish_lat,
-                finish_lng = EXCLUDED.finish_lng
+                "Color" = EXCLUDED."Color"
             """,
             DemoEventQuyNhonId);
     }
@@ -407,10 +391,7 @@ public sealed class EventDataSeeder(
 
         SetId(sapa, DemoEventSapaId);
         var s21 = EventDistance.Create(
-            sapa.Id, "21K", "Cloud Valley", 21, 980, 2150, 1450, 800, 900_000m, "VND", "#F59E0B",
-            new NamedGeoPoint("Sa Pa Square", 22.3364, 103.8438),
-            new NamedGeoPoint("Sa Pa Square", 22.3364, 103.8438),
-            "{}");
+            sapa.Id, "Cloud Valley", 21, 800, 900_000m, "#F59E0B", type: "21K", routeGeometryJson: "{}");
         SetId(s21, DemoDistSapa21k);
         sapa.ReplaceDistances([s21]);
         sapa.ReplaceDocuments([

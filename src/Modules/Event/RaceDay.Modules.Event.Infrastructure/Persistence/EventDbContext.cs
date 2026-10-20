@@ -118,18 +118,6 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Property(x => x.StartAt);
             entity.Property(x => x.EndAt);
             entity.Property(x => x.RouteGeometryJson).HasColumnType("jsonb");
-            entity.OwnsOne(x => x.StartLocation, s =>
-            {
-                s.Property(p => p.Name).HasColumnName("start_name").HasMaxLength(200);
-                s.Property(p => p.Lat).HasColumnName("start_lat");
-                s.Property(p => p.Lng).HasColumnName("start_lng");
-            });
-            entity.OwnsOne(x => x.FinishLocation, f =>
-            {
-                f.Property(p => p.Name).HasColumnName("finish_name").HasMaxLength(200);
-                f.Property(p => p.Lat).HasColumnName("finish_lat");
-                f.Property(p => p.Lng).HasColumnName("finish_lng");
-            });
             entity.HasMany(x => x.Checkpoints)
                 .WithOne()
                 .HasForeignKey(x => x.DistanceId)

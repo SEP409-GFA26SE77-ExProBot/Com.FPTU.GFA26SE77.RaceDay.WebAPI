@@ -21,8 +21,7 @@ public class EventHandlerWorkflowTests
             new GeoPoint(22.3, 103.8), OrganizerInfo.Create("VietTrail", "admin@viettrail.vn", "02143871999"),
             800, startTime: startTime, tagline: "Roof of Indochina");
         var distance = EventDistance.Create(
-            race.Id, "21K", "Cloud Valley", 21, 980, 2150, 1450, 500, 900_000, "VND", "#F59E0B",
-            new NamedGeoPoint("Square", 22.3, 103.8), new NamedGeoPoint("Square", 22.3, 103.8), "{}");
+            race.Id, "Cloud Valley", 21, 500, 900_000, "#F59E0B", type: "21K", routeGeometryJson: "{}");
         race.ReplaceDistances([distance]);
         race.ReplaceDocuments([
             EventDocument.Create(race.Id, "official-letter", "Official letter", "official-letter.pdf", "/official-letter.pdf", true),

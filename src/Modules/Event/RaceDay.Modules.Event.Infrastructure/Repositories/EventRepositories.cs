@@ -126,20 +126,14 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
             if (existingById.TryGetValue(incoming.Id, out var current))
             {
                 current.UpdateDetails(
-                    incoming.Type,
                     incoming.Name,
                     incoming.DistanceKm,
-                    incoming.ElevationGainM,
-                    incoming.MaxElevationM,
-                    incoming.MinElevationM,
                     incoming.Capacity,
                     incoming.Price,
-                    incoming.Currency,
-                    incoming.Color,
-                    incoming.StartLocation,
-                    incoming.FinishLocation,
                     incoming.StartAt,
-                    incoming.EndAt);
+                    incoming.EndAt,
+                    incoming.Type,
+                    incoming.Color);
             }
             else
             {
