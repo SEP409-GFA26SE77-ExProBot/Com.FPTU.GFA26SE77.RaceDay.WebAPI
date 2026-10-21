@@ -11,21 +11,15 @@ using RaceDay.Shared.Domain.Exceptions;
 namespace RaceDay.Modules.Event.Application.Events;
 
 /// <summary>
-/// Distance payload for create-event wizard (map/route fields optional — not required for permit registration).
+/// Distance payload for create-event wizard.
+/// Type = mã chip BXH (3KM/HM/…). Color mặc định brand.
 /// </summary>
 public sealed record CreateDistanceInput(
-    string Type,
     string Name,
     double DistanceKm,
     int Capacity,
-    decimal Price,
-    string? Currency = null,
-    string? Color = null,
-    NamedGeoPointDto? StartLocation = null,
-    NamedGeoPointDto? FinishLocation = null,
-    double? ElevationGainM = null,
-    double? MaxElevationM = null,
-    double? MinElevationM = null);
+    decimal BasePrice,
+    string? Type = null);
 
 /// <summary>
 /// Slim create-event command aligned with organizer permit wizard.
@@ -94,37 +88,10 @@ public sealed class CreateDistanceInputValidator : AbstractValidator<CreateDista
 {
     public CreateDistanceInputValidator()
     {
-        RuleFor(x => x.Type).NotEmpty().MaximumLength(50);
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.DistanceKm).InclusiveBetween(0.1, 500);
         RuleFor(x => x.Capacity).InclusiveBetween(1, 500_000);
-        RuleFor(x => x.Price).GreaterThanOrEqualTo(0).LessThanOrEqualTo(100_000_000);
-        RuleFor(x => x.Currency).MaximumLength(10);
-        RuleFor(x => x.Color).MaximumLength(30);
-
-        When(x => x.ElevationGainM is not null, () =>
-            RuleFor(x => x.ElevationGainM!.Value).InclusiveBetween(0, 20_000));
-        When(x => x.MaxElevationM is not null, () =>
-            RuleFor(x => x.MaxElevationM!.Value).InclusiveBetween(-500, 9000));
-        When(x => x.MinElevationM is not null, () =>
-            RuleFor(x => x.MinElevationM!.Value).InclusiveBetween(-500, 9000));
-        When(x => x.MaxElevationM is not null && x.MinElevationM is not null, () =>
-            RuleFor(x => x)
-                .Must(x => x.MaxElevationM!.Value >= x.MinElevationM!.Value)
-                .WithMessage("Độ cao max phải ≥ độ cao min."));
-
-        When(x => x.StartLocation is not null, () =>
-        {
-            RuleFor(x => x.StartLocation!.Name).NotEmpty().MaximumLength(200);
-            RuleFor(x => x.StartLocation!.Lat).Latitude();
-            RuleFor(x => x.StartLocation!.Lng).Longitude();
-        });
-        When(x => x.FinishLocation is not null, () =>
-        {
-            RuleFor(x => x.FinishLocation!.Name).NotEmpty().MaximumLength(200);
-            RuleFor(x => x.FinishLocation!.Lat).Latitude();
-            RuleFor(x => x.FinishLocation!.Lng).Longitude();
-        });
+        RuleFor(x => x.BasePrice).GreaterThanOrEqualTo(0).LessThanOrEqualTo(100_000_000);
     }
 }
 
@@ -156,7 +123,6 @@ public sealed class CreateRaceEventCommandHandler(
 
         var lat = request.Coordinates?.Lat ?? 0;
         var lng = request.Coordinates?.Lng ?? 0;
-        var placeName = request.Location.Trim();
 
         var race = RaceEvent.CreateDraft(
             organizerUserId,
@@ -178,35 +144,14 @@ public sealed class CreateRaceEventCommandHandler(
             bannerImage: request.BannerImage);
 
         var distances = request.Distances.Select(d =>
-        {
-            var start = d.StartLocation;
-            var finish = d.FinishLocation;
-            var startPoint = new NamedGeoPoint(
-                string.IsNullOrWhiteSpace(start?.Name) ? placeName : start.Name,
-                start?.Lat ?? lat,
-                start?.Lng ?? lng);
-            var finishPoint = new NamedGeoPoint(
-                string.IsNullOrWhiteSpace(finish?.Name) ? placeName : finish.Name,
-                finish?.Lat ?? lat,
-                finish?.Lng ?? lng);
-
-            return EventDistance.Create(
+            EventDistance.Create(
                 race.Id,
-                d.Type,
                 d.Name,
                 d.DistanceKm,
-                d.ElevationGainM ?? 0,
-                d.MaxElevationM ?? 0,
-                d.MinElevationM ?? 0,
                 d.Capacity,
-                d.Price,
-                d.Currency,
-                d.Color,
-                startPoint,
-                finishPoint,
-                routeGeometryJson: "{}",
-                checkpoints: null);
-        }).ToList();
+                d.BasePrice,
+                type: DistanceLeaderboardTypes.Normalize(d.Type, d.DistanceKm),
+                routeGeometryJson: "{}")).ToList();
 
         race.ReplaceDistances(distances);
 

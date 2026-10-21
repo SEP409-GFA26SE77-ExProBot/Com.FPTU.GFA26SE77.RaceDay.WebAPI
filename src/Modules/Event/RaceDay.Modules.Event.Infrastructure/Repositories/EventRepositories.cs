@@ -126,20 +126,14 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
             if (existingById.TryGetValue(incoming.Id, out var current))
             {
                 current.UpdateDetails(
-                    incoming.Type,
                     incoming.Name,
                     incoming.DistanceKm,
-                    incoming.ElevationGainM,
-                    incoming.MaxElevationM,
-                    incoming.MinElevationM,
                     incoming.Capacity,
                     incoming.Price,
-                    incoming.Currency,
-                    incoming.Color,
-                    incoming.StartLocation,
-                    incoming.FinishLocation,
                     incoming.StartAt,
-                    incoming.EndAt);
+                    incoming.EndAt,
+                    incoming.Type,
+                    incoming.Color);
             }
             else
             {
@@ -227,52 +221,64 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
                         && x.Status != RegistrationStatus.Rejected)
             .ToListAsync(cancellationToken);
 
-    public async Task<string> NextBibNumberAsync(Guid eventId, CancellationToken cancellationToken = default)
+    public async Task<string> NextBibNumberAsync(
+        Guid eventId,
+        Guid distanceId,
+        CancellationToken cancellationToken = default)
     {
-        var cfg = await db.RaceEvents.AsNoTracking()
-            .Where(x => x.Id == eventId)
-            .Select(x => new { x.BibPrefix, x.BibRangeStart, x.BibRangeEnd })
+        var distance = await db.Distances.AsNoTracking()
+            .Where(x => x.EventId == eventId && x.Id == distanceId)
+            .Select(x => new { x.Name, x.BibPrefix, x.BibRangeStart, x.BibRangeEnd })
             .FirstOrDefaultAsync(cancellationToken)
-            ?? throw new RaceDay.Shared.Domain.Exceptions.DomainException("Không tìm thấy giải.");
+            ?? throw new RaceDay.Shared.Domain.Exceptions.DomainException("Không tìm thấy cự ly.");
 
-        var prefix = (cfg.BibPrefix ?? string.Empty).Trim();
-        var rangeStart = cfg.BibRangeStart is > 0 ? cfg.BibRangeStart.Value : 1001;
-        var rangeEnd = cfg.BibRangeEnd;
+        if (distance.BibRangeStart is not >= 1 || distance.BibRangeEnd is not >= 1
+            || distance.BibRangeEnd < distance.BibRangeStart)
+        {
+            throw new RaceDay.Shared.Domain.Exceptions.DomainException(
+                $"Cự ly «{distance.Name}» chưa cấu hình dải BIB.");
+        }
+
+        var prefix = (distance.BibPrefix ?? string.Empty).Trim();
+        var rangeStart = distance.BibRangeStart.Value;
+        var rangeEnd = distance.BibRangeEnd.Value;
 
         var bibs = await db.Registrations
             .Where(x => x.EventId == eventId && x.BibNumber != null)
             .Select(x => x.BibNumber!)
             .ToListAsync(cancellationToken);
 
-        var max = rangeStart - 1;
+        var used = new HashSet<int>();
         foreach (var b in bibs)
         {
-            if (!TryParseBibSequence(b, prefix, out var n))
+            if (TryParseBibSequence(b, prefix, out var n)
+                && n >= rangeStart
+                && n <= rangeEnd)
+            {
+                used.Add(n);
+            }
+        }
+
+        for (var n = rangeStart; n <= rangeEnd; n++)
+        {
+            if (used.Contains(n))
             {
                 continue;
             }
 
-            if (n > max)
+            var candidate = EventDistance.FormatBib(prefix, n);
+            if (bibs.Any(b => string.Equals(b, candidate, StringComparison.OrdinalIgnoreCase)))
             {
-                max = n;
+                continue;
             }
+
+            return candidate;
         }
 
-        var next = max + 1;
-        if (next < rangeStart)
-        {
-            next = rangeStart;
-        }
-
-        if (rangeEnd is > 0 && next > rangeEnd.Value)
-        {
-            throw new RaceDay.Shared.Domain.Exceptions.DomainException(
-                string.IsNullOrEmpty(prefix)
-                    ? $"Đã hết số BIB trong dải {rangeStart}–{rangeEnd.Value}."
-                    : $"Đã hết số BIB trong dải {prefix}{rangeStart}–{prefix}{rangeEnd.Value}.");
-        }
-
-        return string.IsNullOrEmpty(prefix) ? next.ToString() : $"{prefix}{next}";
+        throw new RaceDay.Shared.Domain.Exceptions.DomainException(
+            string.IsNullOrEmpty(prefix)
+                ? $"Đã hết số BIB trong dải {rangeStart:D4}–{rangeEnd:D4}."
+                : $"Đã hết số BIB trong dải {prefix}{rangeStart:D4}–{prefix}{rangeEnd:D4}.");
     }
 
     private static bool TryParseBibSequence(string bib, string prefix, out int sequence)

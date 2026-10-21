@@ -23,6 +23,10 @@ public static partial class InputRules
     [GeneratedRegex(@"^\d{9}$|^\d{12}$", RegexOptions.CultureInvariant)]
     private static partial Regex VietnamIdNumberRegex();
 
+    /// <summary>Hộ chiếu: bắt đầu bằng chữ, 6–12 ký tự chữ/số (VD VN: B1234567).</summary>
+    [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9]{5,11}$", RegexOptions.CultureInvariant)]
+    private static partial Regex PassportNumberRegex();
+
     /// <summary>ABO with optional Rh: O, A, B, AB, O+, A-, …</summary>
     [GeneratedRegex(@"^(A|B|AB|O)([+-])?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex BloodTypeRegex();
@@ -102,8 +106,28 @@ public static partial class InputRules
 
     public static bool IsValidLongitude(double lng) => lng is >= -180 and <= 180;
 
+    public static string? NormalizeIdNumber(string? idNumber)
+    {
+        if (string.IsNullOrWhiteSpace(idNumber))
+        {
+            return null;
+        }
+
+        return idNumber.Trim().ToUpperInvariant();
+    }
+
+    /// <summary>CCCD/CMND (9|12 số) hoặc hộ chiếu (6–12 ký tự, bắt đầu bằng chữ).</summary>
     public static bool IsValidOptionalIdNumber(string? idNumber)
-        => string.IsNullOrWhiteSpace(idNumber) || VietnamIdNumberRegex().IsMatch(idNumber.Trim());
+    {
+        var normalized = NormalizeIdNumber(idNumber);
+        if (normalized is null)
+        {
+            return true;
+        }
+
+        return VietnamIdNumberRegex().IsMatch(normalized)
+               || PassportNumberRegex().IsMatch(normalized);
+    }
 
     public static bool IsValidOptionalBloodType(string? bloodType)
         => string.IsNullOrWhiteSpace(bloodType) || BloodTypeRegex().IsMatch(bloodType.Trim());

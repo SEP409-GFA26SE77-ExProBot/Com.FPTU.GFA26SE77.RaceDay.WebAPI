@@ -14,17 +14,27 @@ public sealed record UpdateMyProfileCommand(
     string? Phone,
     DateOnly? DateOfBirth,
     GenderDto Gender,
-    string? AvatarUrl = null) : IRequest<UserDto>;
+    string? AvatarUrl = null,
+    string? IdNumber = null) : IRequest<UserDto>;
 
 public sealed class UpdateMyProfileCommandValidator : AbstractValidator<UpdateMyProfileCommand>
 {
     public UpdateMyProfileCommandValidator()
     {
-        RuleFor(x => x.FullName).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.FullName)
+            .NotEmpty().WithMessage("Họ tên không được để trống.")
+            .MinimumLength(2).WithMessage("Họ tên tối thiểu 2 ký tự.")
+            .MaximumLength(100).WithMessage("Họ tên tối đa 100 ký tự.");
         RuleFor(x => x.Phone).MaximumLength(20).OptionalVietnamPhone();
         RuleFor(x => x.DateOfBirth).DateOfBirth();
-        RuleFor(x => x.Gender).IsInEnum();
-        RuleFor(x => x.AvatarUrl).MaximumLength(500).When(x => !string.IsNullOrWhiteSpace(x.AvatarUrl));
+        RuleFor(x => x.Gender).IsInEnum().WithMessage("Giới tính không hợp lệ.");
+        RuleFor(x => x.AvatarUrl)
+            .MaximumLength(500)
+            .OptionalHttpUrl()
+            .When(x => !string.IsNullOrWhiteSpace(x.AvatarUrl));
+        RuleFor(x => x.IdNumber)
+            .MaximumLength(30)
+            .OptionalIdNumber();
     }
 }
 
@@ -43,14 +53,23 @@ public sealed class UpdateMyProfileCommandHandler(
         var user = await users.GetByIdWithProfileAsync(userId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy người dùng.");
 
+        var phone = string.IsNullOrWhiteSpace(request.Phone)
+            ? null
+            : InputRules.NormalizeOptionalPhoneOrEmpty(request.Phone);
+        if (phone is { Length: 0 })
+        {
+            phone = null;
+        }
+
         user.UpdateProfile(
             request.FullName,
-            request.Phone,
+            phone,
             request.DateOfBirth,
             request.Gender.ToDomain(),
             user.Profile?.Description,
             user.Email,
-            request.Phone);
+            phone,
+            InputRules.NormalizeIdNumber(request.IdNumber));
 
         if (request.AvatarUrl is not null)
         {

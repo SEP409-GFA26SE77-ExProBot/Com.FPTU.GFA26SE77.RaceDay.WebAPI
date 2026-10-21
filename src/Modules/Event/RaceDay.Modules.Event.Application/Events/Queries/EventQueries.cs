@@ -43,7 +43,8 @@ public sealed class GetRaceEventByIdQueryHandler(
     }
 }
 
-public sealed record RaceEventDistanceDto(Guid Id, string Type, double DistanceKm);
+/// <summary>Public/filter (leaderboard): id + tên + km + type chip — không giá, không giờ XP.</summary>
+public sealed record RaceEventDistanceDto(Guid Id, string Name, double DistanceKm, string Type);
 
 public sealed record GetRaceEventDistancesByIdQuery(Guid EventId)
     : IRequest<IReadOnlyList<RaceEventDistanceDto>>;
@@ -55,7 +56,6 @@ public sealed class GetRaceEventDistancesByIdQueryHandler(
 {
     private static readonly HashSet<RaceEventStatus> PublicStatuses =
     [
-        // Only allow finished events
         RaceEventStatus.Approved,
         RaceEventStatus.RegistrationOpen,
         RaceEventStatus.Closed,
@@ -72,10 +72,12 @@ public sealed class GetRaceEventDistancesByIdQueryHandler(
         RaceEventAccessPolicy.EnsureCanView(race, currentUser, PublicStatuses);
 
         return race.Distances
-            .Select(distance => new RaceEventDistanceDto(
-                distance.Id,
-                distance.Type,
-                distance.DistanceKm))
+            .OrderBy(d => d.DistanceKm)
+            .Select(d => new RaceEventDistanceDto(
+                d.Id,
+                string.IsNullOrWhiteSpace(d.Name) ? d.Type : d.Name,
+                d.DistanceKm,
+                DistanceLeaderboardTypes.Normalize(d.Type, d.DistanceKm)))
             .ToList();
     }
 }

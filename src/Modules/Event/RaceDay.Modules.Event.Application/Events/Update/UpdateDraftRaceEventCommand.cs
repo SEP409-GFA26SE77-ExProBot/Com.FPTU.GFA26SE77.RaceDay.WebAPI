@@ -174,7 +174,9 @@ public sealed class UpdateDraftRaceEventCommandHandler(
 
         if (request.SetBibConfig)
         {
-            race.SetBibConfig(request.BibPrefix, request.BibRangeStart, request.BibRangeEnd);
+            // SoT BIB = per-distance (PUT /organizer/{id}/bib-configs). Không ghi cấp giải / không fallback 1001.
+            throw new DomainException(
+                "BIB không còn cấu hình theo cả giải. Hãy dùng trang Cấu hình BIB (theo từng cự ly).");
         }
 
         // Entity đã tracked — không gọi Update() (sẽ đánh dấu children mới thành Modified).
