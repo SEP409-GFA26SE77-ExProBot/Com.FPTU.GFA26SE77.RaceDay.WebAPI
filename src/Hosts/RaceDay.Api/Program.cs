@@ -12,6 +12,8 @@ using RaceDay.Modules.Map.Api;
 using RaceDay.Modules.Map.Application.Courses;
 using RaceDay.Modules.Device.Api;
 using RaceDay.Modules.Device.Application.Auth;
+using RaceDay.Modules.Photo.Api;
+using RaceDay.Modules.Photo.Application.Photos;
 using RaceDay.Modules.Payment.Api;
 using RaceDay.Modules.Payment.Application;
 using RaceDay.Shared.Infrastructure;
@@ -34,6 +36,7 @@ builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(GetCourseQuery).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(GetOrganizerWalletQuery).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(RequestDeviceCodeCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(BulkUploadPhotosCommand).Assembly);
 });
 
 builder.Services.AddCors(options =>
@@ -58,6 +61,7 @@ builder.Services.AddPaymentModule(builder.Configuration);
 builder.Services.AddMapModule(builder.Configuration);
 builder.Services.AddFinanceModule(builder.Configuration);
 builder.Services.AddDeviceModule(builder.Configuration);
+builder.Services.AddPhotoModule(builder.Configuration);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -108,6 +112,12 @@ builder.Services.AddSwaggerGen(options =>
             3. Watch poll: `POST /api/v1/device/auth/token` → JWT scope `sos:create`
             4. Watch: `POST /api/v1/device/sos` (+ locations)
             Docs: `docs/Device_Wear_SOS_API_Flows.md`
+
+            ### H. Photo (photographer + OCR + runner search)
+            1. Staff Photographer Active trên event (invite → login)
+            2. `POST /api/v1/photo/photographer/events/{id}/photos/bulk-upload` → 202 Pending
+            3. `POST .../photos/process` → Queued → OCR worker → callback `/internal/photos/{id}/ocr-result`
+            4. Runner: `GET /api/v1/photo/photos?eventId=&bib=`
 
             Docs: `docs/RaceDay_API_Guide.docx` ← sync từ `docs/RaceDay_API_Flows.md` + `docs/api-samples/`
             """
@@ -187,6 +197,7 @@ app.MapPaymentEndpoints();
 app.MapMapEndpoints();
 app.MapFinanceEndpoints();
 app.MapDeviceEndpoints();
+app.MapPhotoEndpoints();
 
 app.Run();
 
