@@ -37,7 +37,8 @@ public static class InputValidationExtensions
     public static IRuleBuilderOptions<T, string?> OptionalIdNumber<T>(this IRuleBuilder<T, string?> rule)
         => rule
             .Must(InputRules.IsValidOptionalIdNumber)
-            .WithMessage("Số CCCD/CMND phải gồm 9 hoặc 12 chữ số.");
+            .WithMessage(
+                "Số CCCD/CMND phải gồm 9 hoặc 12 chữ số; hộ chiếu 6–12 ký tự bắt đầu bằng chữ (VD: B1234567).");
 
     public static IRuleBuilderOptions<T, string?> OptionalBloodType<T>(this IRuleBuilder<T, string?> rule)
         => rule

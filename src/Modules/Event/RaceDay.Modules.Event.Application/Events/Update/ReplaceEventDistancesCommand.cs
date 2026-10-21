@@ -14,9 +14,11 @@ public sealed record ReplaceDistanceInput(
     string Name,
     double DistanceKm,
     int Capacity,
-    decimal Price,
+    decimal BasePrice,
     TimeOnly? StartAt = null,
     TimeOnly? EndAt = null,
+    /// <summary>Mã chip BXH (3KM, HM…). Null → suy từ km hoặc giữ type cũ.</summary>
+    string? Type = null,
     /// <summary>Id cự ly hiện có — gửi kèm khi sửa để giữ map/staff/reg.</summary>
     Guid? Id = null);
 
@@ -32,7 +34,7 @@ public sealed class ReplaceDistanceInputValidator : AbstractValidator<ReplaceDis
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.DistanceKm).InclusiveBetween(0.1, 500);
         RuleFor(x => x.Capacity).InclusiveBetween(1, 500_000);
-        RuleFor(x => x.Price).GreaterThanOrEqualTo(0).LessThanOrEqualTo(100_000_000);
+        RuleFor(x => x.BasePrice).GreaterThanOrEqualTo(0).LessThanOrEqualTo(100_000_000);
         When(x => x.StartAt.HasValue && x.EndAt.HasValue, () =>
             RuleFor(x => x).Must(x => x.EndAt!.Value >= x.StartAt!.Value)
                 .WithMessage("Giờ kết thúc cự ly phải ≥ giờ xuất phát."));
@@ -72,21 +74,38 @@ public sealed class ReplaceEventDistancesCommandHandler(
 
         foreach (var d in request.Distances)
         {
-            // Preserve type/color on update (not collected by FE); default for new rows.
-            string? type = null;
             string? color = null;
+            string? previousType = null;
+            string? bibPrefix = null;
+            int? bibStart = null;
+            int? bibEnd = null;
             if (d.Id is Guid keepId && existingById.TryGetValue(keepId, out var existing))
             {
-                type = existing.Type;
                 color = existing.Color;
+                previousType = existing.Type;
+                bibPrefix = existing.BibPrefix;
+                bibStart = existing.BibRangeStart;
+                bibEnd = existing.BibRangeEnd;
+
+                // Fail early nếu capacity lệch dải BIB đã lưu (Persist cũng check trong UpdateDetails).
+                if (existing.HasBibRange && d.Capacity != existing.BibRangeSize)
+                {
+                    throw new DomainException(
+                        $"Sức chứa cự ly «{existing.Name}» ({d.Capacity}) phải khớp dải BIB ({existing.BibRangeSize} số). " +
+                        "Hãy sửa Cấu hình BIB cho khớp trước.");
+                }
             }
+
+            var type = !string.IsNullOrWhiteSpace(d.Type)
+                ? DistanceLeaderboardTypes.Normalize(d.Type, d.DistanceKm)
+                : DistanceLeaderboardTypes.Normalize(previousType, d.DistanceKm);
 
             var entity = EventDistance.Create(
                 race.Id,
                 d.Name,
                 d.DistanceKm,
                 d.Capacity,
-                d.Price,
+                d.BasePrice,
                 color,
                 type,
                 routeGeometryJson: null,
@@ -108,6 +127,11 @@ public sealed class ReplaceEventDistancesCommandHandler(
                 }
 
                 SetEntityId(entity, idToKeep);
+                // Giữ bib trên entity mới (phòng path Add); Persist UpdateDetails cũng giữ cột bib.
+                if (bibStart is not null && bibEnd is not null)
+                {
+                    entity.RestoreBibConfig(bibPrefix, bibStart, bibEnd);
+                }
             }
 
             distances.Add(entity);

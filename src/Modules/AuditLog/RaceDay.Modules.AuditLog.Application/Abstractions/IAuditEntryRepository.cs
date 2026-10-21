@@ -6,4 +6,8 @@ public interface IAuditEntryRepository
 {
     Task AddAsync(AuditEntry entry, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AuditEntry>> ListRecentAsync(int take, CancellationToken cancellationToken = default);
+    Task<(IReadOnlyList<AuditEntry> Items, long Total)> ListPagedAsync(
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default);
 }

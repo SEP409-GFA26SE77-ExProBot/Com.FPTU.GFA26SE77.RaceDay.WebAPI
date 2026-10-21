@@ -57,6 +57,7 @@ public sealed class IamDbContext(DbContextOptions<IamDbContext> options) : DbCon
             entity.Property(x => x.FullName).HasColumnName("full_name").HasMaxLength(100).IsRequired();
             entity.Property(x => x.Phone).HasColumnName("phone").HasMaxLength(20);
             entity.Property(x => x.DateOfBirth).HasColumnName("date_of_birth");
+            entity.Property(x => x.IdNumber).HasColumnName("id_number").HasMaxLength(30);
             entity.Property(x => x.Gender).HasColumnName("gender").HasConversion<short>();
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<short>();
             entity.Property(x => x.EmailVerified).HasColumnName("email_verified");

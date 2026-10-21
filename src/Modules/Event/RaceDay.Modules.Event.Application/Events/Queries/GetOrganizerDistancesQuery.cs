@@ -12,13 +12,17 @@ namespace RaceDay.Modules.Event.Application.Events;
 public sealed record OrganizerDistanceItemDto(
     Guid Id,
     string Name,
+    string Type,
     double DistanceKm,
     int Capacity,
     int RegisteredCount,
-    decimal Price,
+    decimal BasePrice,
     string Currency,
     TimeOnly? StartAt,
-    TimeOnly? EndAt);
+    TimeOnly? EndAt,
+    string? BibPrefix = null,
+    int? BibRangeStart = null,
+    int? BibRangeEnd = null);
 
 public sealed record OrganizerDistancesDetailDto(
     Guid EventId,
@@ -59,13 +63,17 @@ public sealed class GetOrganizerDistancesQueryHandler(
             .Select(d => new OrganizerDistanceItemDto(
                 d.Id,
                 string.IsNullOrWhiteSpace(d.Name) ? d.Type : d.Name,
+                DistanceLeaderboardTypes.Normalize(d.Type, d.DistanceKm),
                 d.DistanceKm,
                 d.Capacity,
                 d.RegisteredCount,
                 d.Price,
                 d.Currency,
                 d.StartAt,
-                d.EndAt))
+                d.EndAt,
+                d.BibPrefix,
+                d.BibRangeStart,
+                d.BibRangeEnd))
             .ToList();
 
         return new OrganizerDistancesDetailDto(

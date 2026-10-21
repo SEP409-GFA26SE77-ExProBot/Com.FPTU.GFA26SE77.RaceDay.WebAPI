@@ -86,7 +86,7 @@ Base URL (local Docker): `http://localhost:5080`
       "distanceKm": 5,
       "capacity": 1000,
       "registeredCount": 12,
-      "price": 100000,
+      "basePrice": 100000,
       "currency": "VND",
       "startAt": "05:30:00",
       "endAt": "09:00:00"
@@ -129,7 +129,7 @@ Base URL (local Docker): `http://localhost:5080`
 | `distanceKm` | number | có | Quãng đường (km) |
 | `capacity` | int | có | Slot tối đa |
 | `registeredCount` | int | có | Số ĐK hiện có (read-only) |
-| `price` | decimal | có | Giá fallback / base khi không có type đang mở |
+| `basePrice` | decimal | có | Giá gốc / fallback khi không có type đang mở |
 | `currency` | string | có | Luôn `"VND"` (nền tảng VN) |
 | `startAt` | time \| null | optional | Giờ xuất phát cự ly (`HH:mm:ss`) |
 | `endAt` | time \| null | optional | Giờ cutoff / kết thúc cự ly |
@@ -138,7 +138,7 @@ Base URL (local Docker): `http://localhost:5080`
 
 | Thuộc tính | Kiểu | Bắt buộc | Giải thích |
 |------------|------|----------|------------|
-| `basePrice` | number | optional | Giá gốc theo tên cự ly (ưu tiên hơn khi resolve cùng `distance.price`) |
+| `basePrice` | number | optional | Giá gốc theo tên cự ly (ưu tiên hơn khi resolve cùng `distance.basePrice`) |
 | `types` | array | optional | Các đợt giá (Early / Late / …) — **tên tự đặt**, không hardcode |
 | `types[].key` | string | optional | Mã đợt (FE thường dùng id ổn định) |
 | `types[].name` | string | optional | Tên hiển thị (Early Bird, Late, …) |
@@ -148,7 +148,7 @@ Base URL (local Docker): `http://localhost:5080`
 
 > Legacy: BE vẫn đọc `phases` nếu data cũ; FE mới **ghi `types`**.
 
-**Resolve giá (runtime đăng ký):** type đang mở & không phải standard → standard đang mở → `basePrice` / `distance.price`.
+**Resolve giá (runtime đăng ký):** type đang mở & không phải standard → standard đang mở → `byDistanceName.basePrice` / `distance.basePrice`.
 
 ---
 
@@ -177,7 +177,7 @@ Base URL (local Docker): `http://localhost:5080`
       "name": "5K",
       "distanceKm": 5,
       "capacity": 1000,
-      "price": 100000,
+      "basePrice": 100000,
       "startAt": "05:30:00",
       "endAt": "09:00:00"
     },
@@ -185,7 +185,7 @@ Base URL (local Docker): `http://localhost:5080`
       "name": "10K",
       "distanceKm": 10,
       "capacity": 800,
-      "price": 150000
+      "basePrice": 150000
     }
   ],
   "ticketPricing": {
@@ -233,7 +233,7 @@ Base URL (local Docker): `http://localhost:5080`
 | `name` | string | **required** | Tên cự ly (max 100). Phải khớp key trong `byDistanceName` nếu có setup giá. |
 | `distanceKm` | number | **required** | `0.1` … `500` |
 | `capacity` | int | **required** | `1` … `500_000`. Tổng capacity ≤ quy mô gói nếu đã mua package. |
-| `price` | decimal | **required** | `≥ 0`. Fallback / base; thường = `basePrice` trên UI. |
+| `basePrice` | decimal | **required** | `≥ 0`. Giá gốc / fallback khi không có type đang mở. |
 | `startAt` | time string | **optional** | Giờ XP (`HH:mm:ss`). Nếu cả `startAt` + `endAt` → `endAt ≥ startAt`. |
 | `endAt` | time string | **optional** | Giờ cutoff. |
 

@@ -12,13 +12,14 @@ namespace RaceDay.Modules.Event.Application.Events;
 
 /// <summary>
 /// Distance payload for create-event wizard.
-/// type/color/elevation are not collected — BE defaults (road / brand color).
+/// Type = mã chip BXH (3KM/HM/…). Color mặc định brand.
 /// </summary>
 public sealed record CreateDistanceInput(
     string Name,
     double DistanceKm,
     int Capacity,
-    decimal Price);
+    decimal BasePrice,
+    string? Type = null);
 
 /// <summary>
 /// Slim create-event command aligned with organizer permit wizard.
@@ -90,7 +91,7 @@ public sealed class CreateDistanceInputValidator : AbstractValidator<CreateDista
         RuleFor(x => x.Name).NotEmpty().MaximumLength(100);
         RuleFor(x => x.DistanceKm).InclusiveBetween(0.1, 500);
         RuleFor(x => x.Capacity).InclusiveBetween(1, 500_000);
-        RuleFor(x => x.Price).GreaterThanOrEqualTo(0).LessThanOrEqualTo(100_000_000);
+        RuleFor(x => x.BasePrice).GreaterThanOrEqualTo(0).LessThanOrEqualTo(100_000_000);
     }
 }
 
@@ -148,7 +149,8 @@ public sealed class CreateRaceEventCommandHandler(
                 d.Name,
                 d.DistanceKm,
                 d.Capacity,
-                d.Price,
+                d.BasePrice,
+                type: DistanceLeaderboardTypes.Normalize(d.Type, d.DistanceKm),
                 routeGeometryJson: "{}")).ToList();
 
         race.ReplaceDistances(distances);

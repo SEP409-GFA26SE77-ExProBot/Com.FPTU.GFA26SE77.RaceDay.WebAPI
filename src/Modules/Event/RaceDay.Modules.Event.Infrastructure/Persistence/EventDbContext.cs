@@ -114,6 +114,9 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Currency).HasMaxLength(10);
             entity.Property(x => x.Color).HasMaxLength(20);
+            entity.Property(x => x.BibPrefix).HasMaxLength(12);
+            entity.Property(x => x.BibRangeStart);
+            entity.Property(x => x.BibRangeEnd);
             entity.Property(x => x.Price).HasPrecision(18, 2);
             entity.Property(x => x.StartAt);
             entity.Property(x => x.EndAt);
@@ -125,6 +128,8 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Navigation(x => x.Checkpoints).HasField("_checkpoints").UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.Ignore(x => x.DomainEvents);
             entity.Ignore(x => x.HasAvailableSlot);
+            entity.Ignore(x => x.HasBibRange);
+            entity.Ignore(x => x.BibRangeSize);
         });
 
         modelBuilder.Entity<EventCheckpoint>(entity =>

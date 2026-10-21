@@ -5,6 +5,9 @@
     <ProjectReference Include="..\RaceDay.Modules.AuditLog.Contracts\RaceDay.Modules.AuditLog.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Application\RaceDay.Shared.Application.csproj" />
     <ProjectReference Include="..\..\Iam\RaceDay.Modules.Iam.Contracts\RaceDay.Modules.Iam.Contracts.csproj" />
+    <ProjectReference Include="..\..\Event\RaceDay.Modules.Event.Contracts\RaceDay.Modules.Event.Contracts.csproj" />
+    <ProjectReference Include="..\..\Payment\RaceDay.Modules.Payment.Contracts\RaceDay.Modules.Payment.Contracts.csproj" />
+    <ProjectReference Include="..\..\Finance\RaceDay.Modules.Finance.Contracts\RaceDay.Modules.Finance.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

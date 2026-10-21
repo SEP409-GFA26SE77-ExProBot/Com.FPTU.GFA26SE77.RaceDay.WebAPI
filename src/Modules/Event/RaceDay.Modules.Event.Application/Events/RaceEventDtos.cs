@@ -48,7 +48,8 @@ public sealed record DistanceDto(
     int RunnersCount,
     int Capacity,
     int RegisteredCount,
-    decimal Price,
+    /// <summary>Giá gốc / fallback khi không có type ticket đang mở.</summary>
+    decimal BasePrice,
     string Currency,
     string Color,
     TimeOnly? StartAt,
@@ -56,7 +57,10 @@ public sealed record DistanceDto(
     IReadOnlyList<CheckpointDto> Checkpoints,
     JsonElement? OsrmWaypoints,
     JsonElement? LeafletPolyline,
-    JsonElement? GeoJson);
+    JsonElement? GeoJson,
+    string? BibPrefix = null,
+    int? BibRangeStart = null,
+    int? BibRangeEnd = null);
 
 public sealed record EventDocumentDto(
     string DocumentKey,
@@ -262,13 +266,13 @@ public static class RaceEventDtoMapper
 
         return new DistanceDto(
             d.Id,
-            d.Type,
+            DistanceLeaderboardTypes.Normalize(d.Type, d.DistanceKm),
             d.Name,
             d.DistanceKm,
             d.RegisteredCount,
             d.Capacity,
             d.RegisteredCount,
-            d.Price,
+            d.Price, // domain Price → API basePrice
             d.Currency,
             d.Color,
             d.StartAt,
@@ -277,7 +281,10 @@ public static class RaceEventDtoMapper
             Array.Empty<CheckpointDto>(),
             osrm,
             poly,
-            geo);
+            geo,
+            d.BibPrefix,
+            d.BibRangeStart,
+            d.BibRangeEnd);
     }
 
     private static JsonElement? ParseJson(string json)

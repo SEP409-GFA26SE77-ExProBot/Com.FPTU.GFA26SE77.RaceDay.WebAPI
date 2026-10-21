@@ -79,6 +79,16 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BibPrefix")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<int?>("BibRangeEnd")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("BibRangeStart")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Capacity")
                         .HasColumnType("integer");
 

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Application.Abstractions;
+using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Application.Packages;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Packages;
@@ -89,6 +90,7 @@ public sealed class EventDataSeeder(
                 await SeedPackageOptionsAsync(db, cancellationToken);
                 await SeedDemoEventsAsync(db, cancellationToken);
                 await SeedLeaderboardDataAsync(db, cancellationToken);
+                await NormalizeDistanceLeaderboardTypesAsync(db, cancellationToken);
                 // Demo events + R2 media refresh tắt — tránh tạo lại event/banner sau wipe sạch.
                 logger.LogInformation("Event schema migrated + promo/package seed checked.");
             }
@@ -106,6 +108,26 @@ public sealed class EventDataSeeder(
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Backfill Type chip BXH từ km (road/5K/21K… → 5KM/HM). Không đụng DistanceKm / map.
+    /// </summary>
+    private static async Task NormalizeDistanceLeaderboardTypesAsync(EventDbContext db, CancellationToken ct)
+    {
+        var rows = await db.Distances.ToListAsync(ct);
+        var changed = 0;
+        foreach (var d in rows)
+        {
+            var next = DistanceLeaderboardTypes.Normalize(d.Type, d.DistanceKm);
+            if (string.Equals(d.Type, next, StringComparison.Ordinal))
+                continue;
+            d.UpdateDetails(d.Name, d.DistanceKm, d.Capacity, d.Price, d.StartAt, d.EndAt, next, d.Color);
+            changed++;
+        }
+
+        if (changed > 0)
+            await db.SaveChangesAsync(ct);
+    }
 
     private static async Task SeedPromoCodesAsync(EventDbContext db, CancellationToken ct)
     {
@@ -318,13 +340,13 @@ public sealed class EventDataSeeder(
 
     private static List<EventDistance> BuildQuyNhonDistances(Guid eventId)
     {
-        var d5 = EventDistance.Create(eventId, "Fun Run 5K", 5, 4000, 450_000m, "#22c55e", type: "5K", routeGeometryJson: "{}");
+        var d5 = EventDistance.Create(eventId, "Fun Run 5K", 5, 4000, 450_000m, "#22c55e", type: "5KM", routeGeometryJson: "{}");
         SetId(d5, DemoDist5k);
-        var d10 = EventDistance.Create(eventId, "City 10K", 10, 3500, 650_000m, "#0ea5e9", type: "10K", routeGeometryJson: "{}");
+        var d10 = EventDistance.Create(eventId, "City 10K", 10, 3500, 650_000m, "#0ea5e9", type: "10KM", routeGeometryJson: "{}");
         SetId(d10, DemoDist10k);
-        var d21 = EventDistance.Create(eventId, "Half Marathon", 21.1, 2500, 990_000m, "#F59E0B", type: "21K", routeGeometryJson: "{}");
+        var d21 = EventDistance.Create(eventId, "Half Marathon", 21.1, 2500, 990_000m, "#F59E0B", type: "HM", routeGeometryJson: "{}");
         SetId(d21, DemoDist21k);
-        var d42 = EventDistance.Create(eventId, "Full Marathon", 42.195, 2000, 1_450_000m, "#EF4444", type: "42K", routeGeometryJson: "{}");
+        var d42 = EventDistance.Create(eventId, "Full Marathon", 42.195, 2000, 1_450_000m, "#EF4444", type: "M", routeGeometryJson: "{}");
         SetId(d42, DemoDist42k);
         return [d5, d10, d21, d42];
     }
@@ -391,7 +413,7 @@ public sealed class EventDataSeeder(
 
         SetId(sapa, DemoEventSapaId);
         var s21 = EventDistance.Create(
-            sapa.Id, "Cloud Valley", 21, 800, 900_000m, "#F59E0B", type: "21K", routeGeometryJson: "{}");
+            sapa.Id, "Cloud Valley", 21, 800, 900_000m, "#F59E0B", type: "HM", routeGeometryJson: "{}");
         SetId(s21, DemoDistSapa21k);
         sapa.ReplaceDistances([s21]);
         sapa.ReplaceDocuments([

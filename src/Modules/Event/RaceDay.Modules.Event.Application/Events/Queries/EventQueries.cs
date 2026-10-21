@@ -43,8 +43,8 @@ public sealed class GetRaceEventByIdQueryHandler(
     }
 }
 
-/// <summary>Public/filter (leaderboard): chỉ id + tên + km — không giá, không giờ XP.</summary>
-public sealed record RaceEventDistanceDto(Guid Id, string Name, double DistanceKm);
+/// <summary>Public/filter (leaderboard): id + tên + km + type chip — không giá, không giờ XP.</summary>
+public sealed record RaceEventDistanceDto(Guid Id, string Name, double DistanceKm, string Type);
 
 public sealed record GetRaceEventDistancesByIdQuery(Guid EventId)
     : IRequest<IReadOnlyList<RaceEventDistanceDto>>;
@@ -76,7 +76,8 @@ public sealed class GetRaceEventDistancesByIdQueryHandler(
             .Select(d => new RaceEventDistanceDto(
                 d.Id,
                 string.IsNullOrWhiteSpace(d.Name) ? d.Type : d.Name,
-                d.DistanceKm))
+                d.DistanceKm,
+                DistanceLeaderboardTypes.Normalize(d.Type, d.DistanceKm)))
             .ToList();
     }
 }
