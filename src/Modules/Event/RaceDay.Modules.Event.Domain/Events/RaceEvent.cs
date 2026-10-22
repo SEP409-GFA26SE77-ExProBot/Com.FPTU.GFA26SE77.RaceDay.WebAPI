@@ -39,11 +39,11 @@ public sealed class RaceEvent : AggregateRoot
     public DateTime? RegistrationOpensAtUtc { get; private set; }
     /// <summary>Lịch đóng ĐK (UTC). Không được sau PackageExpiresAtUtc.</summary>
     public DateTime? RegistrationClosesAtUtc { get; private set; }
-    /// <summary>Tiền tố BIB theo giải (vd. HCM26-). Null/empty = chỉ số thuần.</summary>
+    /// <summary>Legacy — không còn dùng để cấp BIB. SoT = dải trên từng EventDistance.</summary>
     public string? BibPrefix { get; private set; }
-    /// <summary>Số bắt đầu dải BIB (mặc định cấp phát từ 1001 nếu null).</summary>
+    /// <summary>Legacy — không còn dùng để cấp BIB.</summary>
     public int? BibRangeStart { get; private set; }
-    /// <summary>Số kết thúc dải BIB (null = không giới hạn trên).</summary>
+    /// <summary>Legacy — không còn dùng để cấp BIB.</summary>
     public int? BibRangeEnd { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
@@ -205,6 +205,8 @@ public sealed class RaceEvent : AggregateRoot
             throw new DomainException("Cần ít nhất một cự ly trước khi gửi duyệt.");
         }
 
+        EnsureDistanceBibConfigsReady();
+
         // Bắt buộc kể cả khi danh sách documents còn trống (chưa Save docs).
         string[] requiredDocKeys = ["official-letter", "security"];
         var missingKeys = requiredDocKeys
@@ -300,6 +302,8 @@ public sealed class RaceEvent : AggregateRoot
             throw new DomainException("Cần ít nhất một cự ly trước khi mở đăng ký.");
         }
 
+        EnsureDistanceBibConfigsReady();
+
         if (string.IsNullOrWhiteSpace(Location)
             || Location.Contains("Chưa cập nhật", StringComparison.OrdinalIgnoreCase))
         {
@@ -341,6 +345,8 @@ public sealed class RaceEvent : AggregateRoot
         if (IsPackageExpired(utcNow))
             return false;
         if (RegistrationClosesAtUtc.HasValue && utcNow >= RegistrationClosesAtUtc.Value)
+            return false;
+        if (_distances.Count == 0 || _distances.Any(d => !d.HasBibRange))
             return false;
 
         Status = RaceEventStatus.RegistrationOpen;
@@ -510,19 +516,117 @@ public sealed class RaceEvent : AggregateRoot
     }
 
     /// <summary>
-    /// Ghi đè cấu hình BIB theo giải. Cho phép sau khi Admin duyệt (cấp BIB lúc duyệt VĐV).
+    /// Legacy API cấp giải — đã ngưng. Dùng PUT bib-configs theo từng cự ly.
     /// </summary>
     public void SetBibConfig(string? prefix, int? rangeStart, int? rangeEnd)
     {
-        EnsurePackageNotExpired(DateTime.UtcNow);
-        if (Status is RaceEventStatus.Completed
-            or RaceEventStatus.Cancelled
-            or RaceEventStatus.Suspended)
+        _ = prefix;
+        _ = rangeStart;
+        _ = rangeEnd;
+        throw new DomainException(
+            "BIB không còn cấu hình theo cả giải. Hãy setup dải BIB theo từng cự ly (trang Cấu hình BIB).");
+    }
+
+    /// <summary>
+    /// Ghi dải BIB theo từng cự ly — validate toàn bộ rồi mới apply (fail-safe).
+    /// </summary>
+    public void ApplyDistanceBibConfigs(
+        IReadOnlyList<(Guid DistanceId, string? Prefix, int RangeStart, int RangeEnd)> configs)
+    {
+        EnsureCanEditBibConfig();
+
+        if (_distances.Count == 0)
         {
-            throw new DomainException("Không thể đổi cấu hình BIB ở trạng thái hiện tại.");
+            throw new DomainException("Chưa có cự ly — hãy thêm cự ly trước khi cấu hình BIB.");
         }
 
-        string? normalizedPrefix = null;
+        if (configs.Count == 0)
+        {
+            throw new DomainException("Cần cấu hình BIB cho ít nhất một cự ly.");
+        }
+
+        var byId = _distances.ToDictionary(d => d.Id);
+        var seen = new HashSet<Guid>();
+        var prepared = new List<(EventDistance Distance, string? Prefix, int Start, int End, int Size, string Name)>();
+
+        foreach (var cfg in configs)
+        {
+            if (!byId.TryGetValue(cfg.DistanceId, out var distance))
+            {
+                throw new DomainException("Cự ly không thuộc giải này.");
+            }
+
+            if (!seen.Add(cfg.DistanceId))
+            {
+                throw new DomainException($"Trùng cấu hình BIB cho cự ly «{distance.Name}».");
+            }
+
+            // Validate without mutating — mirror SetBibConfig rules against current capacity.
+            ValidateBibRangeForDistance(distance, cfg.Prefix, cfg.RangeStart, cfg.RangeEnd, out var normalizedPrefix);
+            var size = cfg.RangeEnd - cfg.RangeStart + 1;
+            prepared.Add((distance, normalizedPrefix, cfg.RangeStart, cfg.RangeEnd, size, distance.Name));
+        }
+
+        if (seen.Count != _distances.Count)
+        {
+            throw new DomainException(
+                "Cần cấu hình BIB cho đủ mọi cự ly của giải rồi mới lưu.");
+        }
+
+        for (var i = 0; i < prepared.Count; i++)
+        {
+            for (var j = i + 1; j < prepared.Count; j++)
+            {
+                var a = prepared[i];
+                var b = prepared[j];
+                if (a.Start <= b.End && b.Start <= a.End)
+                {
+                    throw new DomainException(
+                        $"Dải BIB trùng giữa «{a.Name}» ({a.Start:D4}–{a.End:D4}) và «{b.Name}» ({b.Start:D4}–{b.End:D4}).");
+                }
+            }
+        }
+
+        var totalBibSlots = prepared.Sum(x => x.Size);
+        if (TotalRunnersCap > 0 && totalBibSlots > TotalRunnersCap)
+        {
+            throw new DomainException(
+                $"Tổng dải BIB ({totalBibSlots}) vượt quy mô giải/gói ({TotalRunnersCap} VĐV).");
+        }
+
+        foreach (var p in prepared)
+        {
+            p.Distance.SetBibConfig(p.Prefix, p.Start, p.End);
+        }
+
+        ClearEventLevelBib();
+        Touch();
+    }
+
+    public void EnsureDistanceBibConfigsReady()
+    {
+        if (_distances.Count == 0)
+        {
+            throw new DomainException("Chưa có cự ly.");
+        }
+
+        var missing = _distances.Where(d => !d.HasBibRange).Select(d => d.Name).ToList();
+        if (missing.Count > 0)
+        {
+            throw new DomainException(
+                $"Chưa cấu hình dải BIB cho cự ly: {string.Join(", ", missing)}. " +
+                "Vào Cấu hình BIB sau khi setup cự ly — hệ thống không tự cấp 1001…");
+        }
+    }
+
+    private static void ValidateBibRangeForDistance(
+        EventDistance distance,
+        string? prefix,
+        int rangeStart,
+        int rangeEnd,
+        out string? normalizedPrefix)
+    {
+        normalizedPrefix = null;
         var p = (prefix ?? string.Empty).Trim().ToUpperInvariant();
         if (p.Length > 0)
         {
@@ -540,25 +644,47 @@ public sealed class RaceEvent : AggregateRoot
             normalizedPrefix = p;
         }
 
-        if (rangeStart.HasValue && rangeStart.Value < 1)
+        if (rangeStart < 1 || rangeEnd < 1)
         {
-            throw new DomainException("Số BIB bắt đầu phải ≥ 1.");
+            throw new DomainException("Dải BIB không được là số 0 — dùng 0001–9999.");
         }
 
-        if (rangeEnd.HasValue && rangeEnd.Value < 1)
+        if (rangeStart > 9999 || rangeEnd > 9999)
         {
-            throw new DomainException("Số BIB kết thúc phải ≥ 1.");
+            throw new DomainException("Số BIB tối đa 4 chữ số (0001–9999).");
         }
 
-        if (rangeStart.HasValue && rangeEnd.HasValue && rangeEnd.Value < rangeStart.Value)
+        if (rangeEnd < rangeStart)
         {
-            throw new DomainException("Dải BIB: số kết thúc phải ≥ số bắt đầu.");
+            throw new DomainException("Đến số phải ≥ từ số.");
         }
 
-        BibPrefix = normalizedPrefix;
-        BibRangeStart = rangeStart;
-        BibRangeEnd = rangeEnd;
-        Touch();
+        var size = rangeEnd - rangeStart + 1;
+        if (distance.Capacity > 0 && size != distance.Capacity)
+        {
+            throw new DomainException(
+                size > distance.Capacity
+                    ? $"Dải BIB cự ly «{distance.Name}» có {size} số — vượt sức chứa {distance.Capacity}."
+                    : $"Dải BIB cự ly «{distance.Name}» chỉ có {size} số nhưng sức chứa là {distance.Capacity}.");
+        }
+    }
+
+    private void ClearEventLevelBib()
+    {
+        BibPrefix = null;
+        BibRangeStart = null;
+        BibRangeEnd = null;
+    }
+
+    private void EnsureCanEditBibConfig()
+    {
+        EnsurePackageNotExpired(DateTime.UtcNow);
+        if (Status is RaceEventStatus.Completed
+            or RaceEventStatus.Cancelled
+            or RaceEventStatus.Suspended)
+        {
+            throw new DomainException("Không thể đổi cấu hình BIB ở trạng thái hiện tại.");
+        }
     }
 
     private void Touch() => UpdatedAtUtc = DateTime.UtcNow;

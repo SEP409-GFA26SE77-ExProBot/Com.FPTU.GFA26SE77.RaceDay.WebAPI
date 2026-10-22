@@ -28,12 +28,20 @@ public static class AuditLogModule
             .RequireAuthorization(AuthPolicies.AdminOnly)
             .RequireRateLimiting("admin");
 
-        adminApi.MapGet("/", async (int? take, IMediator mediator, CancellationToken ct) =>
+        adminApi.MapGet("/", async (int? page, int? pageSize, int? take, IMediator mediator, CancellationToken ct) =>
         {
-            var entries = await mediator.Send(new ListRecentAuditEntriesQuery(take ?? 50), ct);
+            // Ưu tiên phân trang page/pageSize; take = legacy (chỉ N bản gần nhất, không total).
+            if (page is not null || pageSize is not null || take is null)
+            {
+                var result = await mediator.Send(
+                    new ListPagedAuditEntriesQuery(page ?? 1, pageSize ?? 10), ct);
+                return Results.Ok(result);
+            }
+
+            var entries = await mediator.Send(new ListRecentAuditEntriesQuery(take.Value), ct);
             return Results.Ok(entries);
         })
-        .WithSummary("Danh sách audit gần đây (Admin)");
+        .WithSummary("Danh sách audit (Admin) — page/pageSize hoặc take (legacy)");
 
         return app;
     }

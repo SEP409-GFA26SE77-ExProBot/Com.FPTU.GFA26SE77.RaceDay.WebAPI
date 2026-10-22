@@ -16,19 +16,36 @@ public sealed class UnlockUserCommandValidator : AbstractValidator<UnlockUserCom
 
 public sealed class UnlockUserCommandHandler(
     IUserRepository users,
+    IRoleRepository roles,
+    ICurrentUserAccessor currentUser,
     IUnitOfWork unitOfWork,
     IEventBus eventBus) : IRequestHandler<UnlockUserCommand>
 {
     public async Task Handle(UnlockUserCommand request, CancellationToken cancellationToken)
     {
-        var user = await users.GetByIdAsync(request.UserId, cancellationToken)
+        var actorId = currentUser.UserId
+            ?? throw new DomainException("Không xác định được người thực hiện.");
+
+        if (actorId == request.UserId)
+            throw new DomainException("Không thể tự mở khóa theo cách này.");
+
+        var target = await users.GetByIdAsync(request.UserId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy người dùng.");
 
-        user.Unlock();
-        users.Update(user);
+        var actor = await users.GetByIdAsync(actorId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy tài khoản đang đăng nhập.");
+
+        var actorRole = await roles.GetByIdAsync(actor.RoleId, cancellationToken);
+        var targetRole = await roles.GetByIdAsync(target.RoleId, cancellationToken);
+
+        if (!RolePrivilege.CanManage(actorRole?.RoleName, targetRole?.RoleName))
+            throw new DomainException("Không có quyền mở khóa tài khoản ngang cấp hoặc cao hơn.");
+
+        target.Unlock();
+        users.Update(target);
 
         await eventBus.PublishAsync(
-            new UserUnlockedIntegrationEvent(user.Id, user.Email),
+            new UserUnlockedIntegrationEvent(target.Id, target.Email),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }

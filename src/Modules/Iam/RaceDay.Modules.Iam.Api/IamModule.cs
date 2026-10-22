@@ -109,11 +109,12 @@ public static class IamModule
                     body.Phone,
                     body.DateOfBirth,
                     body.Gender,
-                    body.AvatarUrl), ct);
+                    body.AvatarUrl,
+                    body.IdNumber), ct);
                 return Results.Ok(result);
             })
             .RequireAuthorization(AuthPolicies.PublicUser)
-            .WithSummary("Cập nhật hồ sơ cá nhân (họ tên, SĐT, DOB, gender, avatarUrl)");
+            .WithSummary("Cập nhật hồ sơ cá nhân (họ tên, SĐT, DOB, gender, CCCD/hộ chiếu, avatarUrl)");
 
         publicApi.MapPost("/me/avatar", async (
             IFormFile file,
@@ -152,7 +153,8 @@ public static class IamModule
                     me.Phone,
                     me.DateOfBirth,
                     me.Gender,
-                    stored.FileUrl), ct);
+                    stored.FileUrl,
+                    me.IdNumber), ct);
                 return Results.Ok(updated);
             })
             .DisableAntiforgery()
@@ -245,4 +247,5 @@ public sealed record UpdateMyProfileBody(
     string? Phone,
     DateOnly? DateOfBirth,
     GenderDto Gender,
-    string? AvatarUrl = null);
+    string? AvatarUrl = null,
+    string? IdNumber = null);

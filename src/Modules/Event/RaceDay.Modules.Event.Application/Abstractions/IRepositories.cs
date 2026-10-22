@@ -41,7 +41,11 @@ public interface IEventRegistrationRepository
     Task<IReadOnlyList<EventRegistration>> ListByUserAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<bool> ExistsForUserDistanceAsync(Guid eventId, Guid distanceId, Guid userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EventRegistration>> ListActiveByUserEventAsync(Guid eventId, Guid userId, CancellationToken cancellationToken = default);
-    Task<string> NextBibNumberAsync(Guid eventId, CancellationToken cancellationToken = default);
+    /// <summary>Cấp BIB tiếp theo theo dải của cự ly đăng ký (số 4 chữ số).</summary>
+    Task<string> NextBibNumberAsync(
+        Guid eventId,
+        Guid distanceId,
+        CancellationToken cancellationToken = default);
     Task<EventRegistration?> GetByEventAndBibAsync(
         Guid eventId,
         string bibNumber,

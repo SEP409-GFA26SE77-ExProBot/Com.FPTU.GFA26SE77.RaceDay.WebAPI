@@ -4,7 +4,6 @@ using RaceDay.Modules.Event.Domain.Events;
 namespace RaceDay.Modules.Event.Application.Events;
 
 public sealed record GeoPointDto(double Lat, double Lng);
-public sealed record NamedGeoPointDto(string Name, double Lat, double Lng);
 public sealed record WeatherDto(string Temp, string Condition, string? Humidity);
 public sealed record BeneficiaryAccountDto(
     string? AccountHolder,
@@ -46,23 +45,22 @@ public sealed record DistanceDto(
     string Type,
     string Name,
     double DistanceKm,
-    double ElevationGainM,
-    double MaxElevationM,
-    double MinElevationM,
     int RunnersCount,
     int Capacity,
     int RegisteredCount,
-    decimal Price,
+    /// <summary>Giá gốc / fallback khi không có type ticket đang mở.</summary>
+    decimal BasePrice,
     string Currency,
     string Color,
     TimeOnly? StartAt,
     TimeOnly? EndAt,
-    NamedGeoPointDto StartLocation,
-    NamedGeoPointDto FinishLocation,
     IReadOnlyList<CheckpointDto> Checkpoints,
     JsonElement? OsrmWaypoints,
     JsonElement? LeafletPolyline,
-    JsonElement? GeoJson);
+    JsonElement? GeoJson,
+    string? BibPrefix = null,
+    int? BibRangeStart = null,
+    int? BibRangeEnd = null);
 
 public sealed record EventDocumentDto(
     string DocumentKey,
@@ -268,27 +266,25 @@ public static class RaceEventDtoMapper
 
         return new DistanceDto(
             d.Id,
-            d.Type,
+            DistanceLeaderboardTypes.Normalize(d.Type, d.DistanceKm),
             d.Name,
             d.DistanceKm,
-            d.ElevationGainM,
-            d.MaxElevationM,
-            d.MinElevationM,
             d.RegisteredCount,
             d.Capacity,
             d.RegisteredCount,
-            d.Price,
+            d.Price, // domain Price → API basePrice
             d.Currency,
             d.Color,
             d.StartAt,
             d.EndAt,
-            new NamedGeoPointDto(d.StartLocation.Name, d.StartLocation.Lat, d.StartLocation.Lng),
-            new NamedGeoPointDto(d.FinishLocation.Name, d.FinishLocation.Lat, d.FinishLocation.Lng),
             // Soft-surplus: event_checkpoints legacy — SoT = Map CourseJson
             Array.Empty<CheckpointDto>(),
             osrm,
             poly,
-            geo);
+            geo,
+            d.BibPrefix,
+            d.BibRangeStart,
+            d.BibRangeEnd);
     }
 
     private static JsonElement? ParseJson(string json)

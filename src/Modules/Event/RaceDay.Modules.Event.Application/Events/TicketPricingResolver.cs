@@ -5,7 +5,7 @@ namespace RaceDay.Modules.Event.Application.Events;
 
 /// <summary>
 /// Resolve giá vé theo ticketPricing JSON + ngày hiện tại.
-/// Ưu tiên phase đang mở không phải standard → standard đang mở → basePrice / distance.Price.
+/// Ưu tiên type đang mở không phải standard → standard đang mở → basePrice / distance.Price.
 /// </summary>
 public static class TicketPricingResolver
 {
@@ -22,7 +22,7 @@ public static class TicketPricingResolver
         DateTime? utcNow = null)
     {
         var fallback = distanceListPrice < 0 ? 0 : distanceListPrice;
-        // Phase dateFrom/dateTo theo lịch VN — không dùng UTC thuần (lệch gần nửa đêm).
+        // dateFrom/dateTo theo lịch VN — không dùng UTC thuần (lệch gần nửa đêm).
         var instant = utcNow ?? DateTime.UtcNow;
         var today = DateOnly.FromDateTime(ToVietnamLocal(instant));
 
@@ -39,15 +39,17 @@ public static class TicketPricingResolver
             && byName.TryGetProperty(distanceName, out var row))
         {
             var basePrice = ReadDecimal(row, "basePrice") ?? fallback;
-            var phases = ReadPhasesByDistance(row);
-            return Pick(phases, basePrice, today);
+            var types = ReadTypesByDistance(row);
+            return Pick(types, basePrice, today);
         }
 
-        if (root.TryGetProperty("phases", out var legacy) && legacy.ValueKind == JsonValueKind.Array)
+        // Legacy root array: phases | types
+        if (TryGetArray(root, "types", out var legacyTypes)
+            || TryGetArray(root, "phases", out legacyTypes))
         {
-            var phases = new List<Phase>();
+            var types = new List<PricingType>();
             var basePrice = fallback;
-            foreach (var p in legacy.EnumerateArray())
+            foreach (var p in legacyTypes.EnumerateArray())
             {
                 var key = ReadString(p, "key") ?? "";
                 var name = ReadString(p, "name") ?? key;
@@ -65,7 +67,7 @@ public static class TicketPricingResolver
                     basePrice = price;
                 }
 
-                phases.Add(new Phase(
+                types.Add(new PricingType(
                     key,
                     string.IsNullOrWhiteSpace(name) ? key : name,
                     ReadDate(p, "dateFrom"),
@@ -74,15 +76,15 @@ public static class TicketPricingResolver
                     standard));
             }
 
-            return Pick(phases, basePrice, today);
+            return Pick(types, basePrice, today);
         }
 
         return new Resolved(fallback, null, null, fallback);
     }
 
-    private static Resolved Pick(IReadOnlyList<Phase> phases, decimal basePrice, DateOnly today)
+    private static Resolved Pick(IReadOnlyList<PricingType> types, decimal basePrice, DateOnly today)
     {
-        var active = phases
+        var active = types
             .Where(p => p.Price > 0 && InRange(today, p.From, p.To))
             .ToList();
 
@@ -101,10 +103,11 @@ public static class TicketPricingResolver
         return new Resolved(basePrice, null, null, basePrice);
     }
 
-    private static List<Phase> ReadPhasesByDistance(JsonElement row)
+    private static List<PricingType> ReadTypesByDistance(JsonElement row)
     {
-        var list = new List<Phase>();
-        if (!row.TryGetProperty("phases", out var arr) || arr.ValueKind != JsonValueKind.Array)
+        var list = new List<PricingType>();
+        // New: types; legacy: phases
+        if (!TryGetArray(row, "types", out var arr) && !TryGetArray(row, "phases", out arr))
         {
             return list;
         }
@@ -112,9 +115,9 @@ public static class TicketPricingResolver
         var i = 0;
         foreach (var p in arr.EnumerateArray())
         {
-            var key = ReadString(p, "key") ?? $"phase-{i}";
+            var key = ReadString(p, "key") ?? $"type-{i}";
             var name = ReadString(p, "name") ?? key;
-            list.Add(new Phase(
+            list.Add(new PricingType(
                 key,
                 name,
                 ReadDate(p, "dateFrom"),
@@ -125,6 +128,17 @@ public static class TicketPricingResolver
         }
 
         return list;
+    }
+
+    private static bool TryGetArray(JsonElement el, string name, out JsonElement arr)
+    {
+        if (el.TryGetProperty(name, out arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            return true;
+        }
+
+        arr = default;
+        return false;
     }
 
     private static bool IsStandard(string key, string name)
@@ -176,7 +190,7 @@ public static class TicketPricingResolver
         return p.GetString();
     }
 
-    private sealed record Phase(
+    private sealed record PricingType(
         string Key,
         string Name,
         DateOnly? From,

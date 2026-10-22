@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Convert RaceDay_API_Flows.md (+ seed header) into RaceDay_API_Guide.docx."""
+"""Convert Event_Distances_Organizer_API.md → Event_Distances_Organizer_API.docx."""
 from __future__ import annotations
 
 import re
@@ -11,8 +11,8 @@ from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parent
-MD = ROOT / "RaceDay_API_Flows.md"
-OUT = ROOT / "RaceDay_API_Guide.docx"
+MD = ROOT / "Event_Distances_Organizer_API.md"
+OUT = ROOT / "Event_Distances_Organizer_API.docx"
 
 
 def set_run_font(run, *, mono: bool = False, bold: bool | None = None, size: int | None = None):
@@ -30,7 +30,6 @@ def set_run_font(run, *, mono: bool = False, bold: bool | None = None, size: int
 
 
 def add_inline(paragraph, text: str, *, mono: bool = False):
-    """Parse **bold** and `code` inside a line."""
     pattern = re.compile(r"(\*\*[^*]+\*\*|`[^`]+`)")
     parts = pattern.split(text)
     for part in parts:
@@ -49,7 +48,6 @@ def add_inline(paragraph, text: str, *, mono: bool = False):
 
 
 def add_heading(doc: Document, text: str, level: int):
-    # strip markdown # and inline markers for heading text (keep simple)
     clean = re.sub(r"[*`]", "", text).strip()
     p = doc.add_heading(clean, level=min(level, 3))
     for run in p.runs:
@@ -112,49 +110,20 @@ def convert(md_text: str) -> Document:
     style.font.size = Pt(11)
     style._element.rPr.rFonts.set(qn("w:eastAsia"), "Calibri")
 
-    # Title
     title = doc.add_paragraph()
-    r = title.add_run("RaceDay API Guide")
+    r = title.add_run("RaceDay — Event Distances Organizer API")
     set_run_font(r, bold=True, size=20)
 
     subtitle = doc.add_paragraph()
     add_inline(
         subtitle,
-        "Nguồn: `docs/RaceDay_API_Flows.md` + `docs/api-samples/` — theo luồng FE (input/output JSON + validation).",
+        "Nguồn: `docs/Event_Distances_Organizer_API.md`. "
+        "Base URL: `http://localhost:5080`. JSON camelCase. "
+        "Auth organizer: Bearer + chủ giải / Admin.",
     )
-
-    # Seed pin (kept from old doc, updated)
-    add_heading(doc, "0. Tài khoản seed (GHIM)", 1)
-    add_para(doc, "Nguồn: `deploy/sql/raceday_init.sql` + EventDataSeeder. Mật khẩu chung: `MatKhau@123`.")
-    add_heading(doc, "Login sẵn theo role", 2)
-    add_code_block(
-        doc,
-        '{\n  "username": "admin",\n  "password": "MatKhau@123"\n}',
-    )
-    add_para(doc, "Admin — email `admin@raceday.vn`")
-    add_code_block(
-        doc,
-        '{\n  "username": "cuong.le",\n  "password": "MatKhau@123"\n}',
-    )
-    add_para(doc, "Organizer — `cuong.le@raceday.vn`")
-    add_code_block(
-        doc,
-        '{\n  "username": "binh.tran",\n  "password": "MatKhau@123"\n}',
-    )
-    add_para(doc, "Runner — `binh.tran@raceday.vn`")
-    add_heading(doc, "ID seed hay dùng", 2)
-    for bullet in [
-        "Event flagship Quy Nhơn: `11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1`",
-        "Distance 10K: `22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2`",
-        "Registration Bình chờ TT: `44444444-dddd-4ddd-8ddd-ddddddddddd2`",
-        "Base URL local: `http://localhost:5080` · Swagger: `/swagger`",
-        "User FE `:3000` · Admin FE `:3001`",
-    ]:
-        add_para(doc, bullet, style="List Bullet")
 
     lines = md_text.splitlines()
     i = 0
-    # skip first H1 of md (already titled)
     if lines and lines[0].startswith("# "):
         i = 1
 
@@ -162,7 +131,6 @@ def convert(md_text: str) -> Document:
     code_lang = ""
     code_buf: list[str] = []
     table_buf: list[str] = []
-    in_mermaid = False
 
     def flush_table():
         nonlocal table_buf
@@ -176,15 +144,7 @@ def convert(md_text: str) -> Document:
         if in_code:
             if line.strip().startswith("```"):
                 code = "\n".join(code_buf)
-                if code_lang == "mermaid":
-                    add_para(doc, "Luồng (tóm tắt):", style=None)
-                    # flatten mermaid to bullets
-                    for cl in code_buf:
-                        cl = cl.strip()
-                        if "->>" in cl:
-                            add_para(doc, cl.replace("->>", " → "), style="List Bullet")
-                else:
-                    add_code_block(doc, code)
+                add_code_block(doc, code)
                 in_code = False
                 code_buf = []
                 code_lang = ""
@@ -204,7 +164,6 @@ def convert(md_text: str) -> Document:
         if line.strip().startswith("|"):
             table_buf.append(line)
             i += 1
-            # peek: if next not table, flush
             if i >= len(lines) or not lines[i].strip().startswith("|"):
                 flush_table()
             continue
@@ -224,7 +183,6 @@ def convert(md_text: str) -> Document:
         elif line.startswith("#### "):
             add_heading(doc, line[5:], 3)
         elif line.startswith("> "):
-            # blockquote → italic-ish note
             p = doc.add_paragraph()
             add_inline(p, "Ghi chú: " + line[2:].lstrip("> ").strip())
             for run in p.runs:
@@ -243,23 +201,9 @@ def convert(md_text: str) -> Document:
 
 
 def main():
-    md = MD.read_text(encoding="utf-8")
-    # Update status note inside md for docx context
-    md = md.replace(
-        "`docs/RaceDay_API_Guide.docx` = **chưa đủ** (thiếu Map, Finance, gói sự kiện, staff, nhiều endpoint Event mới).\n> - File này = nguồn đúng theo code hiện tại + field FE True / Admin đã gọi.",
-        "Tài liệu Word này đã được **cập nhật từ `RaceDay_API_Flows.md`** (Map, Finance, packages, staff, JSON I/O, validation).",
-    )
-    md = md.replace(
-        "**Kết luận:** danh sách API trong `.docx` **chưa đủ**. Dùng file này + Swagger `http://localhost:5080/swagger` làm nguồn chính.",
-        "**Kết luận:** dùng Word này + Swagger `http://localhost:5080/swagger` + `docs/api-samples/`.",
-    )
-    md = md.replace("| Ghi trong docx cũ? |", "| Ghi trong Word? |")
-    md = md.replace("| **thiếu** |", "| ✓ (đã bổ sung) |")
-    md = md.replace("| thiếu |", "| ✓ |")
-    md = md.replace("| thiếu / partial md |", "| ✓ |")
-    md = md.replace("| một phần |", "| ✓ |")
-
-    doc = convert(md)
+    if not MD.exists():
+        raise SystemExit(f"Missing {MD}")
+    doc = convert(MD.read_text(encoding="utf-8"))
     doc.save(OUT)
     print(f"Wrote {OUT} ({OUT.stat().st_size} bytes)")
 
