@@ -32,9 +32,15 @@ public sealed class ListPhotographerPhotosQueryHandler(
             {
                 PhotoStatus.Pending, PhotoStatus.Queued, PhotoStatus.Processing, PhotoStatus.Failed
             },
+            // Thanh tiến trình: chỉ còn đang chờ/ chạy — Failed không tính "còn pending" (tránh treo UI).
+            "queue" => new[]
+            {
+                PhotoStatus.Pending, PhotoStatus.Queued, PhotoStatus.Processing
+            },
             "matched" => new[] { PhotoStatus.Matched, PhotoStatus.ManualCorrected },
             "review" => new[] { PhotoStatus.NeedsReview, PhotoStatus.RunnerReported },
-            _ => throw new DomainException("Bucket phải là pending|matched|review.")
+            "discarded" => new[] { PhotoStatus.Discarded },
+            _ => throw new DomainException("Bucket phải là pending|queue|matched|review|discarded.")
         };
 
         var page = Math.Max(1, request.Page);
@@ -51,5 +57,33 @@ public sealed class ListPhotographerPhotosQueryHandler(
             page,
             pageSize,
             total);
+    }
+}
+
+public sealed record GetPhotographerPhotoDetailQuery(
+    Guid EventId,
+    Guid PhotoId) : IRequest<PhotoDetailDto>;
+
+public sealed class GetPhotographerPhotoDetailQueryHandler(
+    IPhotoAssetRepository photos,
+    ICurrentUserAccessor currentUser,
+    IEventStaffAccessQuery staffAccess) : IRequestHandler<GetPhotographerPhotoDetailQuery, PhotoDetailDto>
+{
+    public async Task<PhotoDetailDto> Handle(
+        GetPhotographerPhotoDetailQuery request,
+        CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        await BulkUploadPhotosCommandHandler.EnsurePhotographerAsync(
+            request.EventId, userId, staffAccess, cancellationToken);
+
+        var photo = await photos.GetByIdWithTagsAsync(request.PhotoId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy ảnh.");
+        if (photo.EventId != request.EventId)
+        {
+            throw new DomainException("Ảnh không thuộc giải này.");
+        }
+
+        return PhotoDtoMapper.ToDetail(photo);
     }
 }
