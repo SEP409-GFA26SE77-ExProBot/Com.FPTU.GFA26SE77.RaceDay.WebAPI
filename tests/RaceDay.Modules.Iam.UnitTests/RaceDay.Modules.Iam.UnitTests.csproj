@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Iam\RaceDay.Modules.Iam.Api\RaceDay.Modules.Iam.Api.csproj" />
     <ProjectReference Include="..\..\src\Modules\Iam\RaceDay.Modules.Iam.Application\RaceDay.Modules.Iam.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Iam\RaceDay.Modules.Iam.Domain\RaceDay.Modules.Iam.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Iam\RaceDay.Modules.Iam.Contracts\RaceDay.Modules.Iam.Contracts.csproj" />
