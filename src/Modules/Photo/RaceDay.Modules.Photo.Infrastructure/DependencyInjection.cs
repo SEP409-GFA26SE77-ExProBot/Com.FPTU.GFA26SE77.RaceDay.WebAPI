@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IPhotoAssetRepository, PhotoAssetRepository>();
         services.AddScoped<IPhotoDisputeRepository, PhotoDisputeRepository>();
         services.AddScoped<IPhotoUnitOfWork, PhotoUnitOfWork>();
+        services.AddSingleton<IPhotoOcrSettings, PhotoOcrSettings>();
 
         var ocrBase = configuration["Photo:Ocr:BaseUrl"];
         services.AddHttpClient<IOcrClient, OcrClient>(client =>
@@ -33,7 +34,8 @@ public static class DependencyInjection
                 client.BaseAddress = new Uri(ocrBase.TrimEnd('/') + "/");
             }
 
-            client.Timeout = TimeSpan.FromSeconds(30);
+            // PaddleOCR + YOLO có thể >30s / ảnh
+            client.Timeout = TimeSpan.FromMinutes(3);
         });
 
         services.AddHostedService<PhotoDataSeeder>();
