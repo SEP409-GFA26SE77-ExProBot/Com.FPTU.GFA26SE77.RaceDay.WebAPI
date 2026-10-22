@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -35,6 +36,21 @@ public static class IamModule
         // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddValidatorsFromAssembly(typeof(RegisterUserCommand).Assembly);
         services.AddIamInfrastructure(configuration);
+        services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            var previous = options.Events.OnTokenValidated;
+            options.Events.OnTokenValidated = async context =>
+            {
+                if (previous is not null)
+                {
+                    await previous(context);
+                }
+                if (context.Result?.Failure is null)
+                {
+                    await CurrentAccountValidation.ValidateAsync(context);
+                }
+            };
+        });
         return services;
     }
 
@@ -114,7 +130,8 @@ public static class IamModule
                 return Results.Ok(result);
             })
             .RequireAuthorization(AuthPolicies.PublicUser)
-            .WithSummary("Cập nhật hồ sơ cá nhân (họ tên, SĐT, DOB, gender, CCCD/hộ chiếu, avatarUrl)");
+            .WithSummary("Cập nhật hồ sơ cá nhân (họ tên, SĐT, DOB, gender, CCCD/hộ chiếu, avatarUrl)")
+            .WithDescription("idNumber: CCCD/CMND gồm 9 hoặc 12 chữ số, hoặc hộ chiếu gồm 6–12 ký tự bắt đầu bằng chữ. Bỏ qua/null để giữ giá trị hiện tại; gửi chuỗi rỗng để xóa.");
 
         publicApi.MapPost("/me/avatar", async (
             IFormFile file,
@@ -200,10 +217,12 @@ public static class IamModule
                 body.Status,
                 body.ProfileDescription,
                 body.ContactEmail,
-                body.ContactPhone), ct);
+                body.ContactPhone,
+                body.IdNumber), ct);
             return Results.NoContent();
         })
-        .WithSummary("Cập nhật user");
+        .WithSummary("Cập nhật user")
+        .WithDescription("Hỗ trợ idNumber (Identity number). Bỏ qua/null để giữ giá trị hiện tại; gửi chuỗi rỗng để xóa.");
 
         adminApi.MapPost("/users/{userId:guid}/lock", async (Guid userId, IMediator mediator, CancellationToken ct) =>
         {
