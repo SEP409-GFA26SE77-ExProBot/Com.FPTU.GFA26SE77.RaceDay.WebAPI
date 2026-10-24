@@ -20,6 +20,13 @@ public sealed class PaymentRepository(PaymentDbContext db) : IPaymentRepository
             .OrderByDescending(x => x.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
+    public Task<PaymentOrder?> GetPendingByReferenceAsync(PaymentPurpose purpose, Guid referenceId, CancellationToken cancellationToken = default)
+        => db.PaymentOrders
+            .Include(x => x.Transactions)
+            .Where(x => x.Purpose == purpose && x.ReferenceId == referenceId && x.Status == PaymentStatus.Pending)
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
     public async Task<IReadOnlyList<PaymentOrder>> ListByUserAsync(Guid userId, CancellationToken cancellationToken = default)
         => await db.PaymentOrders
             .Where(x => x.UserId == userId)

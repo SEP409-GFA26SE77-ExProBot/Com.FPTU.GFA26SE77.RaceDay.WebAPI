@@ -19,24 +19,6 @@ public sealed class GeoPoint
     }
 }
 
-public sealed class NamedGeoPoint
-{
-    public string Name { get; private set; } = string.Empty;
-    public double Lat { get; private set; }
-    public double Lng { get; private set; }
-
-    private NamedGeoPoint()
-    {
-    }
-
-    public NamedGeoPoint(string name, double lat, double lng)
-    {
-        Name = name?.Trim() ?? string.Empty;
-        Lat = lat;
-        Lng = lng;
-    }
-}
-
 public sealed class OrganizerInfo
 {
     public string Name { get; private set; } = string.Empty;

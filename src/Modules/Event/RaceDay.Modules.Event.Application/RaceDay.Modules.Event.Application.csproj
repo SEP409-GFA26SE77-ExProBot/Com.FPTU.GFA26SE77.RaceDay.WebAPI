@@ -9,6 +9,8 @@
     <ProjectReference Include="..\RaceDay.Modules.Event.Contracts\RaceDay.Modules.Event.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Application\RaceDay.Shared.Application.csproj" />
     <ProjectReference Include="..\..\Payment\RaceDay.Modules.Payment.Contracts\RaceDay.Modules.Payment.Contracts.csproj" />
+    <ProjectReference Include="..\..\Iam\RaceDay.Modules.Iam.Application\RaceDay.Modules.Iam.Application.csproj" />
+    <ProjectReference Include="..\..\Iam\RaceDay.Modules.Iam.Contracts\RaceDay.Modules.Iam.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />

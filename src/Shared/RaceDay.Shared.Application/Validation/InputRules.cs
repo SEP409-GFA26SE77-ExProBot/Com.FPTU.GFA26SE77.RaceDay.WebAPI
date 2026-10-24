@@ -23,7 +23,12 @@ public static partial class InputRules
     [GeneratedRegex(@"^\d{9}$|^\d{12}$", RegexOptions.CultureInvariant)]
     private static partial Regex VietnamIdNumberRegex();
 
-    [GeneratedRegex(@"^(A|B|AB|O)[+-]$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    /// <summary>Hộ chiếu: bắt đầu bằng chữ, 6–12 ký tự chữ/số (VD VN: B1234567).</summary>
+    [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9]{5,11}$", RegexOptions.CultureInvariant)]
+    private static partial Regex PassportNumberRegex();
+
+    /// <summary>ABO with optional Rh: O, A, B, AB, O+, A-, …</summary>
+    [GeneratedRegex(@"^(A|B|AB|O)([+-])?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex BloodTypeRegex();
 
     public static string NormalizePhone(string? phone)
@@ -44,7 +49,33 @@ public static partial class InputRules
     }
 
     public static bool IsValidOptionalVietnamPhone(string? phone)
-        => string.IsNullOrWhiteSpace(phone) || IsValidVietnamPhone(phone);
+    {
+        if (string.IsNullOrWhiteSpace(phone))
+        {
+            return true;
+        }
+
+        var normalized = NormalizePhone(phone);
+        // Placeholder draft (vd. gói cũ lưu 0000000000) — coi như chưa điền.
+        if (normalized.Length == 0 || normalized.All(static c => c == '0'))
+        {
+            return true;
+        }
+
+        return IsValidVietnamPhone(phone);
+    }
+
+    /// <summary>Chuẩn hóa SĐT; trả empty nếu placeholder toàn số 0.</summary>
+    public static string NormalizeOptionalPhoneOrEmpty(string? phone)
+    {
+        var normalized = NormalizePhone(phone);
+        if (normalized.Length == 0 || normalized.All(static c => c == '0'))
+        {
+            return string.Empty;
+        }
+
+        return normalized;
+    }
 
     public static bool IsValidDateOfBirth(DateOnly? dateOfBirth, DateOnly today)
     {
@@ -75,8 +106,28 @@ public static partial class InputRules
 
     public static bool IsValidLongitude(double lng) => lng is >= -180 and <= 180;
 
+    public static string? NormalizeIdNumber(string? idNumber)
+    {
+        if (string.IsNullOrWhiteSpace(idNumber))
+        {
+            return null;
+        }
+
+        return idNumber.Trim().ToUpperInvariant();
+    }
+
+    /// <summary>CCCD/CMND (9|12 số) hoặc hộ chiếu (6–12 ký tự, bắt đầu bằng chữ).</summary>
     public static bool IsValidOptionalIdNumber(string? idNumber)
-        => string.IsNullOrWhiteSpace(idNumber) || VietnamIdNumberRegex().IsMatch(idNumber.Trim());
+    {
+        var normalized = NormalizeIdNumber(idNumber);
+        if (normalized is null)
+        {
+            return true;
+        }
+
+        return VietnamIdNumberRegex().IsMatch(normalized)
+               || PassportNumberRegex().IsMatch(normalized);
+    }
 
     public static bool IsValidOptionalBloodType(string? bloodType)
         => string.IsNullOrWhiteSpace(bloodType) || BloodTypeRegex().IsMatch(bloodType.Trim());

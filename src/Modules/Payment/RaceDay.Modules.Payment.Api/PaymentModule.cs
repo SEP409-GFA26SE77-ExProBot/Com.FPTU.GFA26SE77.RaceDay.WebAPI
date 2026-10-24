@@ -7,9 +7,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Payment.Application;
 using RaceDay.Modules.Payment.Infrastructure;
 using RaceDay.Modules.Payment.Infrastructure.PayOs;
+using RaceDay.Shared.Domain.Exceptions;
 using RaceDay.Shared.Web.Auth;
 using RaceDay.Shared.Web.OpenApi;
 
@@ -19,7 +21,7 @@ public static class PaymentModule
 {
     public static IServiceCollection AddPaymentModule(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CreateCheckoutCommand).Assembly));
+        // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddValidatorsFromAssembly(typeof(CreateCheckoutCommand).Assembly);
         services.AddPaymentInfrastructure(configuration);
         return services;
@@ -51,6 +53,18 @@ public static class PaymentModule
             "FE: sau POST /event/{id}/registrations → gọi checkout với registrationId + returnUrl/cancelUrl. "
             + "Mock mode: checkoutUrl mở trang giả PayOS (nút Thanh toán / Hủy).");
 
+        api.MapPost("/checkout/package", async (CreatePackageCheckoutRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(
+                new CreatePackageCheckoutCommand(body.PackagePurchaseId, body.ReturnUrl, body.CancelUrl), ct);
+            return Results.Ok(result);
+        })
+        .RequireAuthorization(AuthPolicies.PublicUser)
+        .WithSummary("Tạo link thanh toán PayOS cho gói sự kiện (event package)")
+        .WithDescription(
+            "FE: sau POST /event/organizer/packages/purchases → gọi checkout/package. "
+            + "Mock mode: giống registration checkout.");
+
         api.MapGet("/mine", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyPaymentsQuery(), ct)))
             .RequireAuthorization(AuthPolicies.PublicUser)
@@ -69,6 +83,12 @@ public static class PaymentModule
                 "Live: FE gọi sau khi user thanh toán xong và quay về returnUrl. "
                 + "Nếu PayOS status=PAID → đăng ký chuyển pending_approval. "
                 + "Khuyến nghị vẫn cấu hình webhook public (ngrok) cho production.");
+
+        api.MapPost("/{paymentId:guid}/cancel", async (Guid paymentId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new CancelPendingPaymentCommand(paymentId), ct)))
+            .RequireAuthorization(AuthPolicies.PublicUser)
+            .WithSummary("Hủy payment đang pending (chủ đơn)")
+            .WithDescription("FE nút «Hủy thanh toán» — live + mock. Không hủy khi đã paid.");
 
         // Mock PayOS UI — cùng hành vi live: pay → ConfirmPaymentPaid → redirect returnUrl?code=00&status=PAID&orderCode=
         api.MapGet("/mock-checkout/{paymentId:guid}", async (
@@ -116,8 +136,16 @@ public static class PaymentModule
         .AllowAnonymous()
         .ExcludeFromDescription();
 
-        api.MapPost("/webhooks/payos", async (HttpRequest http, IPayOsGateway payOs, IMediator mediator, CancellationToken ct) =>
+        api.MapPost("/webhooks/payos", async (
+            HttpRequest http,
+            IPayOsGateway payOs,
+            IMediator mediator,
+            ILoggerFactory loggerFactory,
+            CancellationToken ct) =>
         {
+            // PayOS pings this URL when saving webhook (sample code=00). Must return 2xx
+            // even if orderCode is unknown — otherwise dashboard shows 400 "không hoạt động".
+            var logger = loggerFactory.CreateLogger("PayOsWebhook");
             using var reader = new StreamReader(http.Body);
             var raw = await reader.ReadToEndAsync(ct);
             var signature = http.Headers["x-payos-signature"].FirstOrDefault()
@@ -125,26 +153,42 @@ public static class PaymentModule
 
             if (!payOs.IsMock && !payOs.VerifyWebhookSignature(raw, signature))
             {
+                logger.LogWarning("PayOS webhook rejected: invalid signature");
                 return Results.Unauthorized();
             }
 
             using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(raw) ? "{}" : raw);
             var root = doc.RootElement;
             var data = root.TryGetProperty("data", out var d) ? d : root;
-            var orderCode = data.TryGetProperty("orderCode", out var oc) ? oc.GetInt64() : 0L;
+            var orderCode = data.TryGetProperty("orderCode", out var oc) && oc.ValueKind == JsonValueKind.Number
+                ? oc.GetInt64()
+                : 0L;
             var status = data.TryGetProperty("status", out var st) ? st.GetString() : null;
             var code = data.TryGetProperty("code", out var c) ? c.GetString()
                 : root.TryGetProperty("code", out var c2) ? c2.GetString() : null;
 
-            if (string.Equals(status, "PAID", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(code, "00", StringComparison.OrdinalIgnoreCase))
+            var looksPaid = string.Equals(status, "PAID", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(code, "00", StringComparison.OrdinalIgnoreCase);
+
+            if (looksPaid && orderCode > 0)
             {
                 var gatewayId = data.TryGetProperty("paymentLinkId", out var pl) ? pl.GetString()
                     : data.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-                await mediator.Send(new ConfirmPaymentPaidCommand(null, orderCode, gatewayId, raw), ct);
+                try
+                {
+                    await mediator.Send(new ConfirmPaymentPaidCommand(null, orderCode, gatewayId, raw), ct);
+                }
+                catch (DomainException ex)
+                {
+                    // Confirm-webhook sample / unknown order → still ACK so PayOS accepts the URL.
+                    logger.LogInformation(
+                        ex,
+                        "PayOS webhook ACK without matching payment (orderCode={OrderCode})",
+                        orderCode);
+                }
             }
 
-            return Results.Ok(new { received = true });
+            return Results.Ok(new { success = true, received = true });
         })
         .AllowAnonymous()
         .WithSummary("Webhook PayOS (PAID → Event MarkPaidPendingApproval)")
@@ -223,4 +267,5 @@ public static class PaymentModule
     }
 
     private sealed record CreateCheckoutRequest(Guid RegistrationId, string ReturnUrl, string CancelUrl);
+    private sealed record CreatePackageCheckoutRequest(Guid PackagePurchaseId, string ReturnUrl, string CancelUrl);
 }

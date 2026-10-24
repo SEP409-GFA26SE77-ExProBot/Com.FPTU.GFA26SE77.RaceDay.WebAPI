@@ -31,9 +31,22 @@ public sealed class EventRegistration : AggregateRoot
     public DateTime? LiabilityAcceptedAtUtc { get; private set; }
     public string? RejectionReason { get; private set; }
     public string? BibNumber { get; private set; }
+    /// <summary>Giá chốt lúc tạo ĐK (theo phase lúc đó) — checkout/refund bám snapshot này.</summary>
+    public decimal? QuotedAmount { get; private set; }
+    public string? QuotedPhaseKey { get; private set; }
+    public string? QuotedPhaseName { get; private set; }
+    /// <summary>UTC khi staff/organizer quét QR check-in cổng.</summary>
+    public DateTime? CheckedInAtUtc { get; private set; }
+    public Guid? CheckedInByUserId { get; private set; }
+    public DateTime? FinishedAtUtc { get; private set; }
+    public long? ResultSeconds { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+
+    public DateTime? StartedAtUtc { get; private set; }
+
+   
     private EventRegistration()
     {
     }
@@ -110,6 +123,19 @@ public sealed class EventRegistration : AggregateRoot
         return reg;
     }
 
+    public void LockQuotedPrice(decimal amount, string? phaseKey, string? phaseName)
+    {
+        if (amount < 0)
+        {
+            throw new DomainException("Giá vé không hợp lệ.");
+        }
+
+        QuotedAmount = amount;
+        QuotedPhaseKey = string.IsNullOrWhiteSpace(phaseKey) ? null : phaseKey.Trim();
+        QuotedPhaseName = string.IsNullOrWhiteSpace(phaseName) ? null : phaseName.Trim();
+        Touch();
+    }
+
     public void MarkPaidPendingApproval()
     {
         if (Status != RegistrationStatus.PendingPayment)
@@ -152,6 +178,68 @@ public sealed class EventRegistration : AggregateRoot
         Touch();
     }
 
+    /// <summary>
+    /// VĐV đã thanh toán bị từ chối → sửa hồ sơ và nộp lại chờ duyệt (không tạo đơn/TT mới).
+    /// </summary>
+    public void UpdateProfileAndResubmit(
+        string fullName,
+        string email,
+        string phone,
+        DateOnly? dateOfBirth,
+        string? gender,
+        string? idNumber,
+        int? heightCm,
+        int? weightKg,
+        string? bloodType,
+        string? emergencyName,
+        string? emergencyPhone,
+        string? shirtType,
+        string? shirtSize,
+        string? shirtColor,
+        string medicalCodesJson,
+        string? healthCertFileName,
+        string? healthCertUrl,
+        bool liabilityAccepted)
+    {
+        if (Status != RegistrationStatus.Rejected)
+        {
+            throw new DomainException("Chỉ đơn bị từ chối mới được sửa và nộp lại.");
+        }
+
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            throw new DomainException("Họ tên không được để trống.");
+        }
+
+        if (!liabilityAccepted)
+        {
+            throw new DomainException("Cần chấp nhận điều khoản trách nhiệm.");
+        }
+
+        FullName = fullName.Trim();
+        Email = email.Trim().ToLowerInvariant();
+        Phone = phone.Trim();
+        DateOfBirth = dateOfBirth;
+        Gender = gender?.Trim();
+        IdNumber = idNumber?.Trim();
+        HeightCm = heightCm;
+        WeightKg = weightKg;
+        BloodType = bloodType?.Trim();
+        EmergencyName = emergencyName?.Trim();
+        EmergencyPhone = emergencyPhone?.Trim();
+        ShirtType = shirtType?.Trim();
+        ShirtSize = shirtSize?.Trim();
+        ShirtColor = shirtColor?.Trim();
+        MedicalCodesJson = string.IsNullOrWhiteSpace(medicalCodesJson) ? "[]" : medicalCodesJson;
+        HealthCertFileName = healthCertFileName?.Trim();
+        HealthCertUrl = healthCertUrl?.Trim();
+        LiabilityAccepted = true;
+        LiabilityAcceptedAtUtc = DateTime.UtcNow;
+        RejectionReason = null;
+        Status = RegistrationStatus.PendingApproval;
+        Touch();
+    }
+
     public void CancelUnpaid()
     {
         if (Status != RegistrationStatus.PendingPayment)
@@ -163,6 +251,108 @@ public sealed class EventRegistration : AggregateRoot
         Touch();
     }
 
+    /// <summary>After paid refund (runner request or post-reject cleanup) — free the registration.</summary>
+    public void MarkCancelledAfterRefund()
+    {
+        if (Status is RegistrationStatus.Cancelled)
+        {
+            return;
+        }
+
+        if (Status is not (RegistrationStatus.PendingApproval or RegistrationStatus.Confirmed or RegistrationStatus.Rejected))
+        {
+            throw new DomainException("Không thể hủy đăng ký đã hoàn ở trạng thái hiện tại.");
+        }
+
+        Status = RegistrationStatus.Cancelled;
+        Touch();
+    }
+
+    /// <summary>
+    /// Check-in cổng/kit. Chỉ Confirmed. Quét lại = idempotent (không đổi timestamp lần đầu).
+    /// </summary>
+    /// <returns>true nếu vừa check-in lần đầu; false nếu đã check-in trước đó.</returns>
+    public bool CheckIn(Guid staffUserId)
+    {
+        if (Status != RegistrationStatus.Confirmed)
+        {
+            throw new DomainException("Chỉ VĐV đã được duyệt (confirmed) mới check-in được.");
+        }
+
+        if (string.IsNullOrWhiteSpace(BibNumber))
+        {
+            throw new DomainException("Đăng ký chưa có số BIB.");
+        }
+
+        if (CheckedInAtUtc is not null)
+        {
+            return false;
+        }
+
+        if (staffUserId == Guid.Empty)
+        {
+            throw new DomainException("Thiếu người check-in.");
+        }
+
+        CheckedInAtUtc = DateTime.UtcNow;
+        CheckedInByUserId = staffUserId;
+        Touch();
+        return true;
+    }
+
+    /// <summary>
+    /// Ghi nhận finish cho VĐV. Idempotent: quét lại không ghi đè lần đầu.
+    /// </summary>
+    public bool Finish(DateTime finishedAtUtc, long resultSeconds)
+    {
+        if (Status == RegistrationStatus.Finished)
+        {
+            return false;
+        }
+
+        if (Status != RegistrationStatus.Confirmed)
+        {
+            throw new DomainException("Chỉ VĐV đã được duyệt (confirmed) mới finish được.");
+        }
+
+        if (finishedAtUtc.Kind != DateTimeKind.Utc)
+        {
+            finishedAtUtc = DateTime.SpecifyKind(finishedAtUtc, DateTimeKind.Utc);
+        }
+
+        if (resultSeconds < 0)
+        {
+            throw new DomainException("Kết quả finish không hợp lệ.");
+        }
+
+        FinishedAtUtc = finishedAtUtc;
+        ResultSeconds = resultSeconds;
+        Status = RegistrationStatus.Finished;
+        Touch();
+        return true;
+    }
+    public bool Start(DateTime startedAtUtc)
+    {
+        if (Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
+        {
+            throw new DomainException("Chỉ VĐV confirmed mới có thể ghi nhận xuất phát.");
+        }
+
+        // Đã quét start trước đó rồi thì bỏ qua
+        if (StartedAtUtc.HasValue)
+        {
+            return false;
+        }
+
+        if (startedAtUtc.Kind != DateTimeKind.Utc)
+        {
+            startedAtUtc = DateTime.SpecifyKind(startedAtUtc, DateTimeKind.Utc);
+        }
+
+        StartedAtUtc = startedAtUtc;
+        Touch();
+        return true;
+    }
     private void Touch() => UpdatedAtUtc = DateTime.UtcNow;
 }
 

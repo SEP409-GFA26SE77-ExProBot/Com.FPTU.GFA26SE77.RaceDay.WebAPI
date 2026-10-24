@@ -1,0 +1,21 @@
+﻿{
+  "distanceId": "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+  "fullName": "Trần Thị Bình",
+  "email": "binh.tran@raceday.vn",
+  "phone": "0903000003",
+  "dateOfBirth": "1999-08-12",
+  "gender": "Female",
+  "idNumber": "079199001234",
+  "heightCm": 160,
+  "weightKg": 52,
+  "bloodType": "A",
+  "emergencyName": "Trần Văn Nam",
+  "emergencyPhone": "0903222222",
+  "shirtType": "Tee",
+  "shirtSize": "S",
+  "shirtColor": "White",
+  "medicalCodes": ["none"],
+  "healthCertFileName": "cert.png",
+  "healthCertUrl": "https://pub-example.r2.dev/health-certs/cert.png",
+  "liabilityAccepted": true
+}

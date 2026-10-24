@@ -57,9 +57,11 @@ public sealed class IamDbContext(DbContextOptions<IamDbContext> options) : DbCon
             entity.Property(x => x.FullName).HasColumnName("full_name").HasMaxLength(100).IsRequired();
             entity.Property(x => x.Phone).HasColumnName("phone").HasMaxLength(20);
             entity.Property(x => x.DateOfBirth).HasColumnName("date_of_birth");
+            entity.Property(x => x.IdNumber).HasColumnName("id_number").HasMaxLength(30);
             entity.Property(x => x.Gender).HasColumnName("gender").HasConversion<short>();
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<short>();
             entity.Property(x => x.EmailVerified).HasColumnName("email_verified");
+            entity.Property(x => x.MustChangePassword).HasColumnName("must_change_password");
             entity.Property(x => x.CreatedAt).HasColumnName("created_at");
             entity.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             entity.Ignore(x => x.DomainEvents);
@@ -83,6 +85,7 @@ public sealed class IamDbContext(DbContextOptions<IamDbContext> options) : DbCon
             entity.Property(x => x.Description).HasColumnName("description").HasMaxLength(255);
             entity.Property(x => x.ContactEmail).HasColumnName("contact_email").HasMaxLength(100);
             entity.Property(x => x.ContactPhone).HasColumnName("contact_phone").HasMaxLength(100);
+            entity.Property(x => x.AvatarUrl).HasColumnName("avatar_url").HasMaxLength(500);
             entity.Property(x => x.VerificationStatus).HasColumnName("verification_status").HasConversion<short>();
             entity.Property(x => x.VerifiedAt).HasColumnName("verified_at");
             entity.Property(x => x.VerifiedBy).HasColumnName("verified_by").HasMaxLength(100);

@@ -27,7 +27,21 @@ public static class DependencyInjection
         services.AddAuthorizationBuilder()
             .AddPolicy(AuthPolicies.PublicUser, policy => policy.RequireAuthenticatedUser())
             .AddPolicy(AuthPolicies.AdminOnly, policy =>
-                policy.RequireAuthenticatedUser().RequireRole("Admin"));
+                policy.RequireAuthenticatedUser().RequireRole("Admin"))
+            .AddPolicy(AuthPolicies.HumanUser, policy =>
+                policy.RequireAuthenticatedUser().RequireAssertion(ctx =>
+                    !ctx.User.HasClaim("token_use", "wear")
+                    && ctx.User.FindFirst("device_id") is null))
+            .AddPolicy(AuthPolicies.OrganizerOrCoordinator, policy =>
+                policy.RequireAuthenticatedUser()
+                    .RequireAssertion(ctx =>
+                        !ctx.User.HasClaim("token_use", "wear")
+                        && ctx.User.FindFirst("device_id") is null)
+                    .RequireRole("Admin", "Organizer", "Coordinator"))
+            .AddPolicy(AuthPolicies.SosWrite, policy =>
+                policy.RequireAuthenticatedUser()
+                    .RequireClaim("scope", "sos:create")
+                    .RequireClaim("token_use", "wear"));
 
         services.AddCors(options =>
         {
@@ -50,13 +64,32 @@ public static class DependencyInjection
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.AddFixedWindowLimiter("public", limiter =>
             {
-                limiter.PermitLimit = 100;
+                limiter.PermitLimit = 200;
                 limiter.Window = TimeSpan.FromMinutes(1);
-                limiter.QueueLimit = 0;
+                limiter.QueueLimit = 20;
             });
             options.AddFixedWindowLimiter("admin", limiter =>
             {
-                limiter.PermitLimit = 300;
+                limiter.PermitLimit = 400;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 40;
+            });
+            // Organizer workspace (shell + page) gọi nhiều GET /event/{id}
+            options.AddFixedWindowLimiter("authenticated", limiter =>
+            {
+                limiter.PermitLimit = 400;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 40;
+            });
+            options.AddFixedWindowLimiter("device-code", limiter =>
+            {
+                limiter.PermitLimit = 10;
+                limiter.Window = TimeSpan.FromMinutes(1);
+                limiter.QueueLimit = 0;
+            });
+            options.AddFixedWindowLimiter("device-token", limiter =>
+            {
+                limiter.PermitLimit = 30;
                 limiter.Window = TimeSpan.FromMinutes(1);
                 limiter.QueueLimit = 0;
             });
@@ -82,6 +115,9 @@ public static class DependencyInjection
                     ValidateAudience = true,
                     ValidateIssuerSigningKey = true,
                     ValidateLifetime = true,
+                    RequireExpirationTime = true,
+                    RequireSignedTokens = true,
+                    ClockSkew = TimeSpan.Zero,
                     ValidIssuer = configuration["Jwt:Issuer"] ?? "raceday",
                     ValidAudience = configuration["Jwt:Audience"] ?? "raceday-clients",
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),

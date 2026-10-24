@@ -1,0 +1,5 @@
+﻿{
+  "registrationId": "44444444-dddd-4ddd-8ddd-ddddddddddd2",
+  "returnUrl": "http://localhost:3000/events/11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1/pending",
+  "cancelUrl": "http://localhost:3000/events/11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1/payment"
+}

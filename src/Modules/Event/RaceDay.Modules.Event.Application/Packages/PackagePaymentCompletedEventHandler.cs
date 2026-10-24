@@ -1,0 +1,93 @@
+using MediatR;
+using Microsoft.Extensions.Logging;
+using RaceDay.Modules.Event.Application.Abstractions;
+using RaceDay.Modules.Event.Contracts.Events;
+using RaceDay.Modules.Event.Domain.Events;
+using RaceDay.Modules.Payment.Contracts.Events;
+using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Application.Messaging;
+using RaceDay.Shared.Domain.Exceptions;
+
+namespace RaceDay.Modules.Event.Application.Packages;
+
+public sealed class PackagePaymentCompletedEventHandler(
+    IEventPackagePurchaseRepository purchases,
+    IPromoCodeRepository promoCodes,
+    IRaceEventRepository events,
+    IEventUnitOfWork unitOfWork,
+    IEventBus eventBus,
+    ILogger<PackagePaymentCompletedEventHandler> logger) : INotificationHandler<IntegrationEventOccurred>
+{
+    public async Task Handle(IntegrationEventOccurred notification, CancellationToken cancellationToken)
+    {
+        if (notification.Event is not PackagePaymentCompletedIntegrationEvent paid)
+        {
+            return;
+        }
+
+        var purchase = await purchases.GetByIdAsync(paid.PackagePurchaseId, cancellationToken)
+            ?? throw new DomainException($"PackagePurchase {paid.PackagePurchaseId} not found.");
+
+        if (purchase.Status == Domain.Packages.PackagePurchaseStatus.Paid)
+        {
+            return;
+        }
+
+        purchase.MarkPaid(paid.PaymentId);
+
+        if (!string.IsNullOrWhiteSpace(purchase.PromoCode))
+        {
+            var promo = await promoCodes.GetByCodeAsync(purchase.PromoCode, cancellationToken);
+            promo?.RecordRedemption();
+            if (promo is not null) promoCodes.Update(promo);
+        }
+
+        var expiresAtUtc = DateTime.UtcNow
+            .AddMonths(purchase.DurationMonths)
+            .AddDays(7);
+
+        // Liên hệ thật do organizer cập nhật ở Hồ sơ giải — không bịa SĐT giả
+        // (trước dùng 0000000000 → fail VietnamPhone khi lưu bank/profile).
+        var organizer = OrganizerInfo.Create(
+            purchase.OrgName,
+            $"pending-{paid.UserId:N}@update.raceday.vn",
+            string.Empty);
+
+        var location = string.IsNullOrWhiteSpace(purchase.OrgAddress)
+            ? "Chưa cập nhật địa điểm"
+            : purchase.OrgAddress!.Trim();
+
+        // OrgIntro giữ trên package_purchases (metadata BTC) — không copy sang
+        // event.description (mô tả giải public; BTC tự điền ở Hồ sơ giải).
+        var race = RaceEvent.CreateDraft(
+            paid.UserId,
+            purchase.OrgName,
+            location,
+            DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(purchase.DurationMonths)),
+            new GeoPoint(0, 0),
+            organizer,
+            purchase.ParticipantCap,
+            description: null);
+
+        race.SetPackageInfo(purchase.Id, expiresAtUtc);
+
+        // Không tạo cự ly mặc định — BTC thêm ở Hồ sơ giải / Cự ly & giá vé trước khi gửi duyệt.
+
+        purchase.SetCreatedEvent(race.Id, expiresAtUtc);
+
+        await events.AddAsync(race, cancellationToken);
+        purchases.Update(purchase);
+
+        // Commit trước — rồi mới publish (modules.mdc). IEventBus = MediatR in-process
+        // → RaceEventCreatedEventHandler → OrganizerRoleRequired → IAM gán Organizer.
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        await eventBus.PublishAsync(
+            new RaceEventCreatedIntegrationEvent(race.Id, race.Name, race.OrganizerUserId),
+            cancellationToken);
+
+        logger.LogInformation(
+            "Package purchase {PurchaseId} paid → draft event {EventId} created (no distances; expires {ExpiresAt})",
+            purchase.Id, race.Id, expiresAtUtc);
+    }
+}

@@ -16,19 +16,36 @@ public sealed class LockUserCommandValidator : AbstractValidator<LockUserCommand
 
 public sealed class LockUserCommandHandler(
     IUserRepository users,
+    IRoleRepository roles,
+    ICurrentUserAccessor currentUser,
     IUnitOfWork unitOfWork,
     IEventBus eventBus) : IRequestHandler<LockUserCommand>
 {
     public async Task Handle(LockUserCommand request, CancellationToken cancellationToken)
     {
-        var user = await users.GetByIdAsync(request.UserId, cancellationToken)
+        var actorId = currentUser.UserId
+            ?? throw new DomainException("Không xác định được người thực hiện.");
+
+        if (actorId == request.UserId)
+            throw new DomainException("Không thể khóa chính tài khoản đang đăng nhập.");
+
+        var target = await users.GetByIdAsync(request.UserId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy người dùng.");
 
-        user.Lock();
-        users.Update(user);
+        var actor = await users.GetByIdAsync(actorId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy tài khoản đang đăng nhập.");
+
+        var actorRole = await roles.GetByIdAsync(actor.RoleId, cancellationToken);
+        var targetRole = await roles.GetByIdAsync(target.RoleId, cancellationToken);
+
+        if (!RolePrivilege.CanManage(actorRole?.RoleName, targetRole?.RoleName))
+            throw new DomainException("Không có quyền khóa tài khoản ngang cấp hoặc cao hơn.");
+
+        target.Lock();
+        users.Update(target);
 
         await eventBus.PublishAsync(
-            new UserLockedIntegrationEvent(user.Id, user.Email),
+            new UserLockedIntegrationEvent(target.Id, target.Email),
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
     }

@@ -16,9 +16,13 @@ public sealed class User : AggregateRoot
     public string FullName { get; private set; } = string.Empty;
     public string? Phone { get; private set; }
     public DateOnly? DateOfBirth { get; private set; }
+    /// <summary>CCCD/CMND (9|12 số) hoặc hộ chiếu.</summary>
+    public string? IdNumber { get; private set; }
     public Gender Gender { get; private set; } = Gender.Unknown;
     public UserStatus Status { get; private set; } = UserStatus.Pending;
     public bool EmailVerified { get; private set; }
+    /// <summary>Tài khoản cấp bởi BTC/admin — nhắc đổi mật khẩu sau lần đăng nhập đầu.</summary>
+    public bool MustChangePassword { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
     public Profile? Profile { get; private set; }
@@ -135,7 +139,8 @@ public sealed class User : AggregateRoot
         Gender gender,
         string? profileDescription,
         string? contactEmail,
-        string? contactPhone)
+        string? contactPhone,
+        string? idNumber = null)
     {
         if (string.IsNullOrWhiteSpace(fullName))
         {
@@ -146,8 +151,21 @@ public sealed class User : AggregateRoot
         Phone = phone;
         DateOfBirth = dateOfBirth;
         Gender = gender;
+        IdNumber = string.IsNullOrWhiteSpace(idNumber) ? null : idNumber.Trim().ToUpperInvariant();
         UpdatedAt = DateTime.UtcNow;
         Profile?.UpdateContact(profileDescription, contactEmail, contactPhone);
+        Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
+    }
+
+    public void SetAvatarUrl(string? avatarUrl)
+    {
+        if (Profile is null)
+        {
+            throw new DomainException("Hồ sơ chưa được khởi tạo.");
+        }
+
+        Profile.SetAvatarUrl(avatarUrl);
+        UpdatedAt = DateTime.UtcNow;
         Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
     }
 
@@ -202,8 +220,26 @@ public sealed class User : AggregateRoot
         }
 
         PasswordHash = passwordHash;
+        MustChangePassword = false;
         UpdatedAt = DateTime.UtcNow;
         Raise(new PasswordChangedDomainEvent(Id, Email));
+    }
+
+    public void RequirePasswordChange()
+    {
+        MustChangePassword = true;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void ClearMustChangePassword()
+    {
+        if (!MustChangePassword)
+        {
+            return;
+        }
+
+        MustChangePassword = false;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     /// <summary>Marks email verified and activates account when it was Pending.</summary>
