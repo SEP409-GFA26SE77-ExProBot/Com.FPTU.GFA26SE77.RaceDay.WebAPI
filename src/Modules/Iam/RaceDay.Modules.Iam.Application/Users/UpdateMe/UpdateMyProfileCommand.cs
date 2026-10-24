@@ -69,7 +69,7 @@ public sealed class UpdateMyProfileCommandHandler(
             user.Profile?.Description,
             user.Email,
             phone,
-            InputRules.NormalizeIdNumber(request.IdNumber));
+            request.IdNumber is null ? user.IdNumber : InputRules.NormalizeIdNumber(request.IdNumber));
 
         if (request.AvatarUrl is not null)
         {

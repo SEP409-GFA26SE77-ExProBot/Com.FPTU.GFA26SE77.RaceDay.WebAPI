@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <InternalsVisibleTo Include="RaceDay.Modules.Iam.UnitTests" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\RaceDay.Modules.Iam.Application\RaceDay.Modules.Iam.Application.csproj" />

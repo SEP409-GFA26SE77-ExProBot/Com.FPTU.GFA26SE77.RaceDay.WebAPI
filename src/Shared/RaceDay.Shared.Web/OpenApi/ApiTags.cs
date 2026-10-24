@@ -14,7 +14,9 @@ public static class ApiTags
     public const string Map = "9. Map — Course / route";
     public const string Finance = "10. Finance — Ví / giải ngân / hoàn";
     public const string Device = "11. Device — Wear link + SOS";
-    public const string Host = "12. Host";
+    public const string Photo = "12. Photo — Upload / OCR / search";
+    public const string Host = "13. Host";
+    public const string RaceMonitoring = "14. RaceMonitoring";
 
     public static IReadOnlyList<(string Name, string Description)> All { get; } =
     [
@@ -29,7 +31,9 @@ public static class ApiTags
         (Map, "Course map theo (eventId, distanceId): GET/PUT /api/v1/map/events/.../course; GET /geocode (Nominatim VN). FE organizer setup map + simulator. OSRM route vẫn phía FE."),
         (Finance, "Escrow theo giải, payout Admin duyệt, hoàn tiền theo payment.Amount × % policy (mở ĐK 100% / đóng ĐK 50% / sau gun 0%)."),
         (Device, "Wear Device Flow (RFC 8628): auth/code + auth/token; runner link/approve; SOS scope sos:create; organizer ack/resolve."),
+        (Photo, "Photographer bulk-upload + OCR async (SEP_Service_Photo); runner search theo BIB; dispute. Auth: Active staff Photographer của event (JWT role không đủ)."),
         (Host, "Health / hạ tầng host.")
+        (RaceMonitoring, "Giám sát giải (scaffold). Prefix /api/v1/race-monitoring")
     ];
 
     public static string SortKey(string tag) => tag switch
@@ -45,7 +49,9 @@ public static class ApiTags
         Map => "9",
         Finance => "10",
         Device => "11",
-        Host => "12",
+        Photo => "12",
+        Host => "13",
+        RaceMonitoring => "14",
         _ => "99"
     };
 }
