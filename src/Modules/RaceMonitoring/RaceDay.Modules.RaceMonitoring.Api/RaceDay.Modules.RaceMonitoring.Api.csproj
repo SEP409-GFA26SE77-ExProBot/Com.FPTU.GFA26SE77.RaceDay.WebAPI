@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RaceDay.Modules.RaceMonitoring.Application\RaceDay.Modules.RaceMonitoring.Application.csproj" />
+    <ProjectReference Include="..\RaceDay.Modules.RaceMonitoring.Infrastructure\RaceDay.Modules.RaceMonitoring.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Web\RaceDay.Shared.Web.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
+    <PackageReference Include="MediatR" Version="12.4.1" />
+  </ItemGroup>
+</Project>
