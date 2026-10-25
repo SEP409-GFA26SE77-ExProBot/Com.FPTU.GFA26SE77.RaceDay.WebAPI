@@ -32,7 +32,7 @@ public static class ApiTags
         (Finance, "Escrow theo giải, payout Admin duyệt, hoàn tiền theo payment.Amount × % policy (mở ĐK 100% / đóng ĐK 50% / sau gun 0%)."),
         (Device, "Wear Device Flow (RFC 8628): auth/code + auth/token; runner link/approve; SOS scope sos:create; organizer ack/resolve."),
         (Photo, "Photographer bulk-upload + OCR async (SEP_Service_Photo); runner search theo BIB; dispute. Auth: Active staff Photographer của event (JWT role không đủ)."),
-        (Host, "Health / hạ tầng host.")
+        (Host, "Health / hạ tầng host."),
         (RaceMonitoring, "Giám sát giải (scaffold). Prefix /api/v1/race-monitoring")
     ];
 
