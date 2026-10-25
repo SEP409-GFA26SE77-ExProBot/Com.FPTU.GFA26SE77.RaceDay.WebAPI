@@ -3,6 +3,7 @@ using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Packages;
 using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Modules.Event.Domain.Staff;
+using RaceDay.Modules.Event.Domain.Supplies;
 
 namespace RaceDay.Modules.Event.Infrastructure.Persistence;
 
@@ -19,6 +20,7 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
     public DbSet<PackageDurationOption> PackageDurationOptions => Set<PackageDurationOption>();
     public DbSet<PackageCapacityOption> PackageCapacityOptions => Set<PackageCapacityOption>();
     public DbSet<EventStaffMember> StaffMembers => Set<EventStaffMember>();
+    public DbSet<EventSupplyItem> SupplyItems => Set<EventSupplyItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -289,6 +291,21 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.HasIndex(x => new { x.EventId, x.Role, x.Email })
                 .IsUnique()
                 .HasFilter("\"Status\" <> 'Revoked'");
+            entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<EventSupplyItem>(entity =>
+        {
+            entity.ToTable("event_supplies");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(EventSupplyItem.MaxNameLength).IsRequired();
+            entity.Property(x => x.Quantity).IsRequired();
+            entity.Property(x => x.Unit).HasMaxLength(EventSupplyItem.MaxUnitLength).IsRequired();
+            entity.Property(x => x.Notes).HasMaxLength(EventSupplyItem.MaxNotesLength);
+            entity.Property(x => x.SortOrder);
+            entity.Property(x => x.CreatedAtUtc);
+            entity.Property(x => x.UpdatedAtUtc);
+            entity.HasIndex(x => x.EventId);
             entity.Ignore(x => x.DomainEvents);
         });
     }

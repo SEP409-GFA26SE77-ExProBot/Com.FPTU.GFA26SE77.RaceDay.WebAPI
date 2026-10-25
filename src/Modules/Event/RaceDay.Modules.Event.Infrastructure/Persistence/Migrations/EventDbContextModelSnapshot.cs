@@ -745,6 +745,48 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.ToTable("event_staff_members", "event");
                 });
 
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Supplies.EventSupplyItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.ToTable("event_supplies", "event");
+                });
+
             modelBuilder.Entity("RaceDay.Modules.Event.Domain.Events.EventCheckpoint", b =>
                 {
                     b.HasOne("RaceDay.Modules.Event.Domain.Events.EventDistance", null)

@@ -83,6 +83,7 @@
     <Project Path="src/Shared/RaceDay.Shared.Web/RaceDay.Shared.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/RaceDay.Modules.Payment.UnitTests/RaceDay.Modules.Payment.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Event.UnitTests/RaceDay.Modules.Event.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Iam.UnitTests/RaceDay.Modules.Iam.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Photo.UnitTests/RaceDay.Modules.Photo.UnitTests.csproj" />
