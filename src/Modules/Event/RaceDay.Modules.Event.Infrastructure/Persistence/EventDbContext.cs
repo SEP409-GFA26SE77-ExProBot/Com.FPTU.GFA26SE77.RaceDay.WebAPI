@@ -3,6 +3,7 @@ using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Packages;
 using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Modules.Event.Domain.Staff;
+using RaceDay.Modules.Event.Domain.Complaints;
 
 namespace RaceDay.Modules.Event.Infrastructure.Persistence;
 
@@ -19,6 +20,7 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
     public DbSet<PackageDurationOption> PackageDurationOptions => Set<PackageDurationOption>();
     public DbSet<PackageCapacityOption> PackageCapacityOptions => Set<PackageCapacityOption>();
     public DbSet<EventStaffMember> StaffMembers => Set<EventStaffMember>();
+    public DbSet<EventComplaint> Complaints => Set<EventComplaint>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -53,13 +55,13 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
 
             entity.OwnsOne(x => x.Coordinates, c =>
             {
-                c.Property(p => p.Lat).HasColumnName("coord_lat");
-                c.Property(p => p.Lng).HasColumnName("coord_lng");
+                c.Property(p => p.Lat).HasColumnName("coord_lat").IsRequired();
+                c.Property(p => p.Lng).HasColumnName("coord_lng").IsRequired();
             });
 
             entity.OwnsOne(x => x.Organizer, o =>
             {
-                o.Property(p => p.Name).HasColumnName("org_name").HasMaxLength(200);
+                o.Property(p => p.Name).HasColumnName("org_name").HasMaxLength(200).IsRequired();
                 o.Property(p => p.LegalEntity).HasColumnName("org_legal_entity").HasMaxLength(200);
                 o.Property(p => p.Email).HasColumnName("org_email").HasMaxLength(100);
                 o.Property(p => p.Phone).HasColumnName("org_phone").HasMaxLength(30);
@@ -75,14 +77,14 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
 
             entity.OwnsOne(x => x.Weather, w =>
             {
-                w.Property(p => p.Temp).HasColumnName("weather_temp").HasMaxLength(40);
+                w.Property(p => p.Temp).HasColumnName("weather_temp").HasMaxLength(40).IsRequired();
                 w.Property(p => p.Condition).HasColumnName("weather_condition").HasMaxLength(100);
                 w.Property(p => p.Humidity).HasColumnName("weather_humidity").HasMaxLength(40);
             });
 
             entity.OwnsOne(x => x.Permit, p =>
             {
-                p.Property(x => x.FileUrl).HasColumnName("permit_file_url").HasMaxLength(500);
+                p.Property(x => x.FileUrl).HasColumnName("permit_file_url").HasMaxLength(500).IsRequired();
                 p.Property(x => x.FileName).HasColumnName("permit_file_name").HasMaxLength(255);
                 p.Property(x => x.PermitNumber).HasColumnName("permit_number").HasMaxLength(100);
                 p.Property(x => x.IssuingAuthority).HasColumnName("permit_authority").HasMaxLength(200);
@@ -183,7 +185,7 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Property(x => x.StartedAtUtc);
             entity.Property(x => x.FinishedAtUtc);
             entity.Property(x => x.ResultSeconds);
-            // Cho phép đăng ký lại cùng cự ly sau Rejected/Cancelled (Status lưu string enum name).
+
             entity.HasIndex(x => new { x.EventId, x.DistanceId, x.UserId })
                 .IsUnique()
                 .HasFilter("\"Status\" NOT IN ('Rejected', 'Cancelled')");
@@ -290,6 +292,26 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
                 .IsUnique()
                 .HasFilter("\"Status\" <> 'Revoked'");
             entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<EventComplaint>(builder =>
+        {
+            builder.ToTable("event_complaints");
+            builder.HasKey(x => x.Id);
+
+            builder.Property(x => x.Content)
+                .IsRequired()
+                .HasMaxLength(2000);
+
+            builder.Property(x => x.ResponseContent)
+                .HasMaxLength(2000);
+
+            builder.Property(x => x.Status)
+                .HasConversion<string>()
+                .HasMaxLength(30);
+
+            builder.HasIndex(x => x.EventId);
+            builder.HasIndex(x => x.UserId);
         });
     }
 }
