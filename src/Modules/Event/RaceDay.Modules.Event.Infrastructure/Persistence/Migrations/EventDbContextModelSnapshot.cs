@@ -23,6 +23,45 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Disputes.EventDispute", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RunnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("RunnerUserId", "CreatedAtUtc");
+
+                    b.ToTable("event_disputes", "event");
+                });
+
             modelBuilder.Entity("RaceDay.Modules.Event.Domain.Events.EventCheckpoint", b =>
                 {
                     b.Property<Guid>("Id")
@@ -785,6 +824,15 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.HasIndex("EventId");
 
                     b.ToTable("event_supplies", "event");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Disputes.EventDispute", b =>
+                {
+                    b.HasOne("RaceDay.Modules.Event.Domain.Events.RaceEvent", null)
+                        .WithMany()
+                        .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("RaceDay.Modules.Event.Domain.Events.EventCheckpoint", b =>
