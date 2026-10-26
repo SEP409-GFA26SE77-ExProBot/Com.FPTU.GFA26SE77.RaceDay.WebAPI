@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using RaceDay.Modules.Event.Domain.Disputes;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Packages;
 using RaceDay.Modules.Event.Domain.Registrations;
@@ -21,10 +22,23 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
     public DbSet<PackageCapacityOption> PackageCapacityOptions => Set<PackageCapacityOption>();
     public DbSet<EventStaffMember> StaffMembers => Set<EventStaffMember>();
     public DbSet<EventSupplyItem> SupplyItems => Set<EventSupplyItem>();
+    public DbSet<EventDispute> Disputes => Set<EventDispute>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("event");
+
+        modelBuilder.Entity<EventDispute>(entity =>
+        {
+            entity.ToTable("event_disputes");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Title).HasMaxLength(EventDispute.MaxTitleLength).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(EventDispute.MaxDescriptionLength).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(x => new { x.RunnerUserId, x.CreatedAtUtc });
+            entity.HasOne<RaceEvent>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.Restrict);
+            entity.Ignore(x => x.DomainEvents);
+        });
 
         modelBuilder.Entity<RaceEvent>(entity =>
         {

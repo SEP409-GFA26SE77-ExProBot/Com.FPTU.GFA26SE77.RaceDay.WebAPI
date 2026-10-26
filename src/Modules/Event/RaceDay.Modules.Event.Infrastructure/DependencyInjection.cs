@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Application.Abstractions;
@@ -33,6 +34,9 @@ public static class DependencyInjection
         services.AddScoped<IPackageCapacityOptionRepository, PackageCapacityOptionRepository>();
         services.AddScoped<IEventStaffMemberRepository, EventStaffMemberRepository>();
         services.AddScoped<IEventSupplyItemRepository, EventSupplyItemRepository>();
+        services.AddScoped<IEventDisputeRepository, EventDisputeRepository>();
+        services.AddScoped<IRecentJoinedEventQuery, RaceDay.Modules.Event.Infrastructure.Events.RecentJoinedEventQuery>();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<PackagePricingService>();
         services.AddScoped<IEventUnitOfWork, EventUnitOfWork>();
         services.AddHostedService<PackageExpiryLockHostedService>();
