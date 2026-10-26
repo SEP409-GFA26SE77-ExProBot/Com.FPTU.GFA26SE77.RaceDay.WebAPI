@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\RaceDay.Modules._Template.Domain\RaceDay.Modules._Template.Domain.csproj" />
+    <ProjectReference Include="..\RaceDay.Modules._Template.Contracts\RaceDay.Modules._Template.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Application\RaceDay.Shared.Application.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
