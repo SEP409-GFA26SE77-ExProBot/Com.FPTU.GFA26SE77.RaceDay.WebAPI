@@ -1,5 +1,6 @@
 ﻿using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Configuration;
 using RaceDay.Modules.Event.Contracts.Registrations;
 using RaceDay.Modules.Payment.Contracts.Events;
 using RaceDay.Modules.Payment.Domain;
@@ -179,33 +180,61 @@ public sealed class CreateCheckoutCommandHandler(
     IPaymentRepository payments,
     IPayOsGateway payOs,
     ICurrentUserAccessor currentUser,
-    IPaymentUnitOfWork unitOfWork) : IRequestHandler<CreateCheckoutCommand, PaymentDto>
+    IPaymentUnitOfWork unitOfWork,
+    IConfiguration configuration,
+    IMediator mediator) : IRequestHandler<CreateCheckoutCommand, PaymentDto>
 {
     public async Task<PaymentDto> Handle(CreateCheckoutCommand request, CancellationToken cancellationToken)
     {
-        var userId = currentUser.UserId ?? throw new DomainException("Cáº§n Ä‘Äƒng nháº­p.");
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
         var info = await checkoutInfo.GetAsync(request.RegistrationId, cancellationToken)
-            ?? throw new DomainException("KhĂ´ng tĂ¬m tháº¥y Ä‘Äƒng kĂ½.");
+            ?? throw new DomainException("Không tìm thấy đăng ký.");
 
         if (info.UserId != userId && !currentUser.IsAdmin)
         {
-            throw new DomainException("KhĂ´ng thá»ƒ thanh toĂ¡n Ä‘Äƒng kĂ½ cá»§a ngÆ°á»i khĂ¡c.");
+            throw new DomainException("Không thể thanh toán đăng ký của người khác.");
         }
 
         if (!string.Equals(info.RegistrationStatus, "pending_payment", StringComparison.OrdinalIgnoreCase))
         {
-            throw new DomainException($"ÄÄƒng kĂ½ khĂ´ng á»Ÿ tráº¡ng thĂ¡i chá» thanh toĂ¡n (hiá»‡n: {info.RegistrationStatus}).");
+            throw new DomainException($"Đăng ký không ở trạng thái chờ thanh toán (hiện: {info.RegistrationStatus}).");
         }
 
+        var ttl = CheckoutPendingGuard.ResolveTtlMinutes(configuration);
         var existing = await payments.GetPendingByRegistrationAsync(request.RegistrationId, cancellationToken);
-        if (existing is { CheckoutUrl: not null })
+        if (existing is not null)
         {
-            var createRaw = existing.Transactions
-                .OrderByDescending(t => t.CreatedAtUtc)
-                .FirstOrDefault(t => t.TransactionType == "create_link")
-                ?.RawResponseJson;
-            var vietQr = PaymentDtoMapper.TryParseVietQrFromRaw(createRaw);
-            return PaymentDtoMapper.ToDto(existing, vietQr);
+            var outcome = await CheckoutPendingGuard.EvaluateAsync(existing, payOs, ttl, cancellationToken);
+            if (outcome == CheckoutPendingGuard.PendingOutcome.AlreadyPaid)
+            {
+                await mediator.Send(
+                    new ConfirmPaymentPaidCommand(existing.Id, existing.OrderCode, existing.TransactionReference, null),
+                    cancellationToken);
+                throw new DomainException("Đăng ký đã được thanh toán. Vui lòng tải lại trang.");
+            }
+
+            if (outcome == CheckoutPendingGuard.PendingOutcome.Reuse)
+            {
+                var createRaw = existing.Transactions
+                    .OrderByDescending(t => t.CreatedAtUtc)
+                    .FirstOrDefault(t => t.TransactionType == "create_link")
+                    ?.RawResponseJson;
+                var vietQr = PaymentDtoMapper.TryParseVietQrFromRaw(createRaw);
+                return PaymentDtoMapper.ToDto(existing, vietQr);
+            }
+
+            if (outcome == CheckoutPendingGuard.PendingOutcome.Recreate)
+            {
+                if (existing.Status == PaymentStatus.Pending)
+                {
+                    existing.MarkExpired();
+                }
+
+                payments.Update(existing);
+                await unitOfWork.SaveChangesAsync(cancellationToken);
+                existing = null; // tạo PaymentOrder mới + orderCode mới (idempotent theo registration khi link còn sống)
+            }
+            // ContinueCreate → giữ existing, gắn checkout bên dưới
         }
 
         var orderCode = existing?.OrderCode ?? GenerateOrderCode();
@@ -224,7 +253,7 @@ public sealed class CreateCheckoutCommandHandler(
         var amountVnd = (int)Math.Round(info.Amount, MidpointRounding.AwayFromZero);
         if (amountVnd < 1000)
         {
-            throw new DomainException("Sá»‘ tiá»n PayOS tá»‘i thiá»ƒu 1000 VND.");
+            throw new DomainException("Số tiền PayOS tối thiểu 1000 VND.");
         }
 
         // Live PayOS: description max 9 chars for non-linked bank accounts.
@@ -414,42 +443,61 @@ public sealed class SyncPaymentFromPayOsCommandHandler(
     IPaymentRepository payments,
     IPayOsGateway payOs,
     IMediator mediator,
-    ICurrentUserAccessor currentUser) : IRequestHandler<SyncPaymentFromPayOsCommand, PaymentDto>
+    ICurrentUserAccessor currentUser,
+    IPaymentUnitOfWork unitOfWork,
+    IConfiguration configuration) : IRequestHandler<SyncPaymentFromPayOsCommand, PaymentDto>
 {
     public async Task<PaymentDto> Handle(SyncPaymentFromPayOsCommand request, CancellationToken cancellationToken)
     {
-        var userId = currentUser.UserId ?? throw new DomainException("Can dang nhap.");
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
         var payment = await payments.GetByIdAsync(request.PaymentId, cancellationToken)
-            ?? throw new DomainException("Khong tim thay payment.");
+            ?? throw new DomainException("Không tìm thấy payment.");
 
         if (payment.UserId != userId && !currentUser.IsAdmin)
         {
-            throw new DomainException("Khong co quyen sync payment nay.");
+            throw new DomainException("Không có quyền sync payment này.");
         }
 
-        if (payment.Status == PaymentStatus.Paid)
+        if (payment.Status is PaymentStatus.Paid or PaymentStatus.Expired or PaymentStatus.Cancelled or PaymentStatus.Refunded)
         {
             return PaymentDtoMapper.ToDto(payment);
         }
 
+        var ttl = CheckoutPendingGuard.ResolveTtlMinutes(configuration);
+
         // Mock ≈ live: FE luôn gọi sync sau returnUrl. Mock đã PAID qua /mock-checkout/.../pay
-        // (cùng ConfirmPaymentPaid + webhook-equivalent). Sync chỉ đọc local status.
+        // (cùng ConfirmPaymentPaid + webhook-equivalent). Sync chỉ đọc local + TTL.
         if (payOs.IsMock)
         {
+            if (payment.Status == PaymentStatus.Pending && CheckoutPendingGuard.IsLocallyExpired(payment, ttl))
+            {
+                payment.MarkExpired();
+                payments.Update(payment);
+                await unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+
             return PaymentDtoMapper.ToDto(payment);
         }
 
         var info = await payOs.GetPaymentLinkAsync(payment.OrderCode, cancellationToken)
             ?? throw new DomainException("Không lấy được trạng thái từ PayOS.");
 
-        if (!string.Equals(info.Status, "PAID", StringComparison.OrdinalIgnoreCase))
+        if (CheckoutPendingGuard.IsPaidPayOsStatus(info.Status))
         {
-            return PaymentDtoMapper.ToDto(payment);
+            return await mediator.Send(
+                new ConfirmPaymentPaidCommand(payment.Id, payment.OrderCode, info.PaymentLinkId, info.RawJson),
+                cancellationToken);
         }
 
-        return await mediator.Send(
-            new ConfirmPaymentPaidCommand(payment.Id, payment.OrderCode, info.PaymentLinkId, info.RawJson),
-            cancellationToken);
+        if (CheckoutPendingGuard.IsTerminalPayOsStatus(info.Status)
+            || (payment.Status == PaymentStatus.Pending && CheckoutPendingGuard.IsLocallyExpired(payment, ttl)))
+        {
+            payment.MarkExpired();
+            payments.Update(payment);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return PaymentDtoMapper.ToDto(payment);
     }
 }
 
@@ -475,7 +523,9 @@ public sealed class CreatePackageCheckoutCommandHandler(
     IPaymentRepository payments,
     IPayOsGateway payOs,
     ICurrentUserAccessor currentUser,
-    IPaymentUnitOfWork unitOfWork) : IRequestHandler<CreatePackageCheckoutCommand, PaymentDto>
+    IPaymentUnitOfWork unitOfWork,
+    IConfiguration configuration,
+    IMediator mediator) : IRequestHandler<CreatePackageCheckoutCommand, PaymentDto>
 {
     public async Task<PaymentDto> Handle(CreatePackageCheckoutCommand request, CancellationToken cancellationToken)
     {
@@ -493,16 +543,41 @@ public sealed class CreatePackageCheckoutCommandHandler(
             throw new DomainException($"Gói không ở trạng thái chờ thanh toán (hiện: {info.Status}).");
         }
 
+        var ttl = CheckoutPendingGuard.ResolveTtlMinutes(configuration);
         var existing = await payments.GetPendingByReferenceAsync(
             PaymentPurpose.EventPackage, request.PackagePurchaseId, cancellationToken);
-        if (existing is { CheckoutUrl: not null })
+        if (existing is not null)
         {
-            var createRaw = existing.Transactions
-                .OrderByDescending(t => t.CreatedAtUtc)
-                .FirstOrDefault(t => t.TransactionType == "create_link")
-                ?.RawResponseJson;
-            var vietQr = PaymentDtoMapper.TryParseVietQrFromRaw(createRaw);
-            return PaymentDtoMapper.ToDto(existing, vietQr);
+            var outcome = await CheckoutPendingGuard.EvaluateAsync(existing, payOs, ttl, cancellationToken);
+            if (outcome == CheckoutPendingGuard.PendingOutcome.AlreadyPaid)
+            {
+                await mediator.Send(
+                    new ConfirmPaymentPaidCommand(existing.Id, existing.OrderCode, existing.TransactionReference, null),
+                    cancellationToken);
+                throw new DomainException("Gói đã được thanh toán. Vui lòng tải lại trang.");
+            }
+
+            if (outcome == CheckoutPendingGuard.PendingOutcome.Reuse)
+            {
+                var createRaw = existing.Transactions
+                    .OrderByDescending(t => t.CreatedAtUtc)
+                    .FirstOrDefault(t => t.TransactionType == "create_link")
+                    ?.RawResponseJson;
+                var vietQr = PaymentDtoMapper.TryParseVietQrFromRaw(createRaw);
+                return PaymentDtoMapper.ToDto(existing, vietQr);
+            }
+
+            if (outcome == CheckoutPendingGuard.PendingOutcome.Recreate)
+            {
+                if (existing.Status == PaymentStatus.Pending)
+                {
+                    existing.MarkExpired();
+                }
+
+                payments.Update(existing);
+                await unitOfWork.SaveChangesAsync(cancellationToken);
+                existing = null;
+            }
         }
 
         var orderCode = existing?.OrderCode ?? GenerateOrderCode();

@@ -76,6 +76,21 @@ public sealed class PhotoAsset : AggregateRoot
         Touch();
     }
 
+    /// <summary>
+    /// Worker chết / timeout giữa OCR → Processing kẹt mãi. Cho phép reclaim về Queued.
+    /// </summary>
+    public void RequeueStuckProcessing()
+    {
+        if (Status is not PhotoStatus.Processing)
+        {
+            throw new DomainException("Chỉ ảnh đang Processing mới reclaim về hàng đợi.");
+        }
+
+        Status = PhotoStatus.Queued;
+        OcrJobId = null;
+        Touch();
+    }
+
     public void MarkProcessing(string? ocrJobId = null)
     {
         if (Status is not (PhotoStatus.Queued or PhotoStatus.Pending or PhotoStatus.Processing))
@@ -110,9 +125,15 @@ public sealed class PhotoAsset : AggregateRoot
 
     public void Discard(string reason)
     {
+        if (Status is PhotoStatus.Matched or PhotoStatus.ManualCorrected)
+        {
+            throw new DomainException(
+                "Ảnh đã khớp không discard tại đây — dùng khiếu nại/review workflow.");
+        }
+
         _tags.Clear();
         Status = PhotoStatus.Discarded;
-        DiscardReason = reason.Trim();
+        DiscardReason = string.IsNullOrWhiteSpace(reason) ? "discarded" : reason.Trim();
         Touch();
     }
 

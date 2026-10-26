@@ -11,6 +11,7 @@ using RaceDay.Modules.Event.Application.Events.Update;
 using RaceDay.Modules.Event.Application.Packages;
 using RaceDay.Modules.Event.Application.Registrations;
 using RaceDay.Modules.Event.Application.Staff;
+using RaceDay.Modules.Event.Application.Supplies;
 using RaceDay.Modules.Event.Infrastructure;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Web.Auth;
@@ -267,6 +268,29 @@ public static class EventModule
             return Results.NoContent();
         })
             .WithSummary("Gỡ nhân sự khỏi giải");
+
+        organizerApi.MapGet("/{eventId:guid}/supplies", async (
+            Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListEventSuppliesQuery(eventId), ct)))
+            .WithSummary("Danh sách vật phẩm tiếp tế (đơn vị thùng)");
+
+        organizerApi.MapPut("/{eventId:guid}/supplies", async (
+            Guid eventId, UpdateEventSuppliesRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ReplaceEventSuppliesCommand(eventId, body), ct)))
+            .WithSummary("Thay thế toàn bộ danh sách vật phẩm tiếp tế");
+
+        organizerApi.MapPost("/{eventId:guid}/supplies", async (
+            Guid eventId, CreateEventSupplyRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new AddEventSupplyCommand(eventId, body), ct)))
+            .WithSummary("Thêm 1 vật phẩm tiếp tế");
+
+        organizerApi.MapDelete("/{eventId:guid}/supplies/{supplyId:guid}", async (
+            Guid eventId, Guid supplyId, IMediator mediator, CancellationToken ct) =>
+        {
+            await mediator.Send(new DeleteEventSupplyCommand(eventId, supplyId), ct);
+            return Results.NoContent();
+        })
+            .WithSummary("Xóa 1 vật phẩm tiếp tế");
 
         var userApi = app.MapGroup("/api/v1/event")
             .WithTags(ApiTags.EventRunner)

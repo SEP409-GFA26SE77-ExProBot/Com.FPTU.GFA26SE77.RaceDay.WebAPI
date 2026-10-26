@@ -271,7 +271,7 @@ public sealed class User : AggregateRoot
 
         if (Status == UserStatus.Pending || !EmailVerified)
         {
-            throw new DomainException("Tài khoản chưa xác thực email. Vui lòng nhập OTP.");
+            throw new DomainException("Tài khoản chưa xác thực email. Vui lòng xác thực.");
         }
     }
 
