@@ -23,6 +23,214 @@ namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.AidStations.AidStation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CheckpointId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("Latitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<double>("Longitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CheckpointId");
+
+                    b.HasIndex("EventId");
+
+                    b.ToTable("aid_stations", "race_monitoring");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.AidStations.AidStationInventory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AidStationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("LastUpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("QuantityAvailable")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<Guid>("SupplyItemId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SupplyItemId");
+
+                    b.HasIndex("AidStationId", "SupplyItemId")
+                        .IsUnique();
+
+                    b.ToTable("aid_station_inventories", "race_monitoring", t =>
+                        {
+                            t.HasCheckConstraint("CK_aid_station_inventories_QuantityAvailable", "\"QuantityAvailable\" >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.AidStations.AidStationSupplyTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AidStationInventoryId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("numeric(18,3)");
+
+                    b.Property<Guid?>("RecordedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TransactionType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AidStationInventoryId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_aid_supply_tx_InventoryId_OccurredAtUtc");
+
+                    b.ToTable("aid_station_supply_transactions", "race_monitoring", t =>
+                        {
+                            t.HasCheckConstraint("CK_aid_station_supply_transactions_Quantity", "\"Quantity\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.AidStations.SupplyItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name", "Unit")
+                        .IsUnique();
+
+                    b.ToTable("supply_items", "race_monitoring");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.BroomWagons.BroomWagon", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("VehicleCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("VehicleType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId", "VehicleCode")
+                        .IsUnique();
+
+                    b.ToTable("broom_wagons", "race_monitoring");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.BroomWagons.BroomWagonCheckpointLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BroomWagonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CheckpointId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("RecordedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RecordedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ScanMethod")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BroomWagonId", "RecordedAtUtc");
+
+                    b.HasIndex("CheckpointId", "RecordedAtUtc");
+
+                    b.ToTable("broom_wagon_checkpoint_logs", "race_monitoring");
+                });
+
             modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.CheckpointScan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -48,6 +256,262 @@ namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Migrations
                     b.HasIndex("CheckpointId", "ScannedAtUtc");
 
                     b.ToTable("checkpoint_scans", "race_monitoring");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.Contingency.ContingencyIncident", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ContingencyPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("DetectedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IncidentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContingencyPlanId");
+
+                    b.HasIndex("EventId", "DetectedAtUtc");
+
+                    b.ToTable("contingency_incidents", "race_monitoring");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.Contingency.ContingencyPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("PlanType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("TriggerCondition")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId", "Status");
+
+                    b.ToTable("contingency_plans", "race_monitoring");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.Contingency.EmergencyDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ContingencyIncidentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("DecidedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DecidedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DecisionDetails")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DecisionType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("EffectiveAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContingencyIncidentId", "DecidedAtUtc");
+
+                    b.ToTable("emergency_decisions", "race_monitoring");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination.EmergencyAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AcceptedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ArrivedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("AssignedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EmergencyResourceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EmergencyResponseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmergencyResourceId", "AssignedAtUtc");
+
+                    b.HasIndex("EmergencyResponseId", "AssignedAtUtc");
+
+                    b.ToTable("emergency_assignments", "race_monitoring");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination.EmergencyResource", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResourceCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ResourceType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ResourceCode")
+                        .IsUnique()
+                        .HasDatabaseName("IX_emergency_resources_ResourceCode_NoEvent")
+                        .HasFilter("\"EventId\" IS NULL");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("EventId", "ResourceCode")
+                        .IsUnique()
+                        .HasFilter("\"EventId\" IS NOT NULL");
+
+                    b.ToTable("emergency_resources", "race_monitoring");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination.EmergencyResponse", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AssignedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IncidentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ResolutionNotes")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("SourceSosAlertId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceSosAlertId")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "Priority");
+
+                    b.ToTable("emergency_responses", "race_monitoring");
                 });
 
             modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.RunnerLocation", b =>
@@ -78,17 +542,21 @@ namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Migrations
                     b.ToTable("runner_locations", "race_monitoring");
                 });
 
-            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.SOSAlert", b =>
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.RunnerMonitoring.RouteDeviation", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<double?>("Latitude")
-                        .HasColumnType("double precision");
+                    b.Property<DateTime>("DetectedAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<double?>("Longitude")
-                        .HasColumnType("double precision");
+                    b.Property<decimal>("DistanceFromRoute")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("RegistrationId")
                         .HasColumnType("uuid");
@@ -96,34 +564,145 @@ namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ResolvedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid?>("RunnerLocationId")
-                        .HasColumnType("uuid");
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)");
-
-                    b.Property<DateTime>("TriggeredAtUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RunnerLocationId");
+                    b.HasIndex("RegistrationId", "DetectedAtUtc");
 
-                    b.HasIndex("Status", "TriggeredAtUtc");
+                    b.HasIndex("Status", "DetectedAtUtc");
 
-                    b.ToTable("sos_alerts", "race_monitoring");
+                    b.ToTable("route_deviations", "race_monitoring", t =>
+                        {
+                            t.HasCheckConstraint("CK_route_deviations_DistanceFromRoute", "\"DistanceFromRoute\" >= 0");
+                        });
                 });
 
-            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.SOSAlert", b =>
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.RunnerMonitoring.RunnerStatusHistory", b =>
                 {
-                    b.HasOne("RaceDay.Modules.RaceMonitoring.Domain.RunnerLocation", "RunnerLocation")
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ChangedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ChangedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("NewStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PreviousStatus")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("RegistrationId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RegistrationId", "ChangedAtUtc");
+
+                    b.ToTable("runner_status_histories", "race_monitoring");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.AidStations.AidStationInventory", b =>
+                {
+                    b.HasOne("RaceDay.Modules.RaceMonitoring.Domain.AidStations.AidStation", "AidStation")
                         .WithMany()
-                        .HasForeignKey("RunnerLocationId")
+                        .HasForeignKey("AidStationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RaceDay.Modules.RaceMonitoring.Domain.AidStations.SupplyItem", "SupplyItem")
+                        .WithMany()
+                        .HasForeignKey("SupplyItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AidStation");
+
+                    b.Navigation("SupplyItem");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.AidStations.AidStationSupplyTransaction", b =>
+                {
+                    b.HasOne("RaceDay.Modules.RaceMonitoring.Domain.AidStations.AidStationInventory", "AidStationInventory")
+                        .WithMany()
+                        .HasForeignKey("AidStationInventoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_aid_supply_tx_inventories_InventoryId");
+
+                    b.Navigation("AidStationInventory");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.BroomWagons.BroomWagonCheckpointLog", b =>
+                {
+                    b.HasOne("RaceDay.Modules.RaceMonitoring.Domain.BroomWagons.BroomWagon", "BroomWagon")
+                        .WithMany()
+                        .HasForeignKey("BroomWagonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("BroomWagon");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.Contingency.ContingencyIncident", b =>
+                {
+                    b.HasOne("RaceDay.Modules.RaceMonitoring.Domain.Contingency.ContingencyPlan", "ContingencyPlan")
+                        .WithMany()
+                        .HasForeignKey("ContingencyPlanId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.Navigation("RunnerLocation");
+                    b.Navigation("ContingencyPlan");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.Contingency.EmergencyDecision", b =>
+                {
+                    b.HasOne("RaceDay.Modules.RaceMonitoring.Domain.Contingency.ContingencyIncident", "ContingencyIncident")
+                        .WithMany()
+                        .HasForeignKey("ContingencyIncidentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_emg_decisions_incidents_IncidentId");
+
+                    b.Navigation("ContingencyIncident");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination.EmergencyAssignment", b =>
+                {
+                    b.HasOne("RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination.EmergencyResource", "EmergencyResource")
+                        .WithMany()
+                        .HasForeignKey("EmergencyResourceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_emg_assignments_resources_ResourceId");
+
+                    b.HasOne("RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination.EmergencyResponse", "EmergencyResponse")
+                        .WithMany()
+                        .HasForeignKey("EmergencyResponseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_emg_assignments_responses_ResponseId");
+
+                    b.Navigation("EmergencyResource");
+
+                    b.Navigation("EmergencyResponse");
                 });
 #pragma warning restore 612, 618
         }

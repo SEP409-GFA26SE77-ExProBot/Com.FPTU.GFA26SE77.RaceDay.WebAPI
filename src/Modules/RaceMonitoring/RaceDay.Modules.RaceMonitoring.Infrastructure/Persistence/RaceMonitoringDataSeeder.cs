@@ -77,31 +77,6 @@ public sealed class RaceMonitoringDataSeeder(
             Scan(Guid.Parse("88888888-bbbb-4bbb-8bbb-bbbbbbbbbbb6"), AnHanoiRegistrationId, HanoiStartId, ScanMethod.RFID, Utc(2026, 6, 6, 22, 39, 0)),
             Scan(Guid.Parse("88888888-bbbb-4bbb-8bbb-bbbbbbbbbbb7"), AnHanoiRegistrationId, HanoiAidId, ScanMethod.RFID, Utc(2026, 6, 6, 23, 32, 10)));
 
-        var active = SOSAlert.Create(
-            BinhDaNangRegistrationId,
-            Utc(2026, 11, 21, 23, 10, 0),
-            BinhLocation2Id,
-            16.0675,
-            108.2572);
-        SetId(active, Guid.Parse("99999999-cccc-4ccc-8ccc-ccccccccccc1"));
-
-        var acknowledged = SOSAlert.Create(
-            AnHcmcRegistrationId,
-            Utc(2026, 3, 15, 11, 30, 0),
-            AnHcmcLocation2Id);
-        acknowledged.Acknowledge();
-        SetId(acknowledged, Guid.Parse("99999999-cccc-4ccc-8ccc-ccccccccccc2"));
-
-        var resolved = SOSAlert.Create(
-            AnHanoiRegistrationId,
-            Utc(2026, 6, 6, 23, 40, 0),
-            AnHanoiLocation2Id,
-            21.0672,
-            105.8294);
-        resolved.Resolve(Utc(2026, 6, 7, 0, 5, 0));
-        SetId(resolved, Guid.Parse("99999999-cccc-4ccc-8ccc-ccccccccccc3"));
-
-        db.SOSAlerts.AddRange(active, acknowledged, resolved);
         await db.SaveChangesAsync(ct);
     }
 

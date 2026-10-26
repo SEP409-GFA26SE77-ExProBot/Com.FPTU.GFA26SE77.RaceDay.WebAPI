@@ -1,5 +1,5 @@
 -- =============================================================================
--- RaceDay Postgres — schema + seed (IAM / Event / Payment)
+-- RaceDay Postgres — schema + seed (IAM / Event / Payment / RaceMonitoring)
 -- Khớp EF migrations hiện tại. Idempotent (IF NOT EXISTS / ON CONFLICT DO NOTHING).
 --
 -- Chạy:
@@ -328,6 +328,286 @@ CREATE INDEX IF NOT EXISTS "IX_payment_transactions_PaymentId"
     ON payment.payment_transactions ("PaymentId");
 
 -- -----------------------------------------------------------------------------
+-- RACE MONITORING
+-- -----------------------------------------------------------------------------
+CREATE SCHEMA IF NOT EXISTS race_monitoring;
+
+CREATE TABLE IF NOT EXISTS race_monitoring."__EFMigrationsHistory" (
+    "MigrationId"    varchar(150) NOT NULL PRIMARY KEY,
+    "ProductVersion" varchar(32)  NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS race_monitoring.runner_locations (
+    "Id"             uuid PRIMARY KEY,
+    "RegistrationId" uuid NOT NULL,
+    "Latitude"       double precision NOT NULL,
+    "Longitude"      double precision NOT NULL,
+    "RecordedAtUtc"  timestamptz NOT NULL,
+    "ReceivedAtUtc"  timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "IX_runner_locations_RegistrationId_RecordedAtUtc"
+    ON race_monitoring.runner_locations ("RegistrationId", "RecordedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.checkpoint_scans (
+    "Id"             uuid PRIMARY KEY,
+    "RegistrationId" uuid NOT NULL,
+    "CheckpointId"   uuid NOT NULL,
+    "ScannedAtUtc"   timestamptz NOT NULL,
+    "ScanMethod"     varchar(20) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "IX_checkpoint_scans_CheckpointId_ScannedAtUtc"
+    ON race_monitoring.checkpoint_scans ("CheckpointId", "ScannedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.runner_status_histories (
+    "Id"             uuid PRIMARY KEY,
+    "RegistrationId" uuid NOT NULL,
+    "PreviousStatus" varchar(32) NULL,
+    "NewStatus"      varchar(32) NOT NULL,
+    "ChangedAtUtc"   timestamptz NOT NULL,
+    "ChangedBy"      uuid NULL,
+    "Reason"         text NULL
+);
+
+CREATE INDEX IF NOT EXISTS "IX_runner_status_histories_RegistrationId_ChangedAtUtc"
+    ON race_monitoring.runner_status_histories ("RegistrationId", "ChangedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.route_deviations (
+    "Id"                uuid PRIMARY KEY,
+    "RegistrationId"    uuid NOT NULL,
+    "DetectedAtUtc"     timestamptz NOT NULL,
+    "DistanceFromRoute" numeric(12,2) NOT NULL,
+    "Severity"          varchar(32) NOT NULL,
+    "Status"            varchar(32) NOT NULL,
+    "ResolvedAtUtc"     timestamptz NULL,
+    "Notes"             text NULL,
+    CONSTRAINT "CK_route_deviations_DistanceFromRoute" CHECK ("DistanceFromRoute" >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS "IX_route_deviations_RegistrationId_DetectedAtUtc"
+    ON race_monitoring.route_deviations ("RegistrationId", "DetectedAtUtc");
+CREATE INDEX IF NOT EXISTS "IX_route_deviations_Status_DetectedAtUtc"
+    ON race_monitoring.route_deviations ("Status", "DetectedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.emergency_resources (
+    "Id"           uuid PRIMARY KEY,
+    "EventId"      uuid NULL,
+    "ResourceCode" varchar(50) NOT NULL,
+    "ResourceType" varchar(32) NOT NULL,
+    "Name"         varchar(200) NOT NULL,
+    "Status"       varchar(32) NOT NULL,
+    "Notes"        text NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_emergency_resources_EventId_ResourceCode"
+    ON race_monitoring.emergency_resources ("EventId", "ResourceCode")
+    WHERE "EventId" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_emergency_resources_ResourceCode_NoEvent"
+    ON race_monitoring.emergency_resources ("ResourceCode")
+    WHERE "EventId" IS NULL;
+CREATE INDEX IF NOT EXISTS "IX_emergency_resources_Status"
+    ON race_monitoring.emergency_resources ("Status");
+
+-- SourceSosAlertId points at device.sos_alerts. No cross-schema foreign key.
+-- This script never creates race_monitoring.sos_alerts. The block below also
+-- folds a database created from an older copy of this script.
+CREATE TABLE IF NOT EXISTS race_monitoring.emergency_responses (
+    "Id"               uuid PRIMARY KEY,
+    "SourceSosAlertId" uuid NOT NULL,
+    "IncidentType"     varchar(32) NOT NULL,
+    "Priority"         varchar(32) NOT NULL,
+    "Status"           varchar(32) NOT NULL,
+    "AssignedAtUtc"    timestamptz NULL,
+    "ResolvedAtUtc"    timestamptz NULL,
+    "ResolutionNotes"  text NULL
+);
+
+ALTER TABLE race_monitoring.emergency_responses
+    DROP CONSTRAINT IF EXISTS "FK_emergency_responses_sos_alerts_SOSAlertId";
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'race_monitoring'
+          AND table_name = 'emergency_responses'
+          AND column_name = 'SOSAlertId'
+    ) THEN
+        ALTER TABLE race_monitoring.emergency_responses
+            RENAME COLUMN "SOSAlertId" TO "SourceSosAlertId";
+    END IF;
+END $$;
+
+DROP INDEX IF EXISTS race_monitoring."IX_emergency_responses_SOSAlertId";
+DROP TABLE IF EXISTS race_monitoring.sos_alerts;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_emergency_responses_SourceSosAlertId"
+    ON race_monitoring.emergency_responses ("SourceSosAlertId");
+CREATE INDEX IF NOT EXISTS "IX_emergency_responses_Status_Priority"
+    ON race_monitoring.emergency_responses ("Status", "Priority");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.emergency_assignments (
+    "Id"                  uuid PRIMARY KEY,
+    "EmergencyResponseId" uuid NOT NULL,
+    "EmergencyResourceId" uuid NOT NULL,
+    "AssignedAtUtc"       timestamptz NOT NULL,
+    "AcceptedAtUtc"       timestamptz NULL,
+    "ArrivedAtUtc"        timestamptz NULL,
+    "CompletedAtUtc"      timestamptz NULL,
+    "Status"              varchar(32) NOT NULL,
+    "Notes"               text NULL,
+    CONSTRAINT "FK_emg_assignments_resources_ResourceId"
+        FOREIGN KEY ("EmergencyResourceId") REFERENCES race_monitoring.emergency_resources ("Id") ON DELETE RESTRICT,
+    CONSTRAINT "FK_emg_assignments_responses_ResponseId"
+        FOREIGN KEY ("EmergencyResponseId") REFERENCES race_monitoring.emergency_responses ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_emergency_assignments_EmergencyResourceId_AssignedAtUtc"
+    ON race_monitoring.emergency_assignments ("EmergencyResourceId", "AssignedAtUtc");
+CREATE INDEX IF NOT EXISTS "IX_emergency_assignments_EmergencyResponseId_AssignedAtUtc"
+    ON race_monitoring.emergency_assignments ("EmergencyResponseId", "AssignedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.aid_stations (
+    "Id"           uuid PRIMARY KEY,
+    "EventId"      uuid NOT NULL,
+    "CheckpointId" uuid NULL,
+    "Name"         varchar(200) NOT NULL,
+    "Latitude"     double precision NOT NULL,
+    "Longitude"    double precision NOT NULL,
+    "Status"       varchar(32) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "IX_aid_stations_EventId"
+    ON race_monitoring.aid_stations ("EventId");
+CREATE INDEX IF NOT EXISTS "IX_aid_stations_CheckpointId"
+    ON race_monitoring.aid_stations ("CheckpointId");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.supply_items (
+    "Id"          uuid PRIMARY KEY,
+    "Name"        varchar(200) NOT NULL,
+    "Unit"        varchar(30) NOT NULL,
+    "Description" text NULL,
+    "IsActive"    boolean NOT NULL DEFAULT true
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_supply_items_Name_Unit"
+    ON race_monitoring.supply_items ("Name", "Unit");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.aid_station_inventories (
+    "Id"                uuid PRIMARY KEY,
+    "AidStationId"      uuid NOT NULL,
+    "SupplyItemId"      uuid NOT NULL,
+    "QuantityAvailable" numeric(18,3) NOT NULL,
+    "LastUpdatedAtUtc"  timestamptz NOT NULL,
+    CONSTRAINT "CK_aid_station_inventories_QuantityAvailable" CHECK ("QuantityAvailable" >= 0),
+    CONSTRAINT "FK_aid_station_inventories_aid_stations_AidStationId"
+        FOREIGN KEY ("AidStationId") REFERENCES race_monitoring.aid_stations ("Id") ON DELETE RESTRICT,
+    CONSTRAINT "FK_aid_station_inventories_supply_items_SupplyItemId"
+        FOREIGN KEY ("SupplyItemId") REFERENCES race_monitoring.supply_items ("Id") ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_aid_station_inventories_AidStationId_SupplyItemId"
+    ON race_monitoring.aid_station_inventories ("AidStationId", "SupplyItemId");
+CREATE INDEX IF NOT EXISTS "IX_aid_station_inventories_SupplyItemId"
+    ON race_monitoring.aid_station_inventories ("SupplyItemId");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.aid_station_supply_transactions (
+    "Id"                    uuid PRIMARY KEY,
+    "AidStationInventoryId" uuid NOT NULL,
+    "TransactionType"       varchar(32) NOT NULL,
+    "Quantity"              numeric(18,3) NOT NULL,
+    "OccurredAtUtc"         timestamptz NOT NULL,
+    "RecordedBy"            uuid NULL,
+    "Notes"                 text NULL,
+    CONSTRAINT "CK_aid_station_supply_transactions_Quantity" CHECK ("Quantity" > 0),
+    CONSTRAINT "FK_aid_supply_tx_inventories_InventoryId"
+        FOREIGN KEY ("AidStationInventoryId") REFERENCES race_monitoring.aid_station_inventories ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_aid_supply_tx_InventoryId_OccurredAtUtc"
+    ON race_monitoring.aid_station_supply_transactions ("AidStationInventoryId", "OccurredAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.contingency_plans (
+    "Id"               uuid PRIMARY KEY,
+    "EventId"          uuid NOT NULL,
+    "PlanType"         varchar(32) NOT NULL,
+    "Name"             varchar(200) NOT NULL,
+    "Description"      text NOT NULL,
+    "TriggerCondition" text NULL,
+    "Status"           varchar(32) NOT NULL,
+    "CreatedAtUtc"     timestamptz NOT NULL,
+    "CreatedBy"        uuid NULL
+);
+
+CREATE INDEX IF NOT EXISTS "IX_contingency_plans_EventId_Status"
+    ON race_monitoring.contingency_plans ("EventId", "Status");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.contingency_incidents (
+    "Id"                 uuid PRIMARY KEY,
+    "EventId"            uuid NOT NULL,
+    "ContingencyPlanId"  uuid NULL,
+    "IncidentType"       varchar(32) NOT NULL,
+    "Severity"           varchar(32) NOT NULL,
+    "Description"        text NOT NULL,
+    "DetectedAtUtc"      timestamptz NOT NULL,
+    "Status"             varchar(32) NOT NULL,
+    "ResolvedAtUtc"      timestamptz NULL,
+    CONSTRAINT "FK_contingency_incidents_contingency_plans_ContingencyPlanId"
+        FOREIGN KEY ("ContingencyPlanId") REFERENCES race_monitoring.contingency_plans ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_contingency_incidents_EventId_DetectedAtUtc"
+    ON race_monitoring.contingency_incidents ("EventId", "DetectedAtUtc");
+CREATE INDEX IF NOT EXISTS "IX_contingency_incidents_ContingencyPlanId"
+    ON race_monitoring.contingency_incidents ("ContingencyPlanId");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.emergency_decisions (
+    "Id"                    uuid PRIMARY KEY,
+    "ContingencyIncidentId" uuid NOT NULL,
+    "DecisionType"          varchar(32) NOT NULL,
+    "DecisionDetails"       text NOT NULL,
+    "DecidedBy"             uuid NOT NULL,
+    "DecidedAtUtc"          timestamptz NOT NULL,
+    "EffectiveAtUtc"        timestamptz NULL,
+    CONSTRAINT "FK_emg_decisions_incidents_IncidentId"
+        FOREIGN KEY ("ContingencyIncidentId") REFERENCES race_monitoring.contingency_incidents ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_emergency_decisions_ContingencyIncidentId_DecidedAtUtc"
+    ON race_monitoring.emergency_decisions ("ContingencyIncidentId", "DecidedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.broom_wagons (
+    "Id"          uuid PRIMARY KEY,
+    "EventId"     uuid NOT NULL,
+    "VehicleCode" varchar(50) NOT NULL,
+    "VehicleType" varchar(50) NULL,
+    "Status"      varchar(32) NOT NULL,
+    "Notes"       text NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_broom_wagons_EventId_VehicleCode"
+    ON race_monitoring.broom_wagons ("EventId", "VehicleCode");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.broom_wagon_checkpoint_logs (
+    "Id"           uuid PRIMARY KEY,
+    "BroomWagonId" uuid NOT NULL,
+    "CheckpointId" uuid NOT NULL,
+    "RecordedAtUtc" timestamptz NOT NULL,
+    "ScanMethod"   varchar(20) NOT NULL,
+    "RecordedBy"   uuid NULL,
+    "Notes"        text NULL,
+    CONSTRAINT "FK_broom_wagon_checkpoint_logs_broom_wagons_BroomWagonId"
+        FOREIGN KEY ("BroomWagonId") REFERENCES race_monitoring.broom_wagons ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_broom_wagon_checkpoint_logs_BroomWagonId_RecordedAtUtc"
+    ON race_monitoring.broom_wagon_checkpoint_logs ("BroomWagonId", "RecordedAtUtc");
+CREATE INDEX IF NOT EXISTS "IX_broom_wagon_checkpoint_logs_CheckpointId_RecordedAtUtc"
+    ON race_monitoring.broom_wagon_checkpoint_logs ("CheckpointId", "RecordedAtUtc");
+
+-- -----------------------------------------------------------------------------
 -- Stamp EF history (để `dotnet run` MigrateAsync không tạo lại bảng)
 -- -----------------------------------------------------------------------------
 INSERT INTO iam."__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES
@@ -345,6 +625,12 @@ ON CONFLICT ("MigrationId") DO NOTHING;
 
 INSERT INTO payment."__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES
     ('20261005104409_InitialPayment', '10.0.12')
+ON CONFLICT ("MigrationId") DO NOTHING;
+
+INSERT INTO race_monitoring."__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES
+    ('20261014013255_InitialRaceMonitoring', '10.0.12'),
+    ('20261026052256_AddCoordinatorEntities', '10.0.12'),
+    ('20261026094939_DropRaceMonitoringSosAlerts', '10.0.12')
 ON CONFLICT ("MigrationId") DO NOTHING;
 
 
