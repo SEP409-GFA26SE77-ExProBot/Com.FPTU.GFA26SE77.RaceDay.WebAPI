@@ -631,6 +631,33 @@ INSERT INTO event.event_distances (
 ON CONFLICT ("Id") DO NOTHING;
 
 -- -----------------------------------------------------------------------------
+-- Checkpoints cho 3 cự ly có registration seed (HCMC 5K, Đà Nẵng 10K, Hà Nội 21K)
+-- Type = tên enum CheckpointType
+-- -----------------------------------------------------------------------------
+INSERT INTO event.event_checkpoints (
+    "Id", "DistanceId", "ExternalId", "Name", "Km", "Lat", "Lng", "Type", "Cutoff", "Elevation", "SortOrder"
+) VALUES
+('55555555-cccc-4ccc-8ccc-ccccccccccc1', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc1',
+ 'CP-HCMC-START', 'Start Nguyễn Huệ', 0, 10.7731, 106.7031, 'Start', NULL, 5, 0),
+('55555555-cccc-4ccc-8ccc-ccccccccccc2', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc1',
+ 'CP-HCMC-AID', 'Aid 2.5K', 2.5, 10.7748, 106.7044, 'Aid', NULL, 6, 1),
+('55555555-cccc-4ccc-8ccc-ccccccccccc3', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc1',
+ 'CP-HCMC-FIN', 'Finish Nguyễn Huệ', 5, 10.7762, 106.7018, 'Finish', '19:30', 5, 2),
+('55555555-cccc-4ccc-8ccc-ccccccccccc4', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+ 'CP-DN-START', 'Start Mỹ Khê', 0, 16.05995, 108.24909, 'Start', NULL, 4, 0),
+('55555555-cccc-4ccc-8ccc-ccccccccccc5', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+ 'CP-DN-WATER', 'Water 5K', 5, 16.0680, 108.2580, 'Water', NULL, 8, 1),
+('55555555-cccc-4ccc-8ccc-ccccccccccc6', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+ 'CP-DN-FIN', 'Finish Sơn Trà', 10, 16.0800, 108.2700, 'Finish', '08:30', 12, 2),
+('55555555-cccc-4ccc-8ccc-ccccccccccc7', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbd1',
+ 'CP-HN-START', 'Start Hồ Tây', 0, 21.0583, 105.8229, 'Start', NULL, 10, 0),
+('55555555-cccc-4ccc-8ccc-ccccccccccc8', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbd1',
+ 'CP-HN-AID', 'Aid 10K', 10, 21.0680, 105.8300, 'Aid', NULL, 15, 1),
+('55555555-cccc-4ccc-8ccc-ccccccccccc9', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbd1',
+ 'CP-HN-FIN', 'Finish Hồ Tây', 21.1, 21.0583, 105.8229, 'Finish', '09:00', 10, 2)
+ON CONFLICT ("Id") DO NOTHING;
+
+-- -----------------------------------------------------------------------------
 -- Documents (1 plan / giải public-ish)
 -- -----------------------------------------------------------------------------
 INSERT INTO event.event_documents (
@@ -654,6 +681,7 @@ ON CONFLICT ("Id") DO NOTHING;
 -- Sample registrations (không trùng EventId+DistanceId+UserId active)
 -- An → HCMC 5K Confirmed (đã trả + duyệt)
 -- Bình → Đà Nẵng 10K PendingPayment (test checkout)
+-- An → Hà Nội 21K Confirmed (registration thứ 3 cho RaceMonitoring seed)
 -- -----------------------------------------------------------------------------
 INSERT INTO event.event_registrations (
     "Id", "EventId", "DistanceId", "UserId", "Status",
@@ -694,6 +722,21 @@ INSERT INTO event.event_registrations (
     true, TIMESTAMPTZ '2026-02-05 09:00:00+00',
     NULL,
     TIMESTAMPTZ '2026-02-05 09:00:00+00', TIMESTAMPTZ '2026-02-05 09:00:00+00'
+),
+(
+    '44444444-dddd-4ddd-8ddd-ddddddddddd3',
+    '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa4',
+    '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbd1',
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    'Confirmed',
+    'Nguyễn Văn An', 'an.nguyen@raceday.vn', '0902000002',
+    DATE '1998-05-20', 'Male', 172, 68, 'O',
+    'Nguyễn Thị Lan', '0902111111',
+    'Tee', 'M', 'Black',
+    '["none"]'::jsonb, 'health-an.pdf', 'https://example.com/demo/health-an.pdf',
+    true, TIMESTAMPTZ '2026-03-01 08:00:00+00',
+    '2101',
+    TIMESTAMPTZ '2026-03-01 08:00:00+00', TIMESTAMPTZ '2026-03-02 08:00:00+00'
 )
 ON CONFLICT ("Id") DO NOTHING;
 

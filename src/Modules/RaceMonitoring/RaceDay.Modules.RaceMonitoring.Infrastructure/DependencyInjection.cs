@@ -14,6 +14,7 @@ public static class DependencyInjection
                 configuration.GetConnectionString("Postgres"),
                 npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "race_monitoring")));
 
+        services.AddHostedService<RaceMonitoringDataSeeder>();
         return services;
     }
 }
