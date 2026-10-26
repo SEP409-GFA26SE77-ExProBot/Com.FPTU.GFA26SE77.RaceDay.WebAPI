@@ -49,7 +49,8 @@ public sealed class GetDistanceLeaderboardQueryHandler(
         // Khởi tạo query lọc VĐV hoàn thành
         var finishedRunnersQuery = allRegistrations
             .Where(r => r.DistanceId == request.DistanceId
-                     && r.Status == RegistrationStatus.Finished
+                     && r.Status == RegistrationStatus.Confirmed
+                     && r.RaceStatus == RunnerRaceStatus.Finished
                      && r.ResultSeconds.HasValue);
 
         // Lọc thêm theo giới tính nếu có truyền lên (bỏ qua nếu truyền "All" hoặc để trống)

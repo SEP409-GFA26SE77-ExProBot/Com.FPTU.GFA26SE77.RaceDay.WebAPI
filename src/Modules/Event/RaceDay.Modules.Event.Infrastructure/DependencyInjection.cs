@@ -519,6 +519,8 @@ public sealed class EventDataSeeder(
                 $"Runner Test Leaderboard {i}", $"runner{i}@leaderboard.test", "0901234567",
                 null, null, null, null, null, null, null, null, null, null, null, "[]", null, null, true);
 
+            // Synthetic leaderboard fixtures follow the registration lifecycle.
+            reg.MarkPaidPendingApproval();
             reg.Confirm($"BIB500{i}");
             reg.Start(startTime);
 

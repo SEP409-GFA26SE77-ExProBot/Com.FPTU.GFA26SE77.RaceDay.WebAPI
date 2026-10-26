@@ -25,6 +25,18 @@ public sealed class ExceptionHandlingMiddleware(
             var errors = ex.Errors.Select(e => e.ErrorMessage).Distinct().ToArray();
             await WriteAsync(context, HttpStatusCode.BadRequest, string.Join("; ", errors));
         }
+        catch (ConflictException ex)
+        {
+            await WriteAsync(context, HttpStatusCode.Conflict, ex.Message);
+        }
+        catch (ForbiddenException ex)
+        {
+            await WriteAsync(context, HttpStatusCode.Forbidden, ex.Message);
+        }
+        catch (NotFoundException ex)
+        {
+            await WriteAsync(context, HttpStatusCode.NotFound, ex.Message);
+        }
         catch (DomainException ex)
         {
             logger.LogWarning(ex, "Domain rule violation");

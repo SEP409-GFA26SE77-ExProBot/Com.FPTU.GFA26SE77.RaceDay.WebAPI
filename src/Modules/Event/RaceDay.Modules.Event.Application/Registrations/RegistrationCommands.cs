@@ -51,10 +51,23 @@ public sealed record RegistrationDto(
     DateTime? CheckedInAtUtc = null,
     Guid? CheckedInByUserId = null,
     DateTime? FinishedAtUtc = null,
-    long? ResultSeconds = null);
+    long? ResultSeconds = null,
+    string RaceStatus = "not_started",
+    string BibStatus = "normal",
+    long Version = 0,
+    DateTime? StartedAtUtc = null,
+    string RegistrationStatus = "pending_payment");
 
 public static class RegistrationDtoMapper
 {
+    public static string ToApiRaceStatus(RunnerRaceStatus status) => status == RunnerRaceStatus.NotStarted
+        ? "not_started" : status.ToString().ToLowerInvariant();
+
+    // Compatibility field for existing clients; raceStatus is authoritative for race outcomes.
+    public static string ToApiStatus(EventRegistration registration) =>
+        registration.Status == RegistrationStatus.Confirmed && registration.RaceStatus == RunnerRaceStatus.Finished
+            ? "finished" : ToApiStatus(registration.Status);
+
     public static string ToApiStatus(RegistrationStatus status) => status switch
     {
         RegistrationStatus.PendingPayment => "pending_payment",
@@ -93,7 +106,7 @@ public static class RegistrationDtoMapper
         }
 
         return new RegistrationDto(
-            r.Id, r.EventId, r.DistanceId, r.UserId, ToApiStatus(r.Status),
+            r.Id, r.EventId, r.DistanceId, r.UserId, ToApiStatus(r),
             r.FullName, r.Email, r.Phone, r.DateOfBirth, r.Gender, r.IdNumber,
             r.HeightCm, r.WeightKg, r.BloodType, r.EmergencyName, r.EmergencyPhone,
             r.ShirtType, r.ShirtSize, r.ShirtColor, medical, r.HealthCertFileName, r.HealthCertUrl,
@@ -109,7 +122,12 @@ public static class RegistrationDtoMapper
             r.CheckedInAtUtc,
             r.CheckedInByUserId,
             r.FinishedAtUtc,
-            r.ResultSeconds);
+            r.ResultSeconds,
+            ToApiRaceStatus(r.RaceStatus),
+            r.BibStatus.ToString().ToLowerInvariant(),
+            r.Version,
+            r.StartedAtUtc,
+            ToApiStatus(r.Status));
     }
 }
 
@@ -375,6 +393,12 @@ public sealed class ApproveRegistrationCommandHandler(
         if (!currentUser.IsAdmin && race.OrganizerUserId != userId)
         {
             throw new DomainException("Bạn không phải chủ giải này.");
+        }
+
+        // Reject before allocating a BIB, publishing confirmation or sending the ticket.
+        if (reg.Status != RegistrationStatus.PendingApproval)
+        {
+            throw new DomainException("Chỉ đăng ký đã thanh toán và đang chờ duyệt (pending_approval) mới được xác nhận.");
         }
 
         EventDistance distance;

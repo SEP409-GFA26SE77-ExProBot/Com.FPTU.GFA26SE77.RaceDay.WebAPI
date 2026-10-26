@@ -15,7 +15,10 @@ public sealed record StartResultDto(
     string BibNumber,
     string DistanceLabel,
     DateTime StartedAtUtc,
-    bool AlreadyStarted);
+    bool AlreadyStarted,
+    string RaceStatus = "started",
+    string BibStatus = "normal",
+    long Version = 0);
 
 public sealed record StartRegistrationCommand(Guid EventId, string Bib)
     : IRequest<StartResultDto>;
@@ -57,7 +60,7 @@ public sealed class StartRegistrationCommandHandler(
         var reg = await registrations.GetByEventAndBibAsync(request.EventId, bib, cancellationToken)
             ?? throw new DomainException($"Không tìm thấy BIB {bib} trên giải này.");
 
-        if (reg.Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
+        if (reg.Status != RegistrationStatus.Confirmed)
         {
             throw new DomainException("Chỉ VĐV confirmed/finished mới ghi nhận xuất phát được.");
         }
@@ -67,8 +70,11 @@ public sealed class StartRegistrationCommandHandler(
         var passedAtUtc = DateTime.UtcNow;
         bool alreadyStarted = !reg.Start(passedAtUtc);
 
-        registrations.Update(reg);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        if (!alreadyStarted)
+        {
+            registrations.Update(reg);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
 
         return new StartResultDto(
             reg.Id,
@@ -76,6 +82,8 @@ public sealed class StartRegistrationCommandHandler(
             reg.BibNumber ?? string.Empty,
             $"{distance.Type} · {distance.Name}",
             reg.StartedAtUtc ?? passedAtUtc,
-            alreadyStarted);
+            alreadyStarted,
+            RegistrationDtoMapper.ToApiRaceStatus(reg.RaceStatus),
+            reg.BibStatus.ToString().ToLowerInvariant(), reg.Version);
     }
 }

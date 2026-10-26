@@ -177,6 +177,9 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Property(x => x.HealthCertUrl).HasMaxLength(2000);
             entity.Property(x => x.RejectionReason).HasMaxLength(1000);
             entity.Property(x => x.BibNumber).HasMaxLength(30);
+            entity.Property(x => x.RaceStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.BibStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.Version).IsConcurrencyToken();
             entity.Property(x => x.QuotedAmount).HasPrecision(18, 2);
             entity.Property(x => x.QuotedPhaseKey).HasMaxLength(64);
             entity.Property(x => x.QuotedPhaseName).HasMaxLength(120);
@@ -191,6 +194,24 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
                 .HasFilter("\"Status\" NOT IN ('Rejected', 'Cancelled')");
             entity.HasIndex(x => x.EventId);
             entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<RunnerOperation>(entity =>
+        {
+            entity.ToTable("runner_operations");
+            entity.HasKey(x => x.Id);
+            entity.HasOne<EventRegistration>().WithMany().HasForeignKey(x => x.RegistrationId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(x => new { x.RegistrationId, x.RequestId }).IsUnique();
+            entity.HasIndex(x => new { x.RegistrationId, x.Version }).IsUnique();
+            entity.Property(x => x.Kind).HasMaxLength(20);
+            entity.Property(x => x.RequestedStatus).HasMaxLength(20);
+            entity.Property(x => x.PreviousStatus).HasMaxLength(20);
+            entity.Property(x => x.NewStatus).HasMaxLength(20);
+            entity.Property(x => x.Reason).HasMaxLength(1000);
+            entity.Property(x => x.BibNumber).HasMaxLength(30);
+            entity.Property(x => x.RaceStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.BibStatus).HasConversion<string>().HasMaxLength(20);
         });
 
         modelBuilder.Entity<RegistrationCheckpointPassage>(entity =>

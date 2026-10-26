@@ -23,6 +23,7 @@ public class EventHandlerWorkflowTests
         var distance = EventDistance.Create(
             race.Id, "Cloud Valley", 21, 500, 900_000, "#F59E0B", type: "21K", routeGeometryJson: "{}");
         race.ReplaceDistances([distance]);
+        distance.SetBibConfig("BIB-", 1, 500);
         race.ReplaceDocuments([
             EventDocument.Create(race.Id, "official-letter", "Official letter", "official-letter.pdf", "/official-letter.pdf", true),
             EventDocument.Create(race.Id, "security", "Security plan", "security.pdf", "/security.pdf", true),
@@ -76,7 +77,7 @@ public class EventHandlerWorkflowTests
 
         var distance = Assert.Single(result);
         Assert.Equal(race.Distances.First().Id, distance.Id);
-        Assert.Equal("21K", distance.Type);
+        Assert.Equal("HM", distance.Type);
         Assert.Equal(21, distance.DistanceKm);
     }
 
@@ -161,7 +162,46 @@ public class EventHandlerWorkflowTests
             .Handle(new ApproveRegistrationCommand(reg.Id, "BIB-1"), CancellationToken.None);
 
         Assert.Equal("confirmed", result.Status);
-        Assert.Equal("BIB-1", result.BibNumber);
+        Assert.Equal("BIB-0001", result.BibNumber);
+    }
+
+    [Theory]
+    [InlineData(false, null)]
+    [InlineData(false, "BIB-1")]
+    [InlineData(true, null)]
+    [InlineData(true, "BIB-1")]
+    public async Task Approve_Unpaid_Registration_Rejects_Before_Bib_Allocation_Or_Side_Effects(bool isAdmin, string? bib)
+    {
+        var race = PendingRace();
+        var reg = EventRegistration.Create(
+            race.Id, race.Distances.First().Id, UserId, "Runner", "runner@example.com", "090",
+            null, null, null, null, null, null, null, null, null, null, null, "[]", null, null, true);
+        reg.ClearDomainEvents();
+        var events = Substitute.For<IRaceEventRepository>();
+        var regs = Substitute.For<IEventRegistrationRepository>();
+        var current = Substitute.For<ICurrentUserAccessor>();
+        var uow = Substitute.For<IEventUnitOfWork>();
+        var bus = Substitute.For<IEventBus>();
+        var email = Substitute.For<IEmailSender>();
+        events.GetByIdWithDetailsAsync(race.Id, Arg.Any<CancellationToken>()).Returns(race);
+        regs.GetByIdAsync(reg.Id, Arg.Any<CancellationToken>()).Returns(reg);
+        current.UserId.Returns(isAdmin ? Guid.NewGuid() : OrganizerId);
+        current.IsAdmin.Returns(isAdmin);
+        var handler = new ApproveRegistrationCommandHandler(events, regs, current, uow, bus, email,
+            Substitute.For<Microsoft.Extensions.Logging.ILogger<ApproveRegistrationCommandHandler>>());
+
+        var error = await Assert.ThrowsAsync<DomainException>(() =>
+            handler.Handle(new ApproveRegistrationCommand(reg.Id, bib), CancellationToken.None));
+
+        Assert.Contains("pending_approval", error.Message);
+        Assert.Equal(RegistrationStatus.PendingPayment, reg.Status);
+        Assert.Null(reg.BibNumber);
+        Assert.Equal(0L, reg.Version);
+        Assert.Empty(reg.DomainEvents);
+        Assert.Single(regs.ReceivedCalls()); // Only the initial registration lookup.
+        Assert.Empty(uow.ReceivedCalls());
+        Assert.Empty(bus.ReceivedCalls());
+        Assert.Empty(email.ReceivedCalls());
     }
 
     [Fact]
@@ -174,6 +214,7 @@ public class EventHandlerWorkflowTests
         var reg = EventRegistration.Create(
             race.Id, distanceId, UserId, "Runner", "runner@raceday.vn", "0901111222", null, null, null,
             null, null, null, null, null, null, null, null, "[]", null, null, true);
+        reg.MarkPaidPendingApproval();
         reg.Confirm("BIB-9");
 
         var events = Substitute.For<IRaceEventRepository>();

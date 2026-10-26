@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using RaceDay.Modules.Event.Contracts.Finance;
 using RaceDay.Modules.Event.Domain.Events;
+using RaceDay.Modules.Event.Domain.Registrations;
+using RaceDay.Modules.Event.Application.Registrations;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
 
 namespace RaceDay.Modules.Event.Infrastructure.Finance;
@@ -48,12 +50,14 @@ public sealed class EventFinanceQuery(EventDbContext db) : IEventFinanceQuery
             reg.EventId,
             reg.DistanceId,
             reg.UserId,
-            StatusName(reg.Status),
+            RegistrationDtoMapper.ToApiStatus(reg),
             race.Name,
             race.OrganizerUserId,
             race.Status.ToString(),
             race.EventDate,
-            race.StartTime);
+            race.StartTime,
+            reg.RaceStatus == RunnerRaceStatus.NotStarted
+                && reg.Status is RegistrationStatus.PendingApproval or RegistrationStatus.Confirmed or RegistrationStatus.Rejected);
     }
 
     public async Task<IReadOnlyList<Guid>> ListPaidEligibleRegistrationIdsAsync(

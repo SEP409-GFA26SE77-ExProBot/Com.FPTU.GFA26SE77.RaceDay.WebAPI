@@ -19,7 +19,10 @@ public sealed record CheckInResultDto(
     DateTime CheckedInAtUtc,
     bool AlreadyCheckedIn,
     string? DistanceLabel,
-    double? DistanceKm);
+    double? DistanceKm,
+    string RaceStatus = "not_started",
+    string BibStatus = "normal",
+    long Version = 0);
 
 public sealed record CheckInRegistrationCommand(Guid EventId, string? Bib, string? QrPayload)
     : IRequest<CheckInResultDto>;
@@ -84,11 +87,13 @@ public sealed class CheckInRegistrationCommandHandler(
             reg.EventId,
             reg.BibNumber ?? string.Empty,
             reg.FullName,
-            RegistrationDtoMapper.ToApiStatus(reg.Status),
+            RegistrationDtoMapper.ToApiStatus(reg),
             reg.CheckedInAtUtc!.Value,
             AlreadyCheckedIn: !firstTime,
             distanceLabel,
-            distanceKm);
+            distanceKm,
+            RegistrationDtoMapper.ToApiRaceStatus(reg.RaceStatus),
+            reg.BibStatus.ToString().ToLowerInvariant(), reg.Version);
     }
 
     private static async Task<EventRegistration> ResolveRegistrationAsync(
@@ -169,7 +174,13 @@ public sealed record CheckInListItemDto(
     bool CheckedIn,
     DateTime? CheckedInAtUtc,
     string? DistanceLabel,
-    double? DistanceKm);
+    double? DistanceKm,
+    string RaceStatus = "not_started",
+    string BibStatus = "normal",
+    long Version = 0,
+    DateTime? StartedAtUtc = null,
+    DateTime? FinishedAtUtc = null,
+    long? ResultSeconds = null);
 
 public sealed record ListEventCheckInsQuery(Guid EventId)
     : IRequest<IReadOnlyList<CheckInListItemDto>>;
@@ -223,11 +234,14 @@ public sealed class ListEventCheckInsQueryHandler(
                     r.Id,
                     r.BibNumber ?? string.Empty,
                     r.FullName,
-                    RegistrationDtoMapper.ToApiStatus(r.Status),
+                    RegistrationDtoMapper.ToApiStatus(r),
                     CheckedIn: r.CheckedInAtUtc is not null,
                     r.CheckedInAtUtc,
                     distanceLabel,
-                    distanceKm);
+                    distanceKm,
+                    RegistrationDtoMapper.ToApiRaceStatus(r.RaceStatus),
+                    r.BibStatus.ToString().ToLowerInvariant(), r.Version,
+                    r.StartedAtUtc, r.FinishedAtUtc, r.ResultSeconds);
             })
             .OrderByDescending(x => x.CheckedInAtUtc.HasValue)
             .ThenByDescending(x => x.CheckedInAtUtc)

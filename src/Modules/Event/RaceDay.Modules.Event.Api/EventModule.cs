@@ -342,6 +342,27 @@ public static class EventModule
         userApi.MapGet("/staff/me", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyStaffAssignmentsQuery(), ct)))
             .WithSummary("Các giải staff/volunteer đang được assign (Active)");
+        userApi.MapPatch("/{eventId:guid}/registrations/{registrationId:guid}/race-status", async (
+            Guid eventId, Guid registrationId, UpdateRunnerStatusRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new UpdateRunnerStatusCommand(eventId, registrationId, "race_status", body), ct)))
+            .WithSummary("Volunteer/coordinator: DNS, DNF, DQ; coordinator/organizer: restore")
+            .RequireAuthorization(AuthPolicies.HumanUser)
+            .Produces<RunnerOperationDto>().Produces(StatusCodes.Status403Forbidden).Produces(StatusCodes.Status409Conflict);
+
+        userApi.MapPatch("/{eventId:guid}/registrations/{registrationId:guid}/bib-status", async (
+            Guid eventId, Guid registrationId, UpdateRunnerStatusRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new UpdateRunnerStatusCommand(eventId, registrationId, "bib_status", body), ct)))
+            .WithSummary("Volunteer/coordinator: báo mất hoặc xác nhận cấp lại BIB vật lý cùng số")
+            .RequireAuthorization(AuthPolicies.HumanUser)
+            .Produces<RunnerOperationDto>().Produces(StatusCodes.Status403Forbidden).Produces(StatusCodes.Status409Conflict);
+
+        userApi.MapGet("/{eventId:guid}/registrations/{registrationId:guid}/operations", async (
+            Guid eventId, Guid registrationId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetRunnerOperationsQuery(eventId, registrationId), ct)))
+            .WithSummary("Staff: trạng thái hiện tại và 100 thao tác gần nhất của runner")
+            .RequireAuthorization(AuthPolicies.HumanUser)
+            .Produces<RunnerOperationsDto>();
+
         // Endpoint /start
         userApi.MapPost("/start", async (StartRequestDto body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(

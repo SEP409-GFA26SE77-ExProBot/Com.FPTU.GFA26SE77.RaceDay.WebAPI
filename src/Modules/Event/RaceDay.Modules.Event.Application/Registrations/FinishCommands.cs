@@ -20,7 +20,10 @@ public sealed record FinishResultDto(
     bool AlreadyScanned,
     string Status,
     DateTime? FinishedAtUtc,
-    long? ResultSeconds);
+    long? ResultSeconds,
+    string RaceStatus = "finished",
+    string BibStatus = "normal",
+    long Version = 0);
 
 public sealed record FinishRegistrationCommand(Guid EventId, string Bib, Guid DistanceId)
     : IRequest<FinishResultDto>;
@@ -67,7 +70,7 @@ public sealed class FinishRegistrationCommandHandler(
         var reg = await registrations.GetByEventAndBibAsync(request.EventId, bib, cancellationToken)
             ?? throw new DomainException($"Không tìm thấy BIB {bib} trên giải này.");
 
-        if (reg.Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
+        if (reg.Status != RegistrationStatus.Confirmed)
         {
             throw new DomainException("Chỉ VĐV confirmed/finished mới ghi nhận finish được.");
         }
@@ -90,8 +93,11 @@ public sealed class FinishRegistrationCommandHandler(
         var resultSeconds = (long)Math.Round((passedAtUtc - startAtUtc).TotalSeconds, MidpointRounding.AwayFromZero);
         bool alreadyFinished = !reg.Finish(passedAtUtc, resultSeconds);
 
-        registrations.Update(reg);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        if (!alreadyFinished)
+        {
+            registrations.Update(reg);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
 
         return new FinishResultDto(
             reg.Id,
@@ -102,9 +108,11 @@ public sealed class FinishRegistrationCommandHandler(
             distance.DistanceKm,
             passedAtUtc,
             alreadyFinished,
-            RegistrationDtoMapper.ToApiStatus(reg.Status),
+            RegistrationDtoMapper.ToApiStatus(reg),
             reg.FinishedAtUtc,
-            reg.ResultSeconds);
+            reg.ResultSeconds,
+            RegistrationDtoMapper.ToApiRaceStatus(reg.RaceStatus),
+            reg.BibStatus.ToString().ToLowerInvariant(), reg.Version);
     }
 
     private static DateTime ResolveStartAtUtc(RaceEvent race, EventDistance distance)

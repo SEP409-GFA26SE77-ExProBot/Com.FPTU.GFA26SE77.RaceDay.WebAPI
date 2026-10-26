@@ -37,6 +37,9 @@ public interface IRaceEventRepository
 
 public interface IEventRegistrationRepository
 {
+    Task<RunnerOperation?> GetOperationAsync(Guid registrationId, Guid requestId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<RunnerOperation>> ListOperationsAsync(Guid registrationId, CancellationToken cancellationToken = default);
+    Task AddOperationAsync(RunnerOperation operation, CancellationToken cancellationToken = default);
     Task<EventRegistration?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EventRegistration>> ListByEventAsync(Guid eventId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EventRegistration>> ListByUserAsync(Guid userId, CancellationToken cancellationToken = default);

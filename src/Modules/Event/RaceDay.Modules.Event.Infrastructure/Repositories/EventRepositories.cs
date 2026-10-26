@@ -190,6 +190,17 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
 
 public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegistrationRepository
 {
+    public Task<RunnerOperation?> GetOperationAsync(Guid registrationId, Guid requestId, CancellationToken cancellationToken = default)
+        => db.Set<RunnerOperation>().AsNoTracking().FirstOrDefaultAsync(
+            x => x.RegistrationId == registrationId && x.RequestId == requestId, cancellationToken);
+
+    public async Task<IReadOnlyList<RunnerOperation>> ListOperationsAsync(Guid registrationId, CancellationToken cancellationToken = default)
+        => await db.Set<RunnerOperation>().AsNoTracking().Where(x => x.RegistrationId == registrationId)
+            .OrderByDescending(x => x.Version).Take(100).ToListAsync(cancellationToken);
+
+    public async Task AddOperationAsync(RunnerOperation operation, CancellationToken cancellationToken = default)
+        => await db.Set<RunnerOperation>().AddAsync(operation, cancellationToken);
+
     public Task<EventRegistration?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => db.Registrations.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
 

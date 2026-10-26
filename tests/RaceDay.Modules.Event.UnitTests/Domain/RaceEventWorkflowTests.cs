@@ -35,8 +35,11 @@ public class RaceEventWorkflowTests
             ]);
 
         race.ReplaceDistances([distance]);
+        distance.SetBibConfig("TEST-", 1, 500);
         race.ReplaceDocuments(
         [
+            EventDocument.Create(race.Id, "official-letter", "Công văn", "letter.pdf", "/files/letter.pdf", required: true),
+            EventDocument.Create(race.Id, "security", "An ninh", "security.pdf", "/files/security.pdf", required: true),
             EventDocument.Create(race.Id, "plan", "Kế hoạch", "plan.pdf", "/files/plan.pdf", required: true),
             EventDocument.Create(race.Id, "rules", "Điều lệ", "rules.pdf", "/files/rules.pdf", required: true)
         ]);

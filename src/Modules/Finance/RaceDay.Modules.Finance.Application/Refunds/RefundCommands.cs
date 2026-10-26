@@ -83,6 +83,8 @@ public sealed class CreateRefundCommandHandler(
 
         var reg = await events.GetRegistrationAsync(payment.RegistrationId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy đăng ký.");
+        if (!reg.CanCancelAfterRefund)
+            throw new DomainException("Đăng ký đã có trạng thái thi đấu hoặc không còn đủ điều kiện hủy sau hoàn tiền.");
         var ev = await events.GetEventAsync(reg.EventId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy giải.");
 

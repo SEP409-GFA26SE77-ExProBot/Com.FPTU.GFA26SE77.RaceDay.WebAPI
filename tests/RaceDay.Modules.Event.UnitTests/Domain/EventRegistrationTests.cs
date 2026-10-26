@@ -6,6 +6,38 @@ namespace RaceDay.Modules.Event.UnitTests.Domain;
 
 public class EventRegistrationTests
 {
+    [Theory]
+    [InlineData(RegistrationStatus.PendingPayment)]
+    [InlineData(RegistrationStatus.Cancelled)]
+    [InlineData(RegistrationStatus.Rejected)]
+    [InlineData(RegistrationStatus.Confirmed)]
+    public void Confirm_Rejects_Anything_Other_Than_PendingApproval_Without_Mutation(RegistrationStatus status)
+    {
+        var reg = EventRegistration.Create(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            "Runner", "runner@example.com", "0901111222", null, null, null, null, null, null,
+            null, null, null, null, null, "[]", null, null, true);
+        if (status == RegistrationStatus.Cancelled) reg.CancelUnpaid();
+        if (status is RegistrationStatus.Rejected or RegistrationStatus.Confirmed)
+        {
+            reg.MarkPaidPendingApproval();
+            if (status == RegistrationStatus.Rejected) reg.Reject("Missing document");
+            else reg.Confirm("BIB-1");
+        }
+        reg.ClearDomainEvents();
+        var version = reg.Version;
+        var bib = reg.BibNumber;
+        var updatedAt = reg.UpdatedAtUtc;
+
+        Assert.Throws<DomainException>(() => reg.Confirm("BIB-2"));
+
+        Assert.Equal(status, reg.Status);
+        Assert.Equal(bib, reg.BibNumber);
+        Assert.Equal(version, reg.Version);
+        Assert.Equal(updatedAt, reg.UpdatedAtUtc);
+        Assert.Empty(reg.DomainEvents);
+    }
+
     [Fact]
     public void Create_Requires_Liability()
     {
@@ -28,6 +60,8 @@ public class EventRegistrationTests
         Assert.Equal(RegistrationStatus.PendingPayment, reg.Status);
         reg.MarkPaidPendingApproval();
         Assert.Equal(RegistrationStatus.PendingApproval, reg.Status);
+        Assert.Null(reg.BibNumber);
+        Assert.DoesNotContain(reg.DomainEvents, e => e is RegistrationConfirmedDomainEvent);
 
         reg.Confirm("A0042");
         Assert.Equal(RegistrationStatus.Confirmed, reg.Status);
@@ -53,6 +87,7 @@ public class EventRegistrationTests
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
             "C", "c@raceday.vn", "0903333444", null, null, null, null, null, null,
             null, null, null, null, null, "[]", null, null, true);
+        reg.MarkPaidPendingApproval();
         reg.Confirm("BIB-9");
 
         var finishedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
@@ -61,7 +96,8 @@ public class EventRegistrationTests
 
         Assert.True(first);
         Assert.False(second);
-        Assert.Equal(RegistrationStatus.Finished, reg.Status);
+        Assert.Equal(RegistrationStatus.Confirmed, reg.Status);
+        Assert.Equal(RunnerRaceStatus.Finished, reg.RaceStatus);
         Assert.Equal(finishedAt, reg.FinishedAtUtc);
         Assert.Equal(1234, reg.ResultSeconds);
     }

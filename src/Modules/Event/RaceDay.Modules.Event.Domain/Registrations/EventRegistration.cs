@@ -10,6 +10,9 @@ public sealed class EventRegistration : AggregateRoot
     public Guid DistanceId { get; private set; }
     public Guid UserId { get; private set; }
     public RegistrationStatus Status { get; private set; } = RegistrationStatus.PendingPayment;
+    public RunnerRaceStatus RaceStatus { get; private set; } = RunnerRaceStatus.NotStarted;
+    public PhysicalBibStatus BibStatus { get; private set; } = PhysicalBibStatus.Normal;
+    public long Version { get; private set; }
     public string FullName { get; private set; } = string.Empty;
     public string Email { get; private set; } = string.Empty;
     public string Phone { get; private set; } = string.Empty;
@@ -149,9 +152,9 @@ public sealed class EventRegistration : AggregateRoot
 
     public void Confirm(string? bibNumber = null)
     {
-        if (Status is not (RegistrationStatus.PendingApproval or RegistrationStatus.PendingPayment))
+        if (Status != RegistrationStatus.PendingApproval)
         {
-            throw new DomainException("Không thể xác nhận đăng ký ở trạng thái hiện tại.");
+            throw new DomainException("Chỉ đăng ký đã thanh toán và đang chờ duyệt (pending_approval) mới được xác nhận.");
         }
 
         Status = RegistrationStatus.Confirmed;
@@ -259,6 +262,9 @@ public sealed class EventRegistration : AggregateRoot
             return;
         }
 
+        if (RaceStatus != RunnerRaceStatus.NotStarted)
+            throw new DomainException("Không thể hủy đăng ký đã có trạng thái thi đấu.");
+
         if (Status is not (RegistrationStatus.PendingApproval or RegistrationStatus.Confirmed or RegistrationStatus.Rejected))
         {
             throw new DomainException("Không thể hủy đăng ký đã hoàn ở trạng thái hiện tại.");
@@ -274,6 +280,9 @@ public sealed class EventRegistration : AggregateRoot
     /// <returns>true nếu vừa check-in lần đầu; false nếu đã check-in trước đó.</returns>
     public bool CheckIn(Guid staffUserId)
     {
+        EnsureRaceNotClosed();
+        if (RaceStatus == RunnerRaceStatus.Finished)
+            throw new DomainException("VĐV đã về đích, không thể check-in nhận kit.");
         if (Status != RegistrationStatus.Confirmed)
         {
             throw new DomainException("Chỉ VĐV đã được duyệt (confirmed) mới check-in được.");
@@ -305,7 +314,10 @@ public sealed class EventRegistration : AggregateRoot
     /// </summary>
     public bool Finish(DateTime finishedAtUtc, long resultSeconds)
     {
-        if (Status == RegistrationStatus.Finished)
+        EnsureRaceNotClosed();
+        if (Status != RegistrationStatus.Confirmed)
+            throw new DomainException("Chỉ đăng ký confirmed mới được ghi nhận về đích.");
+        if (RaceStatus == RunnerRaceStatus.Finished)
         {
             return false;
         }
@@ -327,13 +339,14 @@ public sealed class EventRegistration : AggregateRoot
 
         FinishedAtUtc = finishedAtUtc;
         ResultSeconds = resultSeconds;
-        Status = RegistrationStatus.Finished;
+        RaceStatus = RunnerRaceStatus.Finished;
         Touch();
         return true;
     }
     public bool Start(DateTime startedAtUtc)
     {
-        if (Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
+        EnsureRaceNotClosed();
+        if (Status != RegistrationStatus.Confirmed)
         {
             throw new DomainException("Chỉ VĐV confirmed mới có thể ghi nhận xuất phát.");
         }
@@ -344,16 +357,79 @@ public sealed class EventRegistration : AggregateRoot
             return false;
         }
 
+        if (RaceStatus == RunnerRaceStatus.Finished)
+            throw new DomainException("Không ghi bổ sung start sau finish vì sẽ làm sai mốc tính thành tích.");
+
         if (startedAtUtc.Kind != DateTimeKind.Utc)
         {
             startedAtUtc = DateTime.SpecifyKind(startedAtUtc, DateTimeKind.Utc);
         }
 
         StartedAtUtc = startedAtUtc;
+        RaceStatus = RunnerRaceStatus.Started;
         Touch();
         return true;
     }
-    private void Touch() => UpdatedAtUtc = DateTime.UtcNow;
+    public void SetRaceStatus(RunnerRaceStatus status, bool canCorrect)
+    {
+        EnsureOperationalRegistration();
+        if (status is not (RunnerRaceStatus.Dns or RunnerRaceStatus.Dnf or RunnerRaceStatus.Dq))
+            throw new DomainException("Chỉ chấp nhận dns, dnf hoặc dq.");
+        if (RaceStatus == status)
+            throw new ConflictException("Runner đã có trạng thái này. Hãy tải lại dữ liệu.");
+        if (IsTerminalRaceStatus && !canCorrect)
+            throw new ForbiddenException("Chỉ coordinator/organizer/admin được điều chỉnh trạng thái đã chốt.");
+        if (status == RunnerRaceStatus.Dns && (StartedAtUtc.HasValue || FinishedAtUtc.HasValue))
+            throw new DomainException("Không thể DNS khi đã có dữ liệu xuất phát hoặc về đích.");
+        if (status == RunnerRaceStatus.Dnf && FinishedAtUtc.HasValue)
+            throw new DomainException("Không thể DNF khi đã có dữ liệu về đích.");
+        RaceStatus = status;
+        Touch();
+    }
+
+    public void RestoreRaceStatus(bool canCorrect)
+    {
+        EnsureOperationalRegistration();
+        if (!canCorrect)
+            throw new ForbiddenException("Chỉ coordinator/organizer/admin được khôi phục trạng thái.");
+        if (!IsTerminalRaceStatus)
+            throw new ConflictException("Chỉ khôi phục runner đang DNS/DNF/DQ.");
+        RaceStatus = FinishedAtUtc.HasValue ? RunnerRaceStatus.Finished
+            : StartedAtUtc.HasValue ? RunnerRaceStatus.Started : RunnerRaceStatus.NotStarted;
+        Touch();
+    }
+
+    public void SetBibStatus(PhysicalBibStatus status)
+    {
+        EnsureOperationalRegistration();
+        if (status == BibStatus)
+            throw new ConflictException("BIB đã có trạng thái này. Hãy tải lại dữ liệu.");
+        if (status == PhysicalBibStatus.Normal ||
+            (status == PhysicalBibStatus.Reissued && BibStatus != PhysicalBibStatus.Lost))
+            throw new DomainException("Chỉ báo mất BIB hoặc xác nhận cấp lại sau khi báo mất.");
+        BibStatus = status;
+        Touch();
+    }
+
+    private bool IsTerminalRaceStatus => RaceStatus is RunnerRaceStatus.Dns or RunnerRaceStatus.Dnf or RunnerRaceStatus.Dq;
+
+    private void EnsureRaceNotClosed()
+    {
+        if (IsTerminalRaceStatus)
+            throw new DomainException("Runner đang DNS/DNF/DQ. Cần người có quyền điều chỉnh trước khi quét.");
+    }
+
+    private void EnsureOperationalRegistration()
+    {
+        if (Status != RegistrationStatus.Confirmed || string.IsNullOrWhiteSpace(BibNumber))
+            throw new DomainException("Cần đăng ký confirmed và đã có BIB.");
+    }
+
+    private void Touch()
+    {
+        UpdatedAtUtc = DateTime.UtcNow;
+        Version++;
+    }
 }
 
 public sealed record RegistrationCreatedDomainEvent(Guid RegistrationId, Guid RaceEventId, Guid UserId) : DomainEvent;

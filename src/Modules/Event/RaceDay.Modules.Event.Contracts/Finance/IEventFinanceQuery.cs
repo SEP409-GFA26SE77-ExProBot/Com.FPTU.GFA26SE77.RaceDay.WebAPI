@@ -35,4 +35,5 @@ public sealed record RegistrationFinanceInfo(
     Guid OrganizerUserId,
     string EventStatus,
     DateOnly EventDate,
-    TimeOnly? StartTime);
+    TimeOnly? StartTime,
+    bool CanCancelAfterRefund = true);

@@ -39,7 +39,7 @@ public sealed class GetMyLeaderboardResultsQueryHandler(
 
         // 2. Chỉ lấy các lượt đăng ký đã hoàn thành (Finished)
         var finishedRegistrations = myRegistrations
-            .Where(r => r.Status == RegistrationStatus.Finished && r.ResultSeconds.HasValue)
+            .Where(r => r.Status == RegistrationStatus.Confirmed && r.RaceStatus == RunnerRaceStatus.Finished && r.ResultSeconds.HasValue)
             .ToList();
 
         var results = new List<MyLeaderboardItemDto>();
@@ -57,7 +57,8 @@ public sealed class GetMyLeaderboardResultsQueryHandler(
 
             var sameDistanceFinishedRunners = allEventRegistrations
                 .Where(r => r.DistanceId == myReg.DistanceId
-                         && r.Status == RegistrationStatus.Finished
+                         && r.Status == RegistrationStatus.Confirmed
+                         && r.RaceStatus == RunnerRaceStatus.Finished
                          && r.ResultSeconds.HasValue)
                 .OrderBy(r => r.ResultSeconds)
                 .ToList();

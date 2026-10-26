@@ -29,6 +29,7 @@ public enum RegistrationStatus
     PendingPayment = 0,
     PendingApproval = 1,
     Confirmed = 2,
+    // Legacy persisted value, migrated to Confirmed + RunnerRaceStatus.Finished.
     Finished = 3,
     Rejected = 4,
     Cancelled = 5
