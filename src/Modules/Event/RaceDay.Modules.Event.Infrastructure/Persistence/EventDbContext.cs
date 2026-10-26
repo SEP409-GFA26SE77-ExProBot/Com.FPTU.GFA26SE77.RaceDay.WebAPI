@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using RaceDay.Modules.Event.Domain.Events;
+using RaceDay.Modules.Event.Domain.Packages;
 using RaceDay.Modules.Event.Domain.Registrations;
+using RaceDay.Modules.Event.Domain.Staff;
 
 namespace RaceDay.Modules.Event.Infrastructure.Persistence;
 
@@ -11,6 +13,12 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
     public DbSet<EventCheckpoint> Checkpoints => Set<EventCheckpoint>();
     public DbSet<EventDocument> Documents => Set<EventDocument>();
     public DbSet<EventRegistration> Registrations => Set<EventRegistration>();
+    public DbSet<RegistrationCheckpointPassage> RegistrationCheckpointPassages => Set<RegistrationCheckpointPassage>();
+    public DbSet<EventPackagePurchase> PackagePurchases => Set<EventPackagePurchase>();
+    public DbSet<PromoCode> PromoCodes => Set<PromoCode>();
+    public DbSet<PackageDurationOption> PackageDurationOptions => Set<PackageDurationOption>();
+    public DbSet<PackageCapacityOption> PackageCapacityOptions => Set<PackageCapacityOption>();
+    public DbSet<EventStaffMember> StaffMembers => Set<EventStaffMember>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,6 +34,14 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Property(x => x.Location).HasMaxLength(300).IsRequired();
             entity.Property(x => x.Description).HasMaxLength(4000);
             entity.Property(x => x.RejectionReason).HasMaxLength(1000);
+            entity.Property(x => x.PackagePurchaseId);
+            entity.Property(x => x.PackageExpiresAtUtc);
+            entity.Property(x => x.RegistrationOpensAtUtc);
+            entity.Property(x => x.RegistrationClosesAtUtc);
+            entity.Property(x => x.EndDate);
+            entity.Property(x => x.BibPrefix).HasMaxLength(12);
+            entity.Property(x => x.BibRangeStart);
+            entity.Property(x => x.BibRangeEnd);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
             entity.Property(x => x.TicketPricingJson).HasColumnType("jsonb");
             entity.Property(x => x.MerchandiseJson).HasColumnType("jsonb");
@@ -98,20 +114,13 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Currency).HasMaxLength(10);
             entity.Property(x => x.Color).HasMaxLength(20);
+            entity.Property(x => x.BibPrefix).HasMaxLength(12);
+            entity.Property(x => x.BibRangeStart);
+            entity.Property(x => x.BibRangeEnd);
             entity.Property(x => x.Price).HasPrecision(18, 2);
+            entity.Property(x => x.StartAt);
+            entity.Property(x => x.EndAt);
             entity.Property(x => x.RouteGeometryJson).HasColumnType("jsonb");
-            entity.OwnsOne(x => x.StartLocation, s =>
-            {
-                s.Property(p => p.Name).HasColumnName("start_name").HasMaxLength(200);
-                s.Property(p => p.Lat).HasColumnName("start_lat");
-                s.Property(p => p.Lng).HasColumnName("start_lng");
-            });
-            entity.OwnsOne(x => x.FinishLocation, f =>
-            {
-                f.Property(p => p.Name).HasColumnName("finish_name").HasMaxLength(200);
-                f.Property(p => p.Lat).HasColumnName("finish_lat");
-                f.Property(p => p.Lng).HasColumnName("finish_lng");
-            });
             entity.HasMany(x => x.Checkpoints)
                 .WithOne()
                 .HasForeignKey(x => x.DistanceId)
@@ -119,6 +128,8 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Navigation(x => x.Checkpoints).HasField("_checkpoints").UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.Ignore(x => x.DomainEvents);
             entity.Ignore(x => x.HasAvailableSlot);
+            entity.Ignore(x => x.HasBibRange);
+            entity.Ignore(x => x.BibRangeSize);
         });
 
         modelBuilder.Entity<EventCheckpoint>(entity =>
@@ -164,11 +175,120 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.Property(x => x.HealthCertUrl).HasMaxLength(2000);
             entity.Property(x => x.RejectionReason).HasMaxLength(1000);
             entity.Property(x => x.BibNumber).HasMaxLength(30);
+            entity.Property(x => x.QuotedAmount).HasPrecision(18, 2);
+            entity.Property(x => x.QuotedPhaseKey).HasMaxLength(64);
+            entity.Property(x => x.QuotedPhaseName).HasMaxLength(120);
+            entity.Property(x => x.CheckedInAtUtc);
+            entity.Property(x => x.CheckedInByUserId);
+            entity.Property(x => x.StartedAtUtc);
+            entity.Property(x => x.FinishedAtUtc);
+            entity.Property(x => x.ResultSeconds);
             // Cho phép đăng ký lại cùng cự ly sau Rejected/Cancelled (Status lưu string enum name).
             entity.HasIndex(x => new { x.EventId, x.DistanceId, x.UserId })
                 .IsUnique()
                 .HasFilter("\"Status\" NOT IN ('Rejected', 'Cancelled')");
             entity.HasIndex(x => x.EventId);
+            entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<RegistrationCheckpointPassage>(entity =>
+        {
+            entity.ToTable("event_registration_checkpoint_passages");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PassedAtUtc);
+            entity.Property(x => x.CreatedAtUtc);
+            entity.HasIndex(x => new { x.RegistrationId, x.CheckpointId }).IsUnique();
+            entity.HasIndex(x => x.EventId);
+            entity.HasIndex(x => x.DistanceId);
+            entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<EventPackagePurchase>(entity =>
+        {
+            entity.ToTable("package_purchases");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.OrganizerUserId);
+            entity.Property(x => x.OrgName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.OrgIntro).HasMaxLength(2000);
+            entity.Property(x => x.OrgAddress).HasMaxLength(500);
+            entity.Property(x => x.InvoiceInfo).HasMaxLength(1000);
+            entity.Property(x => x.DurationMonths);
+            entity.Property(x => x.ParticipantCap);
+            entity.Property(x => x.PromoCode).HasMaxLength(50);
+            entity.Property(x => x.BasePrice).HasPrecision(15, 2);
+            entity.Property(x => x.CapacityFee).HasPrecision(15, 2);
+            entity.Property(x => x.Discount).HasPrecision(15, 2);
+            entity.Property(x => x.TotalAmount).HasPrecision(15, 2);
+            entity.Property(x => x.Currency).HasMaxLength(10).IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.PaymentId);
+            entity.Property(x => x.CreatedEventId);
+            entity.Property(x => x.PackageExpiresAtUtc);
+            entity.HasIndex(x => x.OrganizerUserId);
+            entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<PromoCode>(entity =>
+        {
+            entity.ToTable("promo_codes");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Code).HasMaxLength(50).IsRequired();
+            entity.HasIndex(x => x.Code).IsUnique();
+            entity.Property(x => x.PercentOff).HasPrecision(5, 4);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.ExpiresAtUtc);
+            entity.Property(x => x.MaxRedemptions);
+            entity.Property(x => x.UsedCount);
+            entity.Property(x => x.CreatedAtUtc);
+            entity.Property(x => x.UpdatedAtUtc);
+            entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<PackageDurationOption>(entity =>
+        {
+            entity.ToTable("package_duration_options");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.Months);
+            entity.HasIndex(x => x.Months).IsUnique();
+            entity.Property(x => x.Price).HasPrecision(15, 2);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.SortOrder);
+            entity.Property(x => x.CreatedAtUtc);
+            entity.Property(x => x.UpdatedAtUtc);
+            entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<PackageCapacityOption>(entity =>
+        {
+            entity.ToTable("package_capacity_options");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.MaxParticipants);
+            entity.HasIndex(x => x.MaxParticipants).IsUnique();
+            entity.Property(x => x.AddOnFee).HasPrecision(15, 2);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.SortOrder);
+            entity.Property(x => x.CreatedAtUtc);
+            entity.Property(x => x.UpdatedAtUtc);
+            entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<EventStaffMember>(entity =>
+        {
+            entity.ToTable("event_staff_members");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Role).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.FullName).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(100).IsRequired();
+            entity.Property(x => x.Phone).HasMaxLength(30);
+            entity.Property(x => x.StationId).HasMaxLength(120);
+            entity.Property(x => x.StationLabel).HasMaxLength(300);
+            entity.HasIndex(x => x.EventId);
+            entity.HasIndex(x => new { x.EventId, x.Role, x.Email })
+                .IsUnique()
+                .HasFilter("\"Status\" <> 'Revoked'");
             entity.Ignore(x => x.DomainEvents);
         });
     }

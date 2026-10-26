@@ -19,7 +19,8 @@ public sealed record UpdateUserRequest(
     UserStatusDto Status,
     string? ProfileDescription,
     string? ContactEmail,
-    string? ContactPhone);
+    string? ContactPhone,
+    string? IdNumber = null);
 
 public sealed record UpdateUserCommand(
     Guid UserId,
@@ -32,7 +33,8 @@ public sealed record UpdateUserCommand(
     UserStatusDto Status,
     string? ProfileDescription,
     string? ContactEmail,
-    string? ContactPhone) : IRequest;
+    string? ContactPhone,
+    string? IdNumber = null) : IRequest;
 
 public sealed class UpdateUserCommandValidator : AbstractValidator<UpdateUserCommand>
 {
@@ -53,6 +55,7 @@ public sealed class UpdateUserCommandValidator : AbstractValidator<UpdateUserCom
         RuleFor(x => x.ContactEmail).EmailAddress().When(x => !string.IsNullOrWhiteSpace(x.ContactEmail));
         RuleFor(x => x.Gender).IsInEnum();
         RuleFor(x => x.Status).IsInEnum();
+        RuleFor(x => x.IdNumber).MaximumLength(30).OptionalIdNumber();
     }
 }
 
@@ -89,7 +92,8 @@ public sealed class UpdateUserCommandHandler(
             request.Gender.ToDomain(),
             request.ProfileDescription,
             request.ContactEmail,
-            request.ContactPhone);
+            request.ContactPhone,
+            request.IdNumber is null ? user.IdNumber : InputRules.NormalizeIdNumber(request.IdNumber));
         user.ChangeRole(request.RoleId);
         user.SetStatus(request.Status.ToDomain());
 

@@ -79,6 +79,16 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BibPrefix")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<int?>("BibRangeEnd")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("BibRangeStart")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Capacity")
                         .HasColumnType("integer");
 
@@ -95,17 +105,11 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<double>("DistanceKm")
                         .HasColumnType("double precision");
 
-                    b.Property<double>("ElevationGainM")
-                        .HasColumnType("double precision");
+                    b.Property<TimeOnly?>("EndAt")
+                        .HasColumnType("time without time zone");
 
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
-
-                    b.Property<double>("MaxElevationM")
-                        .HasColumnType("double precision");
-
-                    b.Property<double>("MinElevationM")
-                        .HasColumnType("double precision");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -122,6 +126,9 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<string>("RouteGeometryJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
+
+                    b.Property<TimeOnly?>("StartAt")
+                        .HasColumnType("time without time zone");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -185,12 +192,25 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("BibPrefix")
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<int?>("BibRangeEnd")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("BibRangeStart")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date");
 
                     b.Property<DateOnly>("EventDate")
                         .HasColumnType("date");
@@ -211,6 +231,18 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("OrganizerUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PackageExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("PackagePurchaseId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RegistrationClosesAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RegistrationOpensAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("RejectionReason")
                         .HasMaxLength(1000)
@@ -263,6 +295,213 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.ToTable("race_events", "event");
                 });
 
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Packages.EventPackagePurchase", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("BasePrice")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<decimal>("CapacityFee")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedEventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<decimal>("Discount")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<int>("DurationMonths")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("InvoiceInfo")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("OrgAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("OrgIntro")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<string>("OrgName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("OrganizerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PackageExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("ParticipantCap")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("PaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PromoCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizerUserId");
+
+                    b.ToTable("package_purchases", "event");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Packages.PackageCapacityOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AddOnFee")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MaxParticipants")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MaxParticipants")
+                        .IsUnique();
+
+                    b.ToTable("package_capacity_options", "event");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Packages.PackageDurationOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Months")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(15, 2)
+                        .HasColumnType("numeric(15,2)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Months")
+                        .IsUnique();
+
+                    b.ToTable("package_duration_options", "event");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Packages.PromoCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("MaxRedemptions")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("PercentOff")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UsedCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("promo_codes", "event");
+                });
+
             modelBuilder.Entity("RaceDay.Modules.Event.Domain.Registrations.EventRegistration", b =>
                 {
                     b.Property<Guid>("Id")
@@ -276,6 +515,12 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<string>("BloodType")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
+
+                    b.Property<DateTime?>("CheckedInAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CheckedInByUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -301,6 +546,9 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("FinishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("FullName")
                         .IsRequired()
@@ -341,9 +589,24 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
+                    b.Property<decimal?>("QuotedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("QuotedPhaseKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("QuotedPhaseName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
                     b.Property<string>("RejectionReason")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
+
+                    b.Property<long?>("ResultSeconds")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("ShirtColor")
                         .HasMaxLength(80)
@@ -356,6 +619,9 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<string>("ShirtType")
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
+
+                    b.Property<DateTime?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -382,6 +648,103 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.ToTable("event_registrations", "event");
                 });
 
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Registrations.RegistrationCheckpointPassage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CheckpointId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DistanceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("PassedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RegistrationId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DistanceId");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("RegistrationId", "CheckpointId")
+                        .IsUnique();
+
+                    b.ToTable("event_registration_checkpoint_passages", "event");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Staff.EventStaffMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("StationId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("StationLabel")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId");
+
+                    b.HasIndex("EventId", "Role", "Email")
+                        .IsUnique()
+                        .HasFilter("\"Status\" <> 'Revoked'");
+
+                    b.ToTable("event_staff_members", "event");
+                });
+
             modelBuilder.Entity("RaceDay.Modules.Event.Domain.Events.EventCheckpoint", b =>
                 {
                     b.HasOne("RaceDay.Modules.Event.Domain.Events.EventDistance", null)
@@ -397,66 +760,6 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .WithMany("Distances")
                         .HasForeignKey("EventId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.OwnsOne("RaceDay.Modules.Event.Domain.Events.NamedGeoPoint", "FinishLocation", b1 =>
-                        {
-                            b1.Property<Guid>("EventDistanceId")
-                                .HasColumnType("uuid");
-
-                            b1.Property<double>("Lat")
-                                .HasColumnType("double precision")
-                                .HasColumnName("finish_lat");
-
-                            b1.Property<double>("Lng")
-                                .HasColumnType("double precision")
-                                .HasColumnName("finish_lng");
-
-                            b1.Property<string>("Name")
-                                .IsRequired()
-                                .HasMaxLength(200)
-                                .HasColumnType("character varying(200)")
-                                .HasColumnName("finish_name");
-
-                            b1.HasKey("EventDistanceId");
-
-                            b1.ToTable("event_distances", "event");
-
-                            b1.WithOwner()
-                                .HasForeignKey("EventDistanceId");
-                        });
-
-                    b.OwnsOne("RaceDay.Modules.Event.Domain.Events.NamedGeoPoint", "StartLocation", b1 =>
-                        {
-                            b1.Property<Guid>("EventDistanceId")
-                                .HasColumnType("uuid");
-
-                            b1.Property<double>("Lat")
-                                .HasColumnType("double precision")
-                                .HasColumnName("start_lat");
-
-                            b1.Property<double>("Lng")
-                                .HasColumnType("double precision")
-                                .HasColumnName("start_lng");
-
-                            b1.Property<string>("Name")
-                                .IsRequired()
-                                .HasMaxLength(200)
-                                .HasColumnType("character varying(200)")
-                                .HasColumnName("start_name");
-
-                            b1.HasKey("EventDistanceId");
-
-                            b1.ToTable("event_distances", "event");
-
-                            b1.WithOwner()
-                                .HasForeignKey("EventDistanceId");
-                        });
-
-                    b.Navigation("FinishLocation")
-                        .IsRequired();
-
-                    b.Navigation("StartLocation")
                         .IsRequired();
                 });
 

@@ -9,7 +9,9 @@ public enum RaceEventStatus
     RegistrationOpen = 4,
     Closed = 5,
     Completed = 6,
-    Cancelled = 7
+    Cancelled = 7,
+    /// <summary>Khóa tự động khi hết hạn gói tổ chức.</summary>
+    Suspended = 8
 }
 
 public enum CheckpointType
@@ -27,6 +29,7 @@ public enum RegistrationStatus
     PendingPayment = 0,
     PendingApproval = 1,
     Confirmed = 2,
-    Rejected = 3,
-    Cancelled = 4
+    Finished = 3,
+    Rejected = 4,
+    Cancelled = 5
 }

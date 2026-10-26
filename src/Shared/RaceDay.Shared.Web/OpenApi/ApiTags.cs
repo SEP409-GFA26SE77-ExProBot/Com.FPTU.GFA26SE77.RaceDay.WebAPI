@@ -11,8 +11,12 @@ public static class ApiTags
     public const string EventAdmin = "6. Event — Admin duyệt";
     public const string AuditLog = "7. AuditLog";
     public const string Payment = "8. Payment";
-    public const string Host = "9. Host";
-    public const string RaceMonitoring = "10. RaceMonitoring";
+    public const string Map = "9. Map — Course / route";
+    public const string Finance = "10. Finance — Ví / giải ngân / hoàn";
+    public const string Device = "11. Device — Wear link + SOS";
+    public const string Photo = "12. Photo — Upload / OCR / search";
+    public const string Host = "13. Host";
+    public const string RaceMonitoring = "14. RaceMonitoring";
 
     public static IReadOnlyList<(string Name, string Description)> All { get; } =
     [
@@ -24,7 +28,11 @@ public static class ApiTags
         (EventAdmin, "Duyệt / từ chối hồ sơ giải. Bearer Admin. Prefix /api/v1/event/admin"),
         (AuditLog, "Xem audit gần đây (Admin)."),
         (Payment, "PayOS checkout + webhook/mock. Luồng: create registration → checkout → PAID → pending_approval."),
-        (Host, "Health / hạ tầng host."),
+        (Map, "Course map theo (eventId, distanceId): GET/PUT /api/v1/map/events/.../course; GET /geocode (Nominatim VN). FE organizer setup map + simulator. OSRM route vẫn phía FE."),
+        (Finance, "Escrow theo giải, payout Admin duyệt, hoàn tiền theo payment.Amount × % policy (mở ĐK 100% / đóng ĐK 50% / sau gun 0%)."),
+        (Device, "Wear Device Flow (RFC 8628): auth/code + auth/token; runner link/approve; SOS scope sos:create; organizer ack/resolve."),
+        (Photo, "Photographer bulk-upload + OCR async (SEP_Service_Photo); runner search theo BIB; dispute. Auth: Active staff Photographer của event (JWT role không đủ)."),
+        (Host, "Health / hạ tầng host.")
         (RaceMonitoring, "Giám sát giải (scaffold). Prefix /api/v1/race-monitoring")
     ];
 
@@ -38,8 +46,12 @@ public static class ApiTags
         EventAdmin => "6",
         AuditLog => "7",
         Payment => "8",
-        Host => "9",
-        RaceMonitoring => "10",
+        Map => "9",
+        Finance => "10",
+        Device => "11",
+        Photo => "12",
+        Host => "13",
+        RaceMonitoring => "14",
         _ => "99"
     };
 }

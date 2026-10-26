@@ -3,6 +3,7 @@ using MediatR;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Application.Validation;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Events;
@@ -24,6 +25,18 @@ public sealed class SubmitRaceEventCommandHandler(
         if (!currentUser.IsAdmin && race.OrganizerUserId != userId)
         {
             throw new DomainException("Bạn không phải chủ giải này.");
+        }
+
+        if (!InputRules.IsValidVietnamPhone(race.Organizer.Phone))
+        {
+            throw new DomainException(
+                "Cần cập nhật SĐT ban tổ chức hợp lệ (VD: 0901234567) trước khi gửi duyệt.");
+        }
+
+        if (race.Organizer.Email.Contains("pending-", StringComparison.OrdinalIgnoreCase)
+            || race.Organizer.Email.Contains("@update.raceday.vn", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new DomainException("Cần cập nhật email ban tổ chức thật trước khi gửi duyệt.");
         }
 
         race.SubmitForApproval();
@@ -110,6 +123,31 @@ public sealed class OpenRegistrationCommandHandler(
         }
 
         race.OpenRegistration();
+        events.Update(race);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return RaceEventDtoMapper.ToDetail(race);
+    }
+}
+
+public sealed record CloseRegistrationCommand(Guid EventId) : IRequest<RaceEventDto>;
+
+public sealed class CloseRegistrationCommandHandler(
+    IRaceEventRepository events,
+    ICurrentUserAccessor currentUser,
+    IEventUnitOfWork unitOfWork) : IRequestHandler<CloseRegistrationCommand, RaceEventDto>
+{
+    public async Task<RaceEventDto> Handle(CloseRegistrationCommand request, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        var race = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy giải.");
+
+        if (!currentUser.IsAdmin && race.OrganizerUserId != userId)
+        {
+            throw new DomainException("Bạn không phải chủ giải này.");
+        }
+
+        race.CloseRegistration();
         events.Update(race);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return RaceEventDtoMapper.ToDetail(race);

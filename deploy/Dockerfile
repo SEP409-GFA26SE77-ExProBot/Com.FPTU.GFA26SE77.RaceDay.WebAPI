@@ -11,6 +11,10 @@ COPY src/Modules/Iam ./src/Modules/Iam
 COPY src/Modules/Event ./src/Modules/Event
 COPY src/Modules/Payment ./src/Modules/Payment
 COPY src/Modules/AuditLog ./src/Modules/AuditLog
+COPY src/Modules/Map ./src/Modules/Map
+COPY src/Modules/Finance ./src/Modules/Finance
+COPY src/Modules/Device ./src/Modules/Device
+COPY src/Modules/Photo ./src/Modules/Photo
 COPY src/Modules/RaceMonitoring ./src/Modules/RaceMonitoring
 COPY src/Hosts/RaceDay.Api ./src/Hosts/RaceDay.Api
 

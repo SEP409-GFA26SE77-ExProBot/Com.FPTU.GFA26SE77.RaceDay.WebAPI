@@ -21,18 +21,12 @@ public class RaceEventWorkflowTests
 
         var distance = EventDistance.Create(
             race.Id,
-            "42K",
             "Ultra Langbiang",
             42.2,
-            1420,
-            2167,
-            1495,
             capacity: 500,
             price: 1_500_000,
-            currency: "VND",
             color: "#FC4C02",
-            start: new NamedGeoPoint("Plaza", 11.9, 108.4),
-            finish: new NamedGeoPoint("Plaza", 11.9, 108.4),
+            type: "42K",
             routeGeometryJson: "{}",
             checkpoints:
             [

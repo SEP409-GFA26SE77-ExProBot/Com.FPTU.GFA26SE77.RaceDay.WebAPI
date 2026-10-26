@@ -34,6 +34,11 @@ namespace RaceDay.Modules.Iam.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("contact_email");
 
+                    b.Property<string>("AvatarUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("avatar_url");
+
                     b.Property<string>("ContactPhone")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
@@ -163,6 +168,10 @@ namespace RaceDay.Modules.Iam.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("email_verified");
 
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("boolean")
+                        .HasColumnName("must_change_password");
+
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -172,6 +181,11 @@ namespace RaceDay.Modules.Iam.Infrastructure.Persistence.Migrations
                     b.Property<short>("Gender")
                         .HasColumnType("smallint")
                         .HasColumnName("gender");
+
+                    b.Property<string>("IdNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("id_number");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()

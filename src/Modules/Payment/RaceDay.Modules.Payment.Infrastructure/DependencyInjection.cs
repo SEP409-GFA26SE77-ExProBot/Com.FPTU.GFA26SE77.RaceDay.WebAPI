@@ -20,6 +20,8 @@ public static class DependencyInjection
 
         services.AddScoped<IPaymentRepository, PaymentRepository>();
         services.AddScoped<IPaymentUnitOfWork, PaymentUnitOfWork>();
+        services.AddScoped<RaceDay.Modules.Payment.Contracts.Payments.IPaymentFinancePort,
+            RaceDay.Modules.Payment.Infrastructure.Finance.PaymentFinancePort>();
         services.AddHttpClient<IPayOsGateway, PayOsGateway>();
         services.AddHostedService<PaymentDataSeeder>();
         return services;

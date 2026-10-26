@@ -28,6 +28,24 @@ public sealed class AuditEntryRepository(IMongoDbContext mongo) : IAuditEntryRep
 
         return docs.Select(x => x.ToDomain()).ToList();
     }
+
+    public async Task<(IReadOnlyList<AuditEntry> Items, long Total)> ListPagedAsync(
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+    {
+        var collection = mongo.GetCollection<AuditEntryDocument>(CollectionName);
+        var filter = FilterDefinition<AuditEntryDocument>.Empty;
+        var total = await collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
+        var docs = await collection
+            .Find(filter)
+            .SortByDescending(x => x.OccurredOnUtc)
+            .Skip((page - 1) * pageSize)
+            .Limit(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return (docs.Select(x => x.ToDomain()).ToList(), total);
+    }
 }
 
 internal sealed class AuditEntryDocument

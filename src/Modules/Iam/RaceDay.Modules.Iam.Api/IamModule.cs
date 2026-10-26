@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -12,14 +13,17 @@ using RaceDay.Modules.Iam.Application.Auth.Register;
 using RaceDay.Modules.Iam.Application.Auth.ResendOtp;
 using RaceDay.Modules.Iam.Application.Auth.ResetPassword;
 using RaceDay.Modules.Iam.Application.Auth.VerifyEmail;
+using RaceDay.Modules.Iam.Application.Users;
 using RaceDay.Modules.Iam.Application.Users.CreateUser;
 using RaceDay.Modules.Iam.Application.Users.DeleteUser;
 using RaceDay.Modules.Iam.Application.Users.GetUser;
 using RaceDay.Modules.Iam.Application.Users.ListUsers;
 using RaceDay.Modules.Iam.Application.Users.LockUser;
 using RaceDay.Modules.Iam.Application.Users.UnlockUser;
+using RaceDay.Modules.Iam.Application.Users.UpdateMe;
 using RaceDay.Modules.Iam.Application.Users.UpdateUser;
 using RaceDay.Modules.Iam.Infrastructure;
+using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Web.Auth;
 using RaceDay.Shared.Web.OpenApi;
 
@@ -29,9 +33,24 @@ public static class IamModule
 {
     public static IServiceCollection AddIamModule(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(RegisterUserCommand).Assembly));
+        // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddValidatorsFromAssembly(typeof(RegisterUserCommand).Assembly);
         services.AddIamInfrastructure(configuration);
+        services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            var previous = options.Events.OnTokenValidated;
+            options.Events.OnTokenValidated = async context =>
+            {
+                if (previous is not null)
+                {
+                    await previous(context);
+                }
+                if (context.Result?.Failure is null)
+                {
+                    await CurrentAccountValidation.ValidateAsync(context);
+                }
+            };
+        });
         return services;
     }
 
@@ -91,6 +110,74 @@ public static class IamModule
             .RequireAuthorization(AuthPolicies.PublicUser)
             .WithSummary("Đổi mật khẩu (cần JWT)");
 
+        publicApi.MapGet("/me", async (IMediator mediator, CancellationToken ct) =>
+            {
+                var result = await mediator.Send(new GetMyProfileQuery(), ct);
+                return Results.Ok(result);
+            })
+            .RequireAuthorization(AuthPolicies.PublicUser)
+            .WithSummary("Hồ sơ user đang đăng nhập");
+
+        publicApi.MapPut("/me", async (UpdateMyProfileBody body, IMediator mediator, CancellationToken ct) =>
+            {
+                var result = await mediator.Send(new UpdateMyProfileCommand(
+                    body.FullName,
+                    body.Phone,
+                    body.DateOfBirth,
+                    body.Gender,
+                    body.AvatarUrl,
+                    body.IdNumber), ct);
+                return Results.Ok(result);
+            })
+            .RequireAuthorization(AuthPolicies.PublicUser)
+            .WithSummary("Cập nhật hồ sơ cá nhân (họ tên, SĐT, DOB, gender, CCCD/hộ chiếu, avatarUrl)")
+            .WithDescription("idNumber: CCCD/CMND gồm 9 hoặc 12 chữ số, hoặc hộ chiếu gồm 6–12 ký tự bắt đầu bằng chữ. Bỏ qua/null để giữ giá trị hiện tại; gửi chuỗi rỗng để xóa.");
+
+        publicApi.MapPost("/me/avatar", async (
+            IFormFile file,
+            IMediator mediator,
+            IFileStorage storage,
+            CancellationToken ct) =>
+            {
+                if (file.Length == 0)
+                {
+                    return Results.BadRequest(new { message = "File trống." });
+                }
+
+                var ext = Path.GetExtension(file.FileName)?.ToLowerInvariant();
+                var extOk = ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif";
+                if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !extOk)
+                {
+                    return Results.BadRequest(new { message = "Chỉ chấp nhận ảnh JPG, PNG, WEBP, GIF." });
+                }
+
+                if (file.Length > 2 * 1024 * 1024)
+                {
+                    return Results.BadRequest(new { message = "Ảnh tối đa 2MB." });
+                }
+
+                await using var stream = file.OpenReadStream();
+                var stored = await storage.UploadAsync(
+                    stream,
+                    file.FileName,
+                    string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType,
+                    folder: "avatars",
+                    ct);
+
+                var me = await mediator.Send(new GetMyProfileQuery(), ct);
+                var updated = await mediator.Send(new UpdateMyProfileCommand(
+                    me.FullName,
+                    me.Phone,
+                    me.DateOfBirth,
+                    me.Gender,
+                    stored.FileUrl,
+                    me.IdNumber), ct);
+                return Results.Ok(updated);
+            })
+            .DisableAntiforgery()
+            .RequireAuthorization(AuthPolicies.PublicUser)
+            .WithSummary("Upload ảnh đại diện → avatars/ + cập nhật profile");
+
         var adminApi = app.MapGroup("/api/v1/iam/admin")
             .WithTags(ApiTags.IamAdmin)
             .RequireAuthorization(AuthPolicies.AdminOnly)
@@ -130,10 +217,12 @@ public static class IamModule
                 body.Status,
                 body.ProfileDescription,
                 body.ContactEmail,
-                body.ContactPhone), ct);
+                body.ContactPhone,
+                body.IdNumber), ct);
             return Results.NoContent();
         })
-        .WithSummary("Cập nhật user");
+        .WithSummary("Cập nhật user")
+        .WithDescription("Hỗ trợ idNumber (Identity number). Bỏ qua/null để giữ giá trị hiện tại; gửi chuỗi rỗng để xóa.");
 
         adminApi.MapPost("/users/{userId:guid}/lock", async (Guid userId, IMediator mediator, CancellationToken ct) =>
         {
@@ -171,3 +260,11 @@ public static class IamModule
 }
 
 public sealed record AdminResetPasswordRequest(string NewPassword);
+
+public sealed record UpdateMyProfileBody(
+    string FullName,
+    string? Phone,
+    DateOnly? DateOfBirth,
+    GenderDto Gender,
+    string? AvatarUrl = null,
+    string? IdNumber = null);

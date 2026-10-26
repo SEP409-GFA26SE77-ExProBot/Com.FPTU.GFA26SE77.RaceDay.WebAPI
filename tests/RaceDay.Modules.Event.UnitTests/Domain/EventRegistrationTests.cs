@@ -45,4 +45,24 @@ public class EventRegistrationTests
         reg.Reject("Thiếu giấy khám");
         Assert.Equal(RegistrationStatus.Rejected, reg.Status);
     }
+
+    [Fact]
+    public void Finish_Sets_Time_Status_And_Is_Idempotent()
+    {
+        var reg = EventRegistration.Create(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            "C", "c@raceday.vn", "0903333444", null, null, null, null, null, null,
+            null, null, null, null, null, "[]", null, null, true);
+        reg.Confirm("BIB-9");
+
+        var finishedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+        var first = reg.Finish(finishedAt, 1234);
+        var second = reg.Finish(DateTime.SpecifyKind(finishedAt.AddMinutes(1), DateTimeKind.Utc), 9999);
+
+        Assert.True(first);
+        Assert.False(second);
+        Assert.Equal(RegistrationStatus.Finished, reg.Status);
+        Assert.Equal(finishedAt, reg.FinishedAtUtc);
+        Assert.Equal(1234, reg.ResultSeconds);
+    }
 }

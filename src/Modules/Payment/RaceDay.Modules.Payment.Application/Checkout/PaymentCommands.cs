@@ -15,6 +15,7 @@ public interface IPaymentRepository
     Task<PaymentOrder?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<PaymentOrder?> GetByOrderCodeAsync(long orderCode, CancellationToken cancellationToken = default);
     Task<PaymentOrder?> GetPendingByRegistrationAsync(Guid registrationId, CancellationToken cancellationToken = default);
+    Task<PaymentOrder?> GetPendingByReferenceAsync(PaymentPurpose purpose, Guid referenceId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PaymentOrder>> ListByUserAsync(Guid userId, CancellationToken cancellationToken = default);
     Task AddAsync(PaymentOrder payment, CancellationToken cancellationToken = default);
     void AddTransaction(PaymentTransaction transaction);
@@ -31,6 +32,10 @@ public interface IPayOsGateway
     bool IsMock { get; }
     Task<PayOsCreateResult> CreatePaymentLinkAsync(PayOsCreateRequest request, CancellationToken cancellationToken = default);
     Task<PayOsPaymentLinkInfo?> GetPaymentLinkAsync(long orderCode, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Hoàn tiền đã paid: mock → ghi nhận ngay; live → lệnh chi PayOS về STK đối ứng (webhook).
+    /// </summary>
+    Task<PayOsRefundResult> RefundAsync(PayOsRefundRequest request, CancellationToken cancellationToken = default);
     bool VerifyWebhookSignature(string rawBody, string? signatureHeader);
 }
 
@@ -45,7 +50,12 @@ public sealed record PayOsCreateRequest(
 public sealed record PayOsCreateResult(
     string CheckoutUrl,
     string? PaymentLinkId,
-    string? RawResponseJson);
+    string? RawResponseJson,
+    string? QrCode = null,
+    string? AccountNumber = null,
+    string? AccountName = null,
+    string? Bin = null,
+    string? TransferDescription = null);
 
 public sealed record PayOsPaymentLinkInfo(
     long OrderCode,
@@ -53,11 +63,30 @@ public sealed record PayOsPaymentLinkInfo(
     string? PaymentLinkId,
     string? RawJson);
 
+public sealed record PayOsRefundRequest(
+    Guid PaymentId,
+    long OrderCode,
+    int AmountVnd,
+    string Description,
+    string? CounterAccountBankId,
+    string? CounterAccountNumber,
+    string? ChargeRawJson);
+
+public sealed record PayOsRefundResult(
+    bool IsMock,
+    string? PayoutId,
+    string? RawResponseJson);
+
 public sealed record PaymentDto(
     Guid Id,
-    Guid RegistrationId,
+    string Purpose,
+    Guid? RegistrationId,
+    Guid? ReferenceId,
     Guid UserId,
     decimal Amount,
+    decimal? ListAmount,
+    decimal? DiscountAmount,
+    string? PromoCode,
     string Currency,
     string Status,
     string? PaymentMethod,
@@ -66,7 +95,12 @@ public sealed record PaymentDto(
     long OrderCode,
     string? CheckoutUrl,
     DateTime? PaidAtUtc,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    string? QrCode = null,
+    string? AccountNumber = null,
+    string? AccountName = null,
+    string? Bin = null,
+    string? TransferDescription = null);
 
 public static class PaymentDtoMapper
 {
@@ -81,10 +115,48 @@ public static class PaymentDtoMapper
         _ => s.ToString().ToLowerInvariant()
     };
 
-    public static PaymentDto ToDto(PaymentOrder p) => new(
-        p.Id, p.RegistrationId, p.UserId, p.Amount, p.Currency, ToApi(p.Status),
+    public static string ToApiPurpose(PaymentPurpose p) => p switch
+    {
+        PaymentPurpose.Registration => "registration",
+        PaymentPurpose.EventPackage => "event_package",
+        _ => p.ToString().ToLowerInvariant()
+    };
+
+    public static PaymentDto ToDto(PaymentOrder p, PayOsCreateResult? payOs = null) => new(
+        p.Id, ToApiPurpose(p.Purpose), p.RegistrationId, p.ReferenceId,
+        p.UserId, p.Amount, p.ListAmount, p.DiscountAmount, p.PromoCode,
+        p.Currency, ToApi(p.Status),
         p.PaymentMethod, p.PaymentGateway, p.TransactionReference, p.OrderCode,
-        p.CheckoutUrl, p.PaidAtUtc, p.CreatedAtUtc);
+        p.CheckoutUrl, p.PaidAtUtc, p.CreatedAtUtc,
+        payOs?.QrCode, payOs?.AccountNumber, payOs?.AccountName, payOs?.Bin,
+        payOs?.TransferDescription);
+
+    /// <summary>Lấy VietQR fields từ raw PayOS create (khi reuse checkoutUrl cũ).</summary>
+    public static PayOsCreateResult? TryParseVietQrFromRaw(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            var data = root.TryGetProperty("data", out var d) ? d : root;
+            var qr = data.TryGetProperty("qrCode", out var q) ? q.GetString() : null;
+            if (string.IsNullOrWhiteSpace(qr)) return null;
+            return new PayOsCreateResult(
+                CheckoutUrl: data.TryGetProperty("checkoutUrl", out var cu) ? cu.GetString() ?? "" : "",
+                PaymentLinkId: data.TryGetProperty("paymentLinkId", out var pl) ? pl.GetString() : null,
+                RawResponseJson: raw,
+                QrCode: qr,
+                AccountNumber: data.TryGetProperty("accountNumber", out var an) ? an.GetString() : null,
+                AccountName: data.TryGetProperty("accountName", out var am) ? am.GetString() : null,
+                Bin: data.TryGetProperty("bin", out var b) ? b.GetString() : null,
+                TransferDescription: data.TryGetProperty("description", out var td) ? td.GetString() : null);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }
 
 public sealed record CreateCheckoutCommand(
@@ -128,7 +200,12 @@ public sealed class CreateCheckoutCommandHandler(
         var existing = await payments.GetPendingByRegistrationAsync(request.RegistrationId, cancellationToken);
         if (existing is { CheckoutUrl: not null })
         {
-            return PaymentDtoMapper.ToDto(existing);
+            var createRaw = existing.Transactions
+                .OrderByDescending(t => t.CreatedAtUtc)
+                .FirstOrDefault(t => t.TransactionType == "create_link")
+                ?.RawResponseJson;
+            var vietQr = PaymentDtoMapper.TryParseVietQrFromRaw(createRaw);
+            return PaymentDtoMapper.ToDto(existing, vietQr);
         }
 
         var orderCode = existing?.OrderCode ?? GenerateOrderCode();
@@ -176,7 +253,8 @@ public sealed class CreateCheckoutCommandHandler(
         // Explicit Add: client-generated Guid children are otherwise UPDATEd (0 rows → 500).
         payments.AddTransaction(createTx);
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        return PaymentDtoMapper.ToDto(payment);
+        // Trả VietQR + CK để FE vẽ 1 khung (không dùng tab PayOS hosted)
+        return PaymentDtoMapper.ToDto(payment, created);
     }
 
     private static long GenerateOrderCode()
@@ -227,18 +305,34 @@ public sealed class ConfirmPaymentPaidCommandHandler(
 
         if (!alreadyPaid)
         {
-            // In-process notify Event module (monolith). Avoid IAM outbox without SaveChanges.
-            await publisher.Publish(
-                new IntegrationEventOccurred(
-                    new PaymentCompletedIntegrationEvent(
-                        payment.Id,
-                        payment.RegistrationId,
-                        payment.UserId,
-                        payment.Amount,
-                        payment.Currency,
-                        payment.PaymentGateway ?? "PayOS",
-                        payment.TransactionReference)),
-                cancellationToken);
+            if (payment.Purpose == PaymentPurpose.EventPackage && payment.ReferenceId.HasValue)
+            {
+                await publisher.Publish(
+                    new IntegrationEventOccurred(
+                        new PackagePaymentCompletedIntegrationEvent(
+                            payment.Id,
+                            payment.ReferenceId.Value,
+                            payment.UserId,
+                            payment.Amount,
+                            payment.Currency,
+                            payment.PaymentGateway ?? "PayOS",
+                            payment.TransactionReference)),
+                    cancellationToken);
+            }
+            else if (payment.Purpose == PaymentPurpose.Registration && payment.RegistrationId.HasValue)
+            {
+                await publisher.Publish(
+                    new IntegrationEventOccurred(
+                        new PaymentCompletedIntegrationEvent(
+                            payment.Id,
+                            payment.RegistrationId.Value,
+                            payment.UserId,
+                            payment.Amount,
+                            payment.Currency,
+                            payment.PaymentGateway ?? "PayOS",
+                            payment.TransactionReference)),
+                    cancellationToken);
+            }
         }
 
         return PaymentDtoMapper.ToDto(payment);
@@ -255,7 +349,7 @@ public sealed class ListMyPaymentsQueryHandler(
     {
         var userId = currentUser.UserId ?? throw new DomainException("Cáº§n Ä‘Äƒng nháº­p.");
         var items = await payments.ListByUserAsync(userId, cancellationToken);
-        return items.Select(PaymentDtoMapper.ToDto).ToList();
+        return items.Select(p => PaymentDtoMapper.ToDto(p)).ToList();
     }
 }
 
@@ -279,6 +373,36 @@ public sealed class GetPaymentByIdQueryHandler(
     }
 }
 
+/// <summary>Hủy payment pending (live + mock) — owner only.</summary>
+public sealed record CancelPendingPaymentCommand(Guid PaymentId) : IRequest<PaymentDto>;
+
+public sealed class CancelPendingPaymentCommandHandler(
+    IPaymentRepository payments,
+    ICurrentUserAccessor currentUser,
+    IPaymentUnitOfWork unitOfWork) : IRequestHandler<CancelPendingPaymentCommand, PaymentDto>
+{
+    public async Task<PaymentDto> Handle(CancelPendingPaymentCommand request, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        var payment = await payments.GetByIdAsync(request.PaymentId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy payment.");
+
+        if (payment.UserId != userId && !currentUser.IsAdmin)
+        {
+            throw new DomainException("Không có quyền hủy payment này.");
+        }
+
+        if (payment.Status == PaymentStatus.Cancelled)
+        {
+            return PaymentDtoMapper.ToDto(payment);
+        }
+
+        payment.MarkCancelled();
+        payments.Update(payment);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return PaymentDtoMapper.ToDto(payment);
+    }
+}
 
 /// <summary>
 /// Poll PayOS for PAID — dùng khi test local chưa có webhook public (ngrok).
@@ -326,5 +450,113 @@ public sealed class SyncPaymentFromPayOsCommandHandler(
         return await mediator.Send(
             new ConfirmPaymentPaidCommand(payment.Id, payment.OrderCode, info.PaymentLinkId, info.RawJson),
             cancellationToken);
+    }
+}
+
+// ── Package checkout ──────────────────────────────────────────────
+
+public sealed record CreatePackageCheckoutCommand(
+    Guid PackagePurchaseId,
+    string ReturnUrl,
+    string CancelUrl) : IRequest<PaymentDto>;
+
+public sealed class CreatePackageCheckoutCommandValidator : AbstractValidator<CreatePackageCheckoutCommand>
+{
+    public CreatePackageCheckoutCommandValidator()
+    {
+        RuleFor(x => x.PackagePurchaseId).NotEmpty();
+        RuleFor(x => x.ReturnUrl).NotEmpty().MaximumLength(500).OptionalHttpUrl();
+        RuleFor(x => x.CancelUrl).NotEmpty().MaximumLength(500).OptionalHttpUrl();
+    }
+}
+
+public sealed class CreatePackageCheckoutCommandHandler(
+    RaceDay.Modules.Event.Contracts.Packages.IPackageCheckoutInfoQuery checkoutInfo,
+    IPaymentRepository payments,
+    IPayOsGateway payOs,
+    ICurrentUserAccessor currentUser,
+    IPaymentUnitOfWork unitOfWork) : IRequestHandler<CreatePackageCheckoutCommand, PaymentDto>
+{
+    public async Task<PaymentDto> Handle(CreatePackageCheckoutCommand request, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        var info = await checkoutInfo.GetAsync(request.PackagePurchaseId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy gói mua.");
+
+        if (info.UserId != userId && !currentUser.IsAdmin)
+        {
+            throw new DomainException("Không thể thanh toán gói của người khác.");
+        }
+
+        if (!string.Equals(info.Status, "pending_payment", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new DomainException($"Gói không ở trạng thái chờ thanh toán (hiện: {info.Status}).");
+        }
+
+        var existing = await payments.GetPendingByReferenceAsync(
+            PaymentPurpose.EventPackage, request.PackagePurchaseId, cancellationToken);
+        if (existing is { CheckoutUrl: not null })
+        {
+            var createRaw = existing.Transactions
+                .OrderByDescending(t => t.CreatedAtUtc)
+                .FirstOrDefault(t => t.TransactionType == "create_link")
+                ?.RawResponseJson;
+            var vietQr = PaymentDtoMapper.TryParseVietQrFromRaw(createRaw);
+            return PaymentDtoMapper.ToDto(existing, vietQr);
+        }
+
+        var orderCode = existing?.OrderCode ?? GenerateOrderCode();
+        var payment = existing ?? PaymentOrder.CreateForPackage(
+            request.PackagePurchaseId,
+            info.UserId,
+            info.ListAmount,
+            info.DiscountAmount,
+            info.PromoCode,
+            info.Currency,
+            orderCode);
+
+        if (existing is null)
+        {
+            await payments.AddAsync(payment, cancellationToken);
+        }
+
+        var amountVnd = (int)Math.Round(info.TotalAmount, MidpointRounding.AwayFromZero);
+        if (amountVnd < 1000)
+        {
+            throw new DomainException("Số tiền PayOS tối thiểu 1000 VND.");
+        }
+
+        var desc = "RaceDay";
+
+        var created = await payOs.CreatePaymentLinkAsync(
+            new PayOsCreateRequest(
+                payment.OrderCode,
+                amountVnd,
+                desc,
+                request.ReturnUrl,
+                request.CancelUrl,
+                payment.Id),
+            cancellationToken);
+
+        payment.AttachCheckout(created.CheckoutUrl, created.PaymentLinkId);
+        var createTx = PaymentTransaction.Create(
+            payment.Id,
+            $"create-{payment.OrderCode}",
+            created.PaymentLinkId,
+            "create_link",
+            PaymentTransactionStatus.Created,
+            payment.Amount,
+            created.RawResponseJson);
+        payment.AddTransaction(createTx);
+        payments.AddTransaction(createTx);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return PaymentDtoMapper.ToDto(payment, created);
+    }
+
+    private static long GenerateOrderCode()
+    {
+        var ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 1_000_000_000_000L;
+        var rnd = Random.Shared.Next(100, 999);
+        return ms * 1000 + rnd;
     }
 }
