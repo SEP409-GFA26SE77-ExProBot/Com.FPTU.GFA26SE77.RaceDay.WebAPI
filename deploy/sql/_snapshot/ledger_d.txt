@@ -1,0 +1,19 @@
+                        Table "finance.event_ledgers"
+     Column      |           Type           | Collation | Nullable | Default 
+-----------------+--------------------------+-----------+----------+---------
+ Id              | uuid                     |           | not null | 
+ EventId         | uuid                     |           | not null | 
+ OrganizerUserId | uuid                     |           | not null | 
+ EventName       | character varying(300)   |           | not null | 
+ Currency        | character varying(10)    |           | not null | 
+ TicketsSold     | integer                  |           | not null | 
+ GrossRevenue    | numeric(18,2)            |           | not null | 
+ RefundedTotal   | numeric(18,2)            |           | not null | 
+ WithdrawnTotal  | numeric(18,2)            |           | not null | 
+ PayoutPending   | numeric(18,2)            |           | not null | 
+ UpdatedAtUtc    | timestamp with time zone |           | not null | 
+Indexes:
+    "PK_event_ledgers" PRIMARY KEY, btree ("Id")
+    "IX_event_ledgers_EventId" UNIQUE, btree ("EventId")
+    "IX_event_ledgers_OrganizerUserId" btree ("OrganizerUserId")
+
