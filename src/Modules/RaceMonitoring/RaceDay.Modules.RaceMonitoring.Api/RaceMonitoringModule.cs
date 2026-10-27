@@ -5,10 +5,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RaceDay.Modules.RaceMonitoring.Application;
+using RaceDay.Modules.RaceMonitoring.Application.CheckpointScans;
 using RaceDay.Modules.RaceMonitoring.Application.EmergencyAssignments;
 using RaceDay.Modules.RaceMonitoring.Application.EmergencyResources;
 using RaceDay.Modules.RaceMonitoring.Application.EmergencyResponses;
+using RaceDay.Modules.RaceMonitoring.Application.RaceEventLogs;
+using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Infrastructure;
 using RaceDay.Shared.Web.Auth;
 using RaceDay.Shared.Web.OpenApi;
@@ -19,7 +23,7 @@ public static class RaceMonitoringModule
 {
     public static IServiceCollection AddRaceMonitoringModule(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(RaceMonitoringApplicationMarker).Assembly));
+        // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddValidatorsFromAssembly(typeof(RaceMonitoringApplicationMarker).Assembly);
         services.AddRaceMonitoringInfrastructure(configuration);
         return services;
@@ -115,6 +119,13 @@ public static class RaceMonitoringModule
                 + "Chủ giải hoặc Coordinator Active. Admin không đi tắt. "
                 + "Lọc status, resourceType. Phân trang page/pageSize.");
 
+        ops.MapGet("/emergency-resources/{id:guid}", async (Guid id, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetEmergencyResourceQuery(id), ct)))
+            .WithSummary("Chi tiết nguồn lực")
+            .WithDescription(
+                "Nguồn lực phải thuộc một giải. "
+                + "Chủ giải hoặc Coordinator Active. Admin không đi tắt.");
+
         ops.MapGet("/emergency-responses/{responseId:guid}/assignments", async (
             Guid responseId,
             int? page,
@@ -169,6 +180,98 @@ public static class RaceMonitoringModule
             .WithDescription(
                 "Body: { status: Accepted | Arrived | Completed }. "
                 + "Mỗi bước ghi mốc thời gian. Assigned → Accepted → Arrived → Completed.");
+
+        ops.MapPost("/events/{eventId:guid}/checkpoint-scans", async (
+            Guid eventId,
+            RecordCheckpointScanRequest body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new RecordCheckpointScanCommand(eventId, body), ct)))
+            .WithSummary("Ghi nhận một lượt qua checkpoint")
+            .WithDescription(
+                "Chủ giải hoặc Coordinator Active. Body không phụ thuộc thiết bị: "
+                + "{ scanId, registrationId, checkpointId, scanMethod: RFID|Manual, scannedAtUtc }. "
+                + "Cùng scanId trả outcome Duplicate, không phát SSE lần hai. "
+                + "Log chỉ tạo khi registration confirmed/finished, có BIB, và checkpoint thuộc đúng cự ly. "
+                + "Không unique theo VĐV + checkpoint.");
+
+        ops.MapPost("/events/{eventId:guid}/checkpoint-scans/demo", async (
+            Guid eventId,
+            GenerateDemoCheckpointScansRequest? body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new GenerateDemoCheckpointScansCommand(eventId, body?.Count),
+                ct)))
+            .WithSummary("Sinh lượt qua checkpoint demo từ dữ liệu thật của giải")
+            .WithDescription(
+                "Caller của cùng lệnh ghi scan. Rút ngẫu nhiên VĐV confirmed có BIB và checkpoint đúng cự ly. "
+                + "Body: { count?: 1..20 }, mặc định 5. Mỗi dòng là log thật, append-only, có thể hiện trên SSE. "
+                + "Không tạo RaceStarted và không ghi passage của module Event.");
+
+        ops.MapGet("/events/{eventId:guid}/race-logs", async (
+            Guid eventId,
+            Guid? eventDistanceId,
+            string? eventType,
+            string? bibNumber,
+            DateTime? fromUtc,
+            DateTime? toUtc,
+            long? afterSequence,
+            int? page,
+            int? pageSize,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ListRaceEventLogsQuery(
+                    eventId,
+                    eventDistanceId,
+                    eventType,
+                    bibNumber,
+                    fromUtc,
+                    toUtc,
+                    afterSequence,
+                    page ?? 1,
+                    pageSize ?? 20),
+                ct)))
+            .WithSummary("Danh sách timeline của giải")
+            .WithDescription(
+                "Chủ giải hoặc Coordinator Active. Admin không đi tắt. "
+                + "Lọc eventDistanceId, eventType, bibNumber, fromUtc, toUtc, afterSequence. "
+                + "Thứ tự OccurredAtUtc rồi sequence. Phân trang page/pageSize.");
+
+        ops.MapGet("/events/{eventId:guid}/race-logs/stream", async (
+            Guid eventId,
+            HttpContext httpContext,
+            IServiceScopeFactory scopeFactory,
+            IRaceEventLogBroker broker,
+            ILoggerFactory loggerFactory,
+            CancellationToken ct) =>
+        {
+            await RaceEventLogSse.WriteAsync(
+                httpContext,
+                eventId,
+                scopeFactory,
+                broker,
+                loggerFactory.CreateLogger("RaceEventLogSse"),
+                ct);
+        })
+            .WithSummary("Theo dõi timeline theo SSE")
+            .WithDescription(
+                "Content-Type: text/event-stream. JWT trên header Authorization. "
+                + "Không có Last-Event-ID thì chỉ nhận log mới từ lúc kết nối. "
+                + "Có Last-Event-ID thì replay sequence lớn hơn cursor, cộng log ghi trong 30 giây gần nhất. "
+                + "Event RaceEventLogCreated. Heartbeat comment mỗi 15 giây. "
+                + "Mất quyền thì event RaceEventLogAccessRevoked rồi đóng. "
+                + "Client chậm thì RaceEventLogStreamOverrun rồi đóng.");
+
+        ops.MapGet("/events/{eventId:guid}/race-logs/{logId:guid}", async (
+            Guid eventId,
+            Guid logId,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetRaceEventLogQuery(eventId, logId), ct)))
+            .WithSummary("Chi tiết một dòng timeline")
+            .WithDescription("Log phải thuộc đúng eventId. Chủ giải hoặc Coordinator Active.");
 
         return app;
     }

@@ -524,6 +524,83 @@ namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Migrations
                     b.ToTable("emergency_responses", "race_monitoring");
                 });
 
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.RaceEventLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BibNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<Guid?>("CheckpointId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("EventDistanceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Metadata")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("RecordedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RegistrationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Sequence")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Sequence"));
+
+                    b.Property<Guid?>("SourceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceType")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId", "BibNumber")
+                        .HasDatabaseName("IX_race_event_logs_EventId_BibNumber")
+                        .HasFilter("\"BibNumber\" IS NOT NULL");
+
+                    b.HasIndex("EventId", "EventDistanceId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_race_event_logs_RaceStarted_Distance")
+                        .HasFilter("\"EventType\" = 'RaceStarted'");
+
+                    b.HasIndex("EventId", "Sequence")
+                        .HasDatabaseName("IX_race_event_logs_EventId_Sequence");
+
+                    b.HasIndex("SourceType", "SourceId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_race_event_logs_Source")
+                        .HasFilter("\"SourceId\" IS NOT NULL");
+
+                    b.HasIndex("EventId", "EventDistanceId", "Sequence")
+                        .HasDatabaseName("IX_race_event_logs_EventId_Distance_Sequence");
+
+                    b.HasIndex("EventId", "OccurredAtUtc", "Sequence")
+                        .HasDatabaseName("IX_race_event_logs_EventId_OccurredAtUtc_Sequence");
+
+                    b.ToTable("race_event_logs", "race_monitoring");
+                });
+
             modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.RunnerLocation", b =>
                 {
                     b.Property<Guid>("Id")

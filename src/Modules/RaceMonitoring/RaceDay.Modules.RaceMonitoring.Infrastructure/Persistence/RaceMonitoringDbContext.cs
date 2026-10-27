@@ -12,6 +12,7 @@ public sealed class RaceMonitoringDbContext(DbContextOptions<RaceMonitoringDbCon
 {
     public DbSet<RunnerLocation> RunnerLocations => Set<RunnerLocation>();
     public DbSet<CheckpointScan> CheckpointScans => Set<CheckpointScan>();
+    public DbSet<RaceEventLog> RaceEventLogs => Set<RaceEventLog>();
     public DbSet<RunnerStatusHistory> RunnerStatusHistories => Set<RunnerStatusHistory>();
     public DbSet<RouteDeviation> RouteDeviations => Set<RouteDeviation>();
     public DbSet<EmergencyResponse> EmergencyResponses => Set<EmergencyResponse>();

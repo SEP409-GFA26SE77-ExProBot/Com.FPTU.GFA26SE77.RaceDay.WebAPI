@@ -10,6 +10,12 @@ public sealed class EmergencyResponseRepository(RaceMonitoringDbContext db) : IE
     public Task<EmergencyResponse?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => db.EmergencyResponses.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
 
+    public Task<bool> ExistsBySourceSosAlertIdAsync(Guid sourceSosAlertId, CancellationToken cancellationToken = default)
+        => db.EmergencyResponses.AsNoTracking()
+            .AnyAsync(x => x.SourceSosAlertId == sourceSosAlertId, cancellationToken);
+
+    public void Add(EmergencyResponse response) => db.EmergencyResponses.Add(response);
+
     public async Task<(IReadOnlyList<EmergencyResponse> Items, int Total)> ListBySourceSosIdsAsync(
         IReadOnlyCollection<Guid> sourceSosAlertIds,
         EmergencyResponseStatus? status,

@@ -7,6 +7,10 @@ public interface IEmergencyResponseRepository
 {
     Task<EmergencyResponse?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
+    Task<bool> ExistsBySourceSosAlertIdAsync(Guid sourceSosAlertId, CancellationToken cancellationToken = default);
+
+    void Add(EmergencyResponse response);
+
     Task<(IReadOnlyList<EmergencyResponse> Items, int Total)> ListBySourceSosIdsAsync(
         IReadOnlyCollection<Guid> sourceSosAlertIds,
         EmergencyResponseStatus? status,

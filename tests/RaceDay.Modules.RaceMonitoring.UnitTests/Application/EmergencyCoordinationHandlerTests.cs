@@ -85,6 +85,77 @@ public class EmergencyCoordinationHandlerTests
     }
 
     [Fact]
+    public async Task GetResource_Returns_Event_Resource_For_Coordinator()
+    {
+        var resource = Resource(EventId, EmergencyResourceStatus.Available);
+        var (resources, access, sosOps, current) = ResourceAccess();
+        resources.GetByIdAsync(resource.Id, Arg.Any<CancellationToken>()).Returns(resource);
+
+        var result = await new GetEmergencyResourceQueryHandler(resources, access, sosOps, current)
+            .Handle(new GetEmergencyResourceQuery(resource.Id), CancellationToken.None);
+
+        Assert.Equal(resource.Id, result.Id);
+        Assert.Equal(EventId, result.EventId);
+        Assert.Equal("MED-1", result.ResourceCode);
+        Assert.Equal("MedicalTeam", result.ResourceType);
+        Assert.Equal("Đội y tế", result.Name);
+        Assert.Equal("Available", result.Status);
+        Assert.Equal(EmergencyResourceStatus.Available, resource.Status);
+        await sosOps.Received(1).CanManageSosAsync(EventId, UserId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetResource_Rejects_Admin_Who_Is_Not_Event_Staff()
+    {
+        var resource = Resource(EventId, EmergencyResourceStatus.Available);
+        var (resources, access, sosOps, current) = ResourceAccess(allowed: false, admin: true);
+        resources.GetByIdAsync(resource.Id, Arg.Any<CancellationToken>()).Returns(resource);
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            new GetEmergencyResourceQueryHandler(resources, access, sosOps, current)
+                .Handle(new GetEmergencyResourceQuery(resource.Id), CancellationToken.None));
+
+        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetResource_Rejects_Missing_Resource()
+    {
+        var (resources, access, sosOps, current) = ResourceAccess();
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            new GetEmergencyResourceQueryHandler(resources, access, sosOps, current)
+                .Handle(new GetEmergencyResourceQuery(Guid.NewGuid()), CancellationToken.None));
+
+        Assert.Equal("Không tìm thấy nguồn lực.", ex.Message);
+        await sosOps.DidNotReceive().CanManageSosAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetResource_Rejects_Resource_With_No_Event()
+    {
+        var resource = Resource(null, EmergencyResourceStatus.Available);
+        var (resources, access, sosOps, current) = ResourceAccess();
+        resources.GetByIdAsync(resource.Id, Arg.Any<CancellationToken>()).Returns(resource);
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            new GetEmergencyResourceQueryHandler(resources, access, sosOps, current)
+                .Handle(new GetEmergencyResourceQuery(resource.Id), CancellationToken.None));
+
+        Assert.Equal("Nguồn lực không thuộc giải.", ex.Message);
+        await sosOps.DidNotReceive().CanManageSosAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void GetResource_Validator_Rejects_Empty_Id()
+    {
+        var result = new GetEmergencyResourceQueryValidator().Validate(new GetEmergencyResourceQuery(Guid.Empty));
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, error => error.ErrorMessage == "Tham chiếu nguồn lực không hợp lệ.");
+    }
+
+    [Fact]
     public async Task Create_Assigns_Available_Resource_On_Open_Response_Without_Changing_Sos_Or_Resource()
     {
         var response = OpenResponse();

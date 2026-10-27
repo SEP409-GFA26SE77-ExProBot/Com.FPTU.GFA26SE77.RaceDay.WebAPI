@@ -7,4 +7,7 @@ public static class CoordinatorFieldLengths
     public const int Name = 200;
     public const int Unit = 30;
     public const int VehicleType = 50;
+    public const int BibNumber = 30;
+    public const int SourceType = 64;
+    public const int Metadata = 2000;
 }

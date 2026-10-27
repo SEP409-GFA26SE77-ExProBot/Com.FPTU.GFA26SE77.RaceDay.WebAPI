@@ -6,6 +6,15 @@ public enum ScanMethod
     Manual = 1
 }
 
+/// <summary>
+/// Loại dòng timeline. RaceStarted chưa có nguồn xuất phát thực tế nên chưa có recorder.
+/// </summary>
+public enum RaceEventLogType
+{
+    RaceStarted = 0,
+    RunnerCheckpointPassed = 1
+}
+
 /// <summary>Trạng thái thi đấu do điều phối ghi nhận. Khác RegistrationStatus của module Event.</summary>
 public enum RunnerRaceStatus
 {

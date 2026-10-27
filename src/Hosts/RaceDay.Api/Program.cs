@@ -17,6 +17,7 @@ using RaceDay.Modules.Photo.Application.Photos;
 using RaceDay.Modules.Payment.Api;
 using RaceDay.Modules.Payment.Application;
 using RaceDay.Modules.RaceMonitoring.Api;
+using RaceDay.Modules.RaceMonitoring.Application;
 using RaceDay.Shared.Infrastructure;
 using RaceDay.Shared.Web;
 using RaceDay.Shared.Web.OpenApi;
@@ -38,6 +39,7 @@ builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(GetOrganizerWalletQuery).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(RequestDeviceCodeCommand).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(BulkUploadPhotosCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(RaceMonitoringApplicationMarker).Assembly);
 });
 
 builder.Services.AddCors(options =>

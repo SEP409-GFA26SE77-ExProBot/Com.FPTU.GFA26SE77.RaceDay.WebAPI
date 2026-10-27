@@ -32,6 +32,8 @@ public sealed record ListEmergencyResourcesQuery(
     int Page = 1,
     int PageSize = 20) : IRequest<PagedEmergencyResourcesResult>;
 
+public sealed record GetEmergencyResourceQuery(Guid Id) : IRequest<EmergencyResourceDto>;
+
 internal static class EmergencyResourceMapper
 {
     public static EmergencyResourceDto ToDto(EmergencyResource resource)
@@ -86,5 +88,36 @@ public sealed class ListEmergencyResourcesQueryHandler(
             total,
             page,
             pageSize);
+    }
+}
+
+public sealed class GetEmergencyResourceQueryValidator : AbstractValidator<GetEmergencyResourceQuery>
+{
+    public GetEmergencyResourceQueryValidator()
+    {
+        RuleFor(x => x.Id).NotEmpty().WithMessage("Tham chiếu nguồn lực không hợp lệ.");
+    }
+}
+
+public sealed class GetEmergencyResourceQueryHandler(
+    IEmergencyResourceRepository resources,
+    IEventOrganizerAccessQuery access,
+    IEventSosOpsAccessQuery sosOps,
+    ICurrentUserAccessor currentUser) : IRequestHandler<GetEmergencyResourceQuery, EmergencyResourceDto>
+{
+    public async Task<EmergencyResourceDto> Handle(
+        GetEmergencyResourceQuery request,
+        CancellationToken cancellationToken)
+    {
+        var resource = await resources.GetByIdAsync(request.Id, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy nguồn lực.");
+        if (resource.EventId is null)
+        {
+            throw new DomainException("Nguồn lực không thuộc giải.");
+        }
+
+        await EmergencyResponseAccess.EnsureCanCoordinateEventAsync(
+            resource.EventId.Value, access, sosOps, currentUser, cancellationToken);
+        return EmergencyResourceMapper.ToDto(resource);
     }
 }
