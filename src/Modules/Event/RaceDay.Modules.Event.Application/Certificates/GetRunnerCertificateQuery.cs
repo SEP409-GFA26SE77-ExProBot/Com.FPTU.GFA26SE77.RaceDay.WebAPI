@@ -1,0 +1,72 @@
+﻿using MediatR;
+using RaceDay.Modules.Event.Application.Abstractions;
+using FluentValidation;
+using RaceDay.Modules.Event.Domain.Events;
+using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Domain.Exceptions;
+
+namespace RaceDay.Modules.Event.Application.Certificates;
+
+public sealed record GetRunnerCertificateQuery(Guid EventId) : IRequest<CertificateDataDto>;
+
+public sealed class GetRunnerCertificateQueryValidator : AbstractValidator<GetRunnerCertificateQuery>
+{
+    public GetRunnerCertificateQueryValidator()
+    {
+        RuleFor(x => x.EventId).NotEmpty().WithMessage("EventId không hợp lệ.");
+    }
+}
+
+public sealed class GetRunnerCertificateQueryHandler(
+    IEventRegistrationRepository registrations,
+    IRaceEventRepository events,
+    ICurrentUserAccessor currentUser)
+    : IRequestHandler<GetRunnerCertificateQuery, CertificateDataDto>
+{
+    public async Task<CertificateDataDto> Handle(GetRunnerCertificateQuery request, CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập để tải giấy chứng nhận.");
+        if (userId == Guid.Empty)
+            throw new DomainException("Cần đăng nhập để tải giấy chứng nhận.");
+
+        var reg = await registrations.GetFinishedByEventAndUserAsync(request.EventId, userId, cancellationToken)
+            ?? throw new DomainException("Bạn chưa hoàn thành giải chạy này, không thể tải giấy chứng nhận.");
+
+        if (reg.Status != RegistrationStatus.Finished || reg.FinishedAtUtc is null)
+        {
+            throw new DomainException("Bạn chưa hoàn thành giải chạy này, không thể tải giấy chứng nhận.");
+        }
+
+        // 3. Lấy thông tin giải đấu và cự ly
+        var race = await events.GetByIdWithDetailsAsync(reg.EventId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy thông tin giải đấu.");
+
+        var distance = race.GetDistance(reg.DistanceId);
+
+        // 4. Tính toán thời gian & Pace dựa trên ResultSeconds hoặc khoảng thời gian Start -> Finish
+        long totalSeconds = reg.ResultSeconds ?? (reg.FinishedAtUtc.Value - (reg.StartedAtUtc ?? reg.FinishedAtUtc.Value)).Ticks / TimeSpan.TicksPerSecond;
+        if (totalSeconds < 0) totalSeconds = 0;
+
+        var totalTimeSpan = TimeSpan.FromSeconds(totalSeconds);
+        string totalTimeStr = totalTimeSpan.ToString(@"hh\:mm\:ss");
+
+        // Tính Pace (phút / km)
+        double totalMinutes = totalTimeSpan.TotalMinutes;
+        double paceMinutes = distance.DistanceKm > 0 ? totalMinutes / distance.DistanceKm : 0;
+        int pMin = (int)paceMinutes;
+        int pSec = (int)((paceMinutes - pMin) * 60);
+        string paceStr = $"{pMin:D2}:{pSec:D2}";
+
+        return new CertificateDataDto(
+            RunnerName: reg.FullName,
+            BibNumber: reg.BibNumber ?? "N/A",
+            RaceName: race.Name,
+            DistanceName: distance.Name,
+            DistanceKm: distance.DistanceKm,
+            FinishTime: totalTimeStr,
+            Pace: paceStr,
+            Rank: null, // Có thể cập nhật lấy rank từ bảng xếp hạng nếu entity có hỗ trợ
+            CompletedAtUtc: reg.FinishedAtUtc.Value
+        );
+    }
+}
