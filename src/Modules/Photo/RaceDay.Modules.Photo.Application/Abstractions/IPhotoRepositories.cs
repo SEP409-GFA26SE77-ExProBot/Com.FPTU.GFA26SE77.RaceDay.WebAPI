@@ -26,6 +26,12 @@ public interface IPhotoAssetRepository
     Task<IReadOnlyList<PhotoAsset>> ListQueuedAsync(
         int take,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Processing lâu hơn threshold — thường do worker restart / OCR timeout.</summary>
+    Task<IReadOnlyList<PhotoAsset>> ListStuckProcessingAsync(
+        TimeSpan olderThan,
+        int take,
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PhotoAsset>> SearchByEventAndBibAsync(
         Guid eventId,
         string bibNormalized,
@@ -42,6 +48,9 @@ public interface IPhotoAssetRepository
         CancellationToken cancellationToken = default);
     Task AddAsync(PhotoAsset photo, CancellationToken cancellationToken = default);
     void Update(PhotoAsset photo);
+
+    /// <summary>Hard-delete tags then reload aggregate (avoids EF collection concurrency on OCR apply).</summary>
+    Task<PhotoAsset?> ReloadForOcrApplyAsync(Guid photoId, CancellationToken cancellationToken = default);
 }
 
 public interface IPhotoDisputeRepository
@@ -57,11 +66,25 @@ public interface IPhotoDisputeRepository
     void Update(PhotoDispute dispute);
 }
 
+public sealed record OcrEnqueueTag(string Bib, double Confidence, IReadOnlyList<double>? Bbox);
+
+/// <summary>
+/// OCR service may return the full result synchronously (standalone mode)
+/// or only acknowledge the job (async + callback later).
+/// </summary>
+public sealed record OcrEnqueueResult(
+    string RemoteJobId,
+    string? Status = null,
+    string? DuplicateOf = null,
+    IReadOnlyList<OcrEnqueueTag>? Tags = null,
+    IReadOnlyList<string>? Reasons = null,
+    bool HasInlineResult = false);
+
 public interface IOcrClient
 {
     bool IsConfigured { get; }
 
-    Task<string> EnqueueJobAsync(
+    Task<OcrEnqueueResult> EnqueueJobAsync(
         Guid jobId,
         Guid eventId,
         Guid photoId,

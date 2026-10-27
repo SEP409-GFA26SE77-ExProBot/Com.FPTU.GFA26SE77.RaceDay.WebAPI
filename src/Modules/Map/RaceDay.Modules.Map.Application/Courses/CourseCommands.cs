@@ -74,6 +74,7 @@ public sealed record GetCourseQuery(Guid EventId, Guid DistanceId) : IRequest<Co
 public sealed class GetCourseQueryHandler(
     IRaceCourseRepository courses,
     IEventDistanceAccessQuery access,
+    IEventStaffAccessQuery staffAccess,
     ICurrentUserAccessor currentUser) : IRequestHandler<GetCourseQuery, CourseConfigDto>
 {
     public async Task<CourseConfigDto> Handle(GetCourseQuery request, CancellationToken cancellationToken)
@@ -81,7 +82,7 @@ public sealed class GetCourseQueryHandler(
         var info = await access.GetAsync(request.EventId, request.DistanceId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy giải / cự ly.");
 
-        EnsureCanRead(info);
+        await EnsureCanReadAsync(request.EventId, info, cancellationToken);
 
         var entity = await courses.GetByEventDistanceAsync(request.EventId, request.DistanceId, cancellationToken);
         if (entity is null)
@@ -92,7 +93,10 @@ public sealed class GetCourseQueryHandler(
         return CourseJson.FromEntity(entity);
     }
 
-    private void EnsureCanRead(EventDistanceAccessInfo info)
+    private async Task EnsureCanReadAsync(
+        Guid eventId,
+        EventDistanceAccessInfo info,
+        CancellationToken cancellationToken)
     {
         if (currentUser.IsAdmin)
         {
@@ -100,6 +104,13 @@ public sealed class GetCourseQueryHandler(
         }
 
         if (currentUser.UserId is Guid uid && uid == info.OrganizerUserId)
+        {
+            return;
+        }
+
+        // Active event staff (coordinator / volunteer / photographer) — kể cả draft.
+        if (currentUser.UserId is Guid staffUserId
+            && await staffAccess.ExistsActiveStaffUserAsync(eventId, staffUserId, cancellationToken))
         {
             return;
         }

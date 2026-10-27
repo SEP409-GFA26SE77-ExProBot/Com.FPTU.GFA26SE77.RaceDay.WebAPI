@@ -59,6 +59,17 @@ services:
       Frontend__AdminAppUrl: http://localhost:3001
       Frontend__UserAppUrl: http://localhost:3000/login
       PayOS__PublicApiBaseUrl: http://localhost:5080
+      PayOS__LinkTtlMinutes: "15"
+      # OCR service chạy trên host (:8089). Windows/Mac Docker → host.docker.internal
+      Photo__Ocr__BaseUrl: http://host.docker.internal:8089
+      Photo__Ocr__ServiceKey: dev-ocr-key-change-me
+      Photo__Ocr__ThresholdAuto: "0.85"
+      Photo__Ocr__ThresholdReviewMin: "0.50"
+      Photo__Ocr__WorkerMaxParallel: "2"
+      Photo__Ocr__WorkerIdleDelaySeconds: "5"
+      Photo__Ocr__WorkerBusyDelaySeconds: "1"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy

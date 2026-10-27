@@ -196,3 +196,58 @@ public sealed class CorrectPhotoBibCommandHandler(
         return PhotoDtoMapper.ToDetail(photo);
     }
 }
+
+public sealed record DiscardPhotoCommand(
+    Guid EventId,
+    Guid PhotoId,
+    string? Reason = null) : IRequest<PhotoDetailDto>;
+
+public sealed class DiscardPhotoCommandValidator : AbstractValidator<DiscardPhotoCommand>
+{
+    public DiscardPhotoCommandValidator()
+    {
+        RuleFor(x => x.EventId).NotEmpty();
+        RuleFor(x => x.PhotoId).NotEmpty();
+        RuleFor(x => x.Reason).MaximumLength(500);
+    }
+}
+
+public sealed class DiscardPhotoCommandHandler(
+    IPhotoAssetRepository photos,
+    IPhotoUnitOfWork unitOfWork,
+    ICurrentUserAccessor currentUser,
+    IEventStaffAccessQuery staffAccess) : IRequestHandler<DiscardPhotoCommand, PhotoDetailDto>
+{
+    public async Task<PhotoDetailDto> Handle(
+        DiscardPhotoCommand request,
+        CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        await BulkUploadPhotosCommandHandler.EnsurePhotographerAsync(
+            request.EventId, userId, staffAccess, cancellationToken);
+
+        var photo = await photos.GetByIdWithTagsAsync(request.PhotoId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy ảnh.");
+        if (photo.EventId != request.EventId)
+        {
+            throw new DomainException("Ảnh không thuộc giải này.");
+        }
+
+        if (photo.Status is not (
+            PhotoStatus.NeedsReview
+            or PhotoStatus.RunnerReported
+            or PhotoStatus.Failed
+            or PhotoStatus.Pending
+            or PhotoStatus.Queued))
+        {
+            throw new DomainException("Chỉ reject ảnh đang review / pending / lỗi OCR.");
+        }
+
+        photo.Discard(string.IsNullOrWhiteSpace(request.Reason)
+            ? "photographer_reject"
+            : request.Reason!);
+        photos.Update(photo);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return PhotoDtoMapper.ToDetail(photo);
+    }
+}

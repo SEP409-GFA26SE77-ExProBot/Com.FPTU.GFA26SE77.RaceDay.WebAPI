@@ -16,6 +16,7 @@ using RaceDay.Modules.Photo.Api;
 using RaceDay.Modules.Photo.Application.Photos;
 using RaceDay.Modules.Payment.Api;
 using RaceDay.Modules.Payment.Application;
+using RaceDay.Modules.RaceMonitoring.Api;
 using RaceDay.Shared.Infrastructure;
 using RaceDay.Shared.Web;
 using RaceDay.Shared.Web.OpenApi;
@@ -62,6 +63,7 @@ builder.Services.AddMapModule(builder.Configuration);
 builder.Services.AddFinanceModule(builder.Configuration);
 builder.Services.AddDeviceModule(builder.Configuration);
 builder.Services.AddPhotoModule(builder.Configuration);
+builder.Services.AddRaceMonitoringModule(builder.Configuration);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -198,6 +200,7 @@ app.MapMapEndpoints();
 app.MapFinanceEndpoints();
 app.MapDeviceEndpoints();
 app.MapPhotoEndpoints();
+app.MapRaceMonitoringEndpoints();
 
 app.Run();
 
