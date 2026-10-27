@@ -26,8 +26,8 @@ public sealed class ReplyComplaintCommandValidator : AbstractValidator<ReplyComp
 
         // 2. Kiểm tra Decision chỉ được là Accepted hoặc Rejected
         RuleFor(x => x.Decision)
-            .Must(x => x.Equals("Accepted", StringComparison.OrdinalIgnoreCase) ||
-                       x.Equals("Rejected", StringComparison.OrdinalIgnoreCase))
+            .Must(x => string.Equals(x, "Accepted", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(x, "Rejected", StringComparison.OrdinalIgnoreCase))
             .WithMessage("Quyết định (Decision) phải là 'Accepted' hoặc 'Rejected'.");
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using FluentValidation;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
@@ -15,6 +16,25 @@ public sealed record GetMyComplaintsQuery(
     string? Status,
     int Page,
     int PageSize) : IRequest<MyComplaintsPagedDto>;
+
+public sealed class GetMyComplaintsQueryValidator : AbstractValidator<GetMyComplaintsQuery>
+{
+    public GetMyComplaintsQueryValidator()
+    {
+        RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000);
+        RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
+        RuleFor(x => x.Status).Must(ComplaintFilterValidation.IsValidStatus)
+            .WithMessage("Trạng thái phải là Pending, Accepted hoặc Rejected.");
+    }
+}
+
+internal static class ComplaintFilterValidation
+{
+    public static bool IsValidStatus(string? status) => string.IsNullOrWhiteSpace(status)
+        || string.Equals(status, "Pending", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "Accepted", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "Rejected", StringComparison.OrdinalIgnoreCase);
+}
 
 public sealed class GetMyComplaintsQueryHandler(
     IEventComplaintRepository complaints,
@@ -40,7 +60,7 @@ public sealed class GetMyComplaintsQueryHandler(
         // 3. Map dữ liệu sang DTO (Bổ sung Title, EvidenceLinks, ProcessingStatus)
         foreach (var c in dbItems)
         {
-            var race = await events.GetByIdAsync(c.EventId, cancellationToken);
+            var race = await events.GetByIdWithDetailsAsync(c.EventId, cancellationToken);
             string distanceName = "N/A";
             try
             {

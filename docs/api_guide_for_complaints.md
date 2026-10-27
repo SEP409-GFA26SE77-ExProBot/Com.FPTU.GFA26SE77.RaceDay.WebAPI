@@ -1,10 +1,10 @@
-# Hướng dẫn Sử dụng 4 API Khiếu Nại (Complaint Management) trong RaceDay
+# Hướng dẫn Sử dụng 5 API Khiếu Nại (Complaint Management) trong RaceDay
 
 Hệ thống hỗ trợ quy trình khiếu nại hoàn chỉnh giữa **VĐV (Runner)** và **Ban Tổ Chức (Organizer / Admin)** với 3 trạng thái chính: `Pending` (Chưa xử lý), `Accepted` (Đã chấp nhận) và `Rejected` (Đã từ chối).
 
 ---
 
-## Tổng quan 4 API
+## Tổng quan 5 API
 
 | STT | Phương thức | Đường dẫn Endpoint | Quyền hạn (Auth) | Mô tả ngắn |
 | :--- | :--- | :--- | :--- | :--- |
@@ -12,6 +12,7 @@ Hệ thống hỗ trợ quy trình khiếu nại hoàn chỉnh giữa **VĐV (Ru
 | **2** | `POST` | `/api/v1/event/organizer/complaints/{complaintId}/reply` | Organizer / Admin | Phản hồi và ra quyết định (Accepted / Rejected) |
 | **3** | `POST` | `/api/v1/event/complaints` | VĐV (Runner) | Gửi đơn khiếu nại mới kèm link bằng chứng |
 | **4** | `GET` | `/api/v1/event/complaints/mine` | VĐV (Runner) | Xem danh sách các đơn khiếu nại của chính mình |
+| **5** | `GET` | `/api/v1/event/complaints/detail?complaintId={id}` | Người gửi / Chủ giải / Admin | Xem chi tiết khiếu nại và phản hồi |
 
 ---
 
@@ -137,7 +138,7 @@ Authorization: Bearer eyJhbGciOi...
   * `eventId`, `distanceId`: Bắt buộc và cự ly phải thuộc đúng giải đấu đó.
   * `title`: Bắt buộc, tối đa 200 ký tự.
   * `content`: Bắt buộc, tối đa 2000 ký tự.
-  * `evidenceLinks`: Tùy chọn, tối đa 5 link.
+  * `evidenceLinks`: Bắt buộc có từ 1 đến 5 link HTTP/HTTPS hợp lệ. Form hiển thị 5 ô, ô đầu tiên bắt buộc.
 
 #### Response Mẫu (`201 Created`):
 ```json
@@ -213,6 +214,24 @@ Authorization: Bearer eyJhbGciOi...
   "totalCount": 1
 }
 ```
+
+---
+
+### 5. API — Chi tiết khiếu nại (Runner và Organizer dùng chung)
+
+* **Method:** `GET`
+* **Endpoint:** `/api/v1/event/complaints/detail`
+* **Query bắt buộc:** `complaintId` (Guid, lấy từ trường `id` trong danh sách).
+* **Auth:** Người gửi khiếu nại, chủ giải tương ứng hoặc Admin.
+* **Response (`200 OK`):** Một object có cùng các trường của từng phần tử `items` trong API danh sách, bao gồm `title`, `content`, `evidenceLinks`, `status`, `responseContent`, `createdAtUtc` và `repliedAtUtc`.
+* **404:** Không tồn tại hoặc người đăng nhập không được phép xem; không tiết lộ dữ liệu của tài khoản khác.
+
+```http
+GET /api/v1/event/complaints/detail?complaintId=7bc91e42-1234-4abc-9def-123456789abc
+Authorization: Bearer <accessToken>
+```
+
+Danh sách `/complaints/mine` không truyền `eventId` và `status` sẽ lấy mọi khiếu nại của người đang đăng nhập, vẫn phân trang bằng `page` và `pageSize` (1–100). Danh sách Organizer luôn giới hạn trong các giải của chủ tài khoản, kể cả khi truyền `eventId` cụ thể. Cả hai quyết định Accepted/Rejected đều yêu cầu `responseContent` và không cho xử lý lại đơn đã quyết định.
 
 ---
 
