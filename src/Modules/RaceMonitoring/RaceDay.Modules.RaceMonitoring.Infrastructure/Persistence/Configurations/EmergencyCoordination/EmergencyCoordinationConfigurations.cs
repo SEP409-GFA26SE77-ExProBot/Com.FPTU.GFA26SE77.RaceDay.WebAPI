@@ -18,6 +18,8 @@ public sealed class EmergencyResponseConfiguration : IEntityTypeConfiguration<Em
         builder.Property(x => x.AssignedAtUtc).IsRequired(false);
         builder.Property(x => x.ResolvedAtUtc).IsRequired(false);
         builder.Property(x => x.ResolutionNotes).HasColumnType("text");
+        builder.Property(x => x.CancelledAtUtc).IsRequired(false);
+        builder.Property(x => x.CancellationReason).HasColumnType("text");
 
         builder.HasIndex(x => x.SourceSosAlertId).IsUnique();
         builder.HasIndex(x => new { x.Status, x.Priority });
@@ -76,5 +78,8 @@ public sealed class EmergencyAssignmentConfiguration : IEntityTypeConfiguration<
 
         builder.HasIndex(x => new { x.EmergencyResponseId, x.AssignedAtUtc });
         builder.HasIndex(x => new { x.EmergencyResourceId, x.AssignedAtUtc });
+        builder.HasIndex(x => new { x.EmergencyResponseId, x.EmergencyResourceId })
+            .IsUnique()
+            .HasDatabaseName("IX_emergency_assignments_ResponseId_ResourceId");
     }
 }

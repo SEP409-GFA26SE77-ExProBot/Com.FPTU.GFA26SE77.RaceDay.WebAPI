@@ -4,9 +4,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Device.Application.Abstractions;
+using RaceDay.Modules.Device.Contracts.Sos;
 using RaceDay.Modules.Device.Infrastructure.Auth;
 using RaceDay.Modules.Device.Infrastructure.Persistence;
 using RaceDay.Modules.Device.Infrastructure.Repositories;
+using RaceDay.Modules.Device.Infrastructure.Sos;
 
 namespace RaceDay.Modules.Device.Infrastructure;
 
@@ -24,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<IDeviceAuthRequestRepository, DeviceAuthRequestRepository>();
         services.AddScoped<ILinkedDeviceRepository, LinkedDeviceRepository>();
         services.AddScoped<ISosAlertRepository, SosAlertRepository>();
+        services.AddScoped<ISosAlertScopeQuery, SosAlertScopeQuery>();
         services.AddScoped<IDeviceUnitOfWork, DeviceUnitOfWork>();
         services.AddSingleton<IWearTokenService, WearTokenService>();
         services.AddSingleton<IDeviceFrontendOptions, DeviceFrontendOptions>();

@@ -1,10 +1,12 @@
 using RaceDay.Modules.RaceMonitoring.Domain;
 using RaceDay.Shared.Domain.Abstractions;
+using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination;
 
 /// <summary>
-/// Assignment of one resource to one emergency response. Rows are historical and are not overwritten.
+/// Một lần điều một nguồn lực tới một hồ sơ. Tiến độ cập nhật trên cùng dòng và ghi mốc thời gian.
+/// Gỡ khỏi hồ sơ thì xóa dòng. Mỗi cặp hồ sơ và nguồn lực chỉ có một dòng.
 /// </summary>
 public sealed class EmergencyAssignment : AggregateRoot
 {
@@ -47,5 +49,47 @@ public sealed class EmergencyAssignment : AggregateRoot
             Status = CoordinatorInvariants.RequiredEnum(status, "Trạng thái phân công không hợp lệ."),
             Notes = CoordinatorInvariants.OptionalLongText(notes)
         };
+    }
+
+    /// <summary>
+    /// Chuyển một bước: Assigned → Accepted → Arrived → Completed. Mỗi bước ghi mốc thời gian của bước đó.
+    /// </summary>
+    public void Advance(EmergencyAssignmentStatus nextStatus, DateTime occurredAtUtc)
+    {
+        var at = CoordinatorInvariants.RequiredTimestamp(occurredAtUtc, "Thời điểm cập nhật phân công không hợp lệ.");
+        switch (nextStatus)
+        {
+            case EmergencyAssignmentStatus.Accepted when Status == EmergencyAssignmentStatus.Assigned:
+                AcceptedAtUtc = at;
+                Status = EmergencyAssignmentStatus.Accepted;
+                return;
+            case EmergencyAssignmentStatus.Arrived when Status == EmergencyAssignmentStatus.Accepted:
+                ArrivedAtUtc = at;
+                Status = EmergencyAssignmentStatus.Arrived;
+                return;
+            case EmergencyAssignmentStatus.Completed when Status == EmergencyAssignmentStatus.Arrived:
+                CompletedAtUtc = at;
+                Status = EmergencyAssignmentStatus.Completed;
+                return;
+            default:
+                throw new DomainException("Không thể chuyển phân công ở trạng thái hiện tại.");
+        }
+    }
+
+    /// <summary>
+    /// Hồ sơ ứng cứu bị hủy: ghi nhận phân công đã kết thúc bằng Completed, không dùng Cancelled.
+    /// Phân công đã Completed giữ nguyên mốc hoàn thành.
+    /// </summary>
+    public void CompleteBecauseResponseCancelled(DateTime completedAtUtc)
+    {
+        if (Status == EmergencyAssignmentStatus.Completed)
+        {
+            return;
+        }
+
+        CompletedAtUtc = CoordinatorInvariants.RequiredTimestamp(
+            completedAtUtc,
+            "Thời điểm hoàn thành phân công không hợp lệ.");
+        Status = EmergencyAssignmentStatus.Completed;
     }
 }

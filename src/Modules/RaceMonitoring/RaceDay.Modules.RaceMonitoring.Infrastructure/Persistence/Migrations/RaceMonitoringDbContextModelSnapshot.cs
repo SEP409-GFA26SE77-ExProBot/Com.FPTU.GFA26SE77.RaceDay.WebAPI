@@ -420,6 +420,10 @@ namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EmergencyResponseId", "AssignedAtUtc");
 
+                    b.HasIndex("EmergencyResponseId", "EmergencyResourceId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_emergency_assignments_ResponseId_ResourceId");
+
                     b.ToTable("emergency_assignments", "race_monitoring");
                 });
 
@@ -478,6 +482,12 @@ namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<DateTime?>("AssignedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CancellationReason")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("IncidentType")

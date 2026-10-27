@@ -418,10 +418,17 @@ CREATE TABLE IF NOT EXISTS race_monitoring.emergency_responses (
     "IncidentType"     varchar(32) NOT NULL,
     "Priority"         varchar(32) NOT NULL,
     "Status"           varchar(32) NOT NULL,
-    "AssignedAtUtc"    timestamptz NULL,
-    "ResolvedAtUtc"    timestamptz NULL,
-    "ResolutionNotes"  text NULL
+    "AssignedAtUtc"      timestamptz NULL,
+    "ResolvedAtUtc"      timestamptz NULL,
+    "ResolutionNotes"    text NULL,
+    "CancelledAtUtc"     timestamptz NULL,
+    "CancellationReason" text NULL
 );
+
+ALTER TABLE race_monitoring.emergency_responses
+    ADD COLUMN IF NOT EXISTS "CancelledAtUtc" timestamptz NULL;
+ALTER TABLE race_monitoring.emergency_responses
+    ADD COLUMN IF NOT EXISTS "CancellationReason" text NULL;
 
 ALTER TABLE race_monitoring.emergency_responses
     DROP CONSTRAINT IF EXISTS "FK_emergency_responses_sos_alerts_SOSAlertId";
@@ -468,6 +475,8 @@ CREATE INDEX IF NOT EXISTS "IX_emergency_assignments_EmergencyResourceId_Assigne
     ON race_monitoring.emergency_assignments ("EmergencyResourceId", "AssignedAtUtc");
 CREATE INDEX IF NOT EXISTS "IX_emergency_assignments_EmergencyResponseId_AssignedAtUtc"
     ON race_monitoring.emergency_assignments ("EmergencyResponseId", "AssignedAtUtc");
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_emergency_assignments_ResponseId_ResourceId"
+    ON race_monitoring.emergency_assignments ("EmergencyResponseId", "EmergencyResourceId");
 
 CREATE TABLE IF NOT EXISTS race_monitoring.aid_stations (
     "Id"           uuid PRIMARY KEY,
