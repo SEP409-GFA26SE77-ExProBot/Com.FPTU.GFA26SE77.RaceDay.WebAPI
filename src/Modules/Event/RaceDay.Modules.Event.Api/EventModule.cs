@@ -6,18 +6,20 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using RaceDay.Modules.Event.Application.Events;
+using RaceDay.Modules.Event.Application.Certificates;
+using RaceDay.Modules.Event.Application.Complaints;
 using RaceDay.Modules.Event.Application.Disputes;
+using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Application.Events.Update;
 using RaceDay.Modules.Event.Application.Packages;
 using RaceDay.Modules.Event.Application.Registrations;
 using RaceDay.Modules.Event.Application.Staff;
 using RaceDay.Modules.Event.Application.Supplies;
 using RaceDay.Modules.Event.Infrastructure;
+using RaceDay.Modules.Event.Infrastructure.Events;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Web.Auth;
 using RaceDay.Shared.Web.OpenApi;
-using RaceDay.Modules.Event.Application.Complaints;
 
 namespace RaceDay.Modules.Event.Api;
 
@@ -402,6 +404,21 @@ public static class EventModule
             .WithSummary("Staff/organizer ghi nhận finish cho VĐV")
             .WithDescription("Body: { eventId, bib, distanceId }.")
             .Produces<FinishResultDto>(StatusCodes.Status200OK);
+
+        userApi.MapGet("/registrations/{registrationId:guid}/certificate", async (
+            Guid registrationId,
+            IMediator mediator,
+            ICertificatePdfService pdfService,
+            CancellationToken ct) =>
+        {
+            var certData = await mediator.Send(new GetRunnerCertificateQuery(registrationId), ct);
+            var pdfBytes = pdfService.GenerateCertificatePdf(certData);
+            var safeName = certData.RunnerName.Replace(" ", "_");
+            var fileName = $"Certificate_{safeName}_{certData.BibNumber}.pdf";
+            return Results.File(pdfBytes, "application/pdf", fileName);
+        })
+            .WithSummary("Tải giấy chứng nhận hoàn thành giải chạy (PDF)")
+            .WithDescription("Chỉ VĐV đã hoàn thành (Finished) mới tải được chứng nhận thành tích cá nhân.");
 
         userApi.MapPost("/check-in", async (CheckInRequestDto body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
