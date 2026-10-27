@@ -65,3 +65,60 @@ public sealed class GetPhotoDetailQueryHandler(
         return PhotoDtoMapper.ToDetail(photo);
     }
 }
+
+public sealed record DownloadPhotoQuery(Guid PhotoId) : IRequest<PhotoDownloadDto>;
+
+public sealed record PhotoDownloadDto(
+    byte[] Content,
+    string ContentType,
+    string FileName);
+
+public sealed class DownloadPhotoQueryHandler(
+    IPhotoAssetRepository photos,
+    IPhotoContentFetcher contentFetcher,
+    ICurrentUserAccessor currentUser) : IRequestHandler<DownloadPhotoQuery, PhotoDownloadDto>
+{
+    public async Task<PhotoDownloadDto> Handle(
+        DownloadPhotoQuery request,
+        CancellationToken cancellationToken)
+    {
+        _ = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        var photo = await photos.GetByIdWithTagsAsync(request.PhotoId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy ảnh.");
+
+        if (!photo.IsSearchable && photo.Status != Domain.PhotoStatus.RunnerReported)
+        {
+            throw new DomainException("Ảnh chưa sẵn sàng để tải.");
+        }
+
+        var fetched = await contentFetcher.FetchAsync(photo.Url, cancellationToken);
+        var ext = Path.GetExtension(photo.OriginalFileName ?? "");
+        if (string.IsNullOrWhiteSpace(ext))
+        {
+            ext = GuessExtension(fetched.ContentType);
+        }
+
+        var bib = photo.Tags
+            .Select(t => t.BibNormalized)
+            .FirstOrDefault(b => !string.IsNullOrWhiteSpace(b));
+        var fileName = string.IsNullOrWhiteSpace(bib)
+            ? $"raceday-photo-{photo.Id:N}{ext}"
+            : $"raceday-bib-{bib}{ext}";
+
+        var contentType = string.IsNullOrWhiteSpace(fetched.ContentType)
+            ? (photo.ContentType ?? "application/octet-stream")
+            : fetched.ContentType;
+
+        return new PhotoDownloadDto(fetched.Content, contentType, fileName);
+    }
+
+    private static string GuessExtension(string contentType) =>
+        contentType.ToLowerInvariant() switch
+        {
+            "image/jpeg" or "image/jpg" => ".jpg",
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "image/gif" => ".gif",
+            _ => ".jpg"
+        };
+}

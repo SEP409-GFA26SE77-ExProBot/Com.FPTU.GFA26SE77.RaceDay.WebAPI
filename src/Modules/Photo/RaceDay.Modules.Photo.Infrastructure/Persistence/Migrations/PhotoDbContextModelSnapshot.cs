@@ -26,7 +26,6 @@ namespace RaceDay.Modules.Photo.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RaceDay.Modules.Photo.Domain.PhotoAsset", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("ContentSha256")
@@ -47,6 +46,11 @@ namespace RaceDay.Modules.Photo.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsPublished")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("OcrJobId")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
@@ -54,6 +58,9 @@ namespace RaceDay.Modules.Photo.Infrastructure.Persistence.Migrations
                     b.Property<string>("OriginalFileName")
                         .HasMaxLength(260)
                         .HasColumnType("character varying(260)");
+
+                    b.Property<DateTime?>("PublishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<long?>("SizeBytes")
                         .HasColumnType("bigint");
@@ -84,13 +91,14 @@ namespace RaceDay.Modules.Photo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EventId", "Status");
 
+                    b.HasIndex("EventId", "IsPublished", "Status");
+
                     b.ToTable("photos", "photo");
                 });
 
             modelBuilder.Entity("RaceDay.Modules.Photo.Domain.PhotoDispute", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAtUtc")
@@ -137,7 +145,6 @@ namespace RaceDay.Modules.Photo.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("RaceDay.Modules.Photo.Domain.PhotoTag", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
                     b.Property<string>("BboxJson")

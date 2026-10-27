@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using MediatR;
 using Microsoft.Extensions.Hosting;
@@ -11,7 +12,8 @@ namespace RaceDay.Modules.Photo.Infrastructure.Ocr;
 /// <summary>
 /// Polls Queued photos → OCR service. Standalone OCR returns result inline;
 /// worker applies via <see cref="ApplyOcrResultCommand"/> in a fresh scope.
-/// Concurrency capped (WorkerMaxParallel) to stay within CPU/RAM + OCR MAX_INFLIGHT.
+/// Continuous fill: luôn giữ tối đa <see cref="IPhotoOcrSettings.WorkerMaxParallel"/> job
+/// in-flight (claim tiếp ngay khi một slot trống — không chờ hết batch).
 /// </summary>
 public sealed class PhotoOcrWorker(
     IServiceScopeFactory scopeFactory,
@@ -24,7 +26,7 @@ public sealed class PhotoOcrWorker(
             var hadWork = false;
             try
             {
-                hadWork = await ProcessBatchAsync(stoppingToken);
+                hadWork = await ProcessWaveAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -32,7 +34,7 @@ public sealed class PhotoOcrWorker(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Photo OCR worker batch failed.");
+                logger.LogError(ex, "Photo OCR worker wave failed.");
             }
 
             int idleSec;
@@ -52,7 +54,7 @@ public sealed class PhotoOcrWorker(
         }
     }
 
-    private async Task<bool> ProcessBatchAsync(CancellationToken cancellationToken)
+    private async Task<bool> ProcessWaveAsync(CancellationToken cancellationToken)
     {
         await using var probe = scopeFactory.CreateAsyncScope();
         var ocrProbe = probe.ServiceProvider.GetRequiredService<IOcrClient>();
@@ -66,7 +68,6 @@ public sealed class PhotoOcrWorker(
         var photosProbe = probe.ServiceProvider.GetRequiredService<IPhotoAssetRepository>();
         var uowProbe = probe.ServiceProvider.GetRequiredService<IPhotoUnitOfWork>();
 
-        // HttpClient OCR timeout 3p; API restart giữa chừng → Processing kẹt. Reclaim sau 4 phút.
         var stuck = await photosProbe.ListStuckProcessingAsync(
             TimeSpan.FromMinutes(4),
             maxParallel * 4,
@@ -86,61 +87,109 @@ public sealed class PhotoOcrWorker(
             await uowProbe.SaveChangesAsync(cancellationToken);
         }
 
-        var queued = await photosProbe.ListQueuedAsync(maxParallel, cancellationToken);
-        if (queued.Count == 0)
+        var rosterCache = new ConcurrentDictionary<Guid, EventBibRosterSnapshot>();
+        var gate = new SemaphoreSlim(maxParallel, maxParallel);
+        var inflight = new List<Task>();
+        var started = 0;
+
+        while (!cancellationToken.IsCancellationRequested)
         {
-            return stuck.Count > 0;
+            await gate.WaitAsync(cancellationToken);
+
+            ClaimedPhoto? claimed;
+            try
+            {
+                claimed = await TryClaimNextAsync(rosterCache, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                gate.Release();
+                logger.LogWarning(ex, "OCR claim failed.");
+                break;
+            }
+
+            if (claimed is null)
+            {
+                gate.Release();
+                break;
+            }
+
+            started++;
+            var job = claimed;
+            inflight.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    await RunOcrAsync(job, cancellationToken);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            }, cancellationToken));
         }
 
-        var ids = queued.Select(p => p.Id).ToList();
-        if (ids.Count == 1)
+        if (inflight.Count > 0)
         {
-            await ProcessOneAsync(ids[0], cancellationToken);
-            return true;
+            await Task.WhenAll(inflight);
         }
 
-        await Task.WhenAll(ids.Select(id => ProcessOneAsync(id, cancellationToken)));
-        return true;
+        return started > 0 || stuck.Count > 0;
     }
 
-    private async Task ProcessOneAsync(Guid photoId, CancellationToken cancellationToken)
+    private async Task<ClaimedPhoto?> TryClaimNextAsync(
+        ConcurrentDictionary<Guid, EventBibRosterSnapshot> rosterCache,
+        CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var photos = scope.ServiceProvider.GetRequiredService<IPhotoAssetRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IPhotoUnitOfWork>();
-        var ocr = scope.ServiceProvider.GetRequiredService<IOcrClient>();
         var rosterQuery = scope.ServiceProvider.GetRequiredService<IEventBibRosterQuery>();
 
-        var photo = await photos.GetByIdWithTagsAsync(photoId, cancellationToken);
-        if (photo is null || photo.Status != Domain.PhotoStatus.Queued)
+        var next = await photos.ListQueuedAsync(1, cancellationToken);
+        if (next.Count == 0)
         {
-            return;
+            return null;
         }
 
+        var photo = next[0];
+        EventBibRosterSnapshot roster;
+        if (!rosterCache.TryGetValue(photo.EventId, out roster!))
+        {
+            roster = await rosterQuery.GetConfirmedBibsAsync(photo.EventId, cancellationToken);
+            rosterCache.TryAdd(photo.EventId, roster);
+        }
+
+        var jobId = Guid.NewGuid();
+        photo.MarkProcessing(jobId.ToString("N"));
+        photos.Update(photo);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        return new ClaimedPhoto(photo.Id, photo.EventId, photo.Url, jobId, roster);
+    }
+
+    private async Task RunOcrAsync(ClaimedPhoto job, CancellationToken cancellationToken)
+    {
         try
         {
-            var roster = await rosterQuery.GetConfirmedBibsAsync(photo.EventId, cancellationToken);
-            var jobId = Guid.NewGuid();
-            photo.MarkProcessing(jobId.ToString("N"));
-            photos.Update(photo);
-            await unitOfWork.SaveChangesAsync(cancellationToken);
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var ocr = scope.ServiceProvider.GetRequiredService<IOcrClient>();
 
             var enqueued = await ocr.EnqueueJobAsync(
-                jobId,
-                photo.EventId,
-                photo.Id,
-                photo.Url,
-                roster.Version,
-                roster.Bibs,
+                job.JobId,
+                job.EventId,
+                job.PhotoId,
+                job.ImageUrl,
+                job.Roster.Version,
+                job.Roster.Bibs,
                 cancellationToken);
 
             if (enqueued.HasInlineResult)
             {
-                // Fresh scope avoids EF tracking conflict after long OCR call
                 await using var applyScope = scopeFactory.CreateAsyncScope();
                 var applyMediator = applyScope.ServiceProvider.GetRequiredService<IMediator>();
                 await applyMediator.Send(new ApplyOcrResultCommand(
-                    photo.Id,
+                    job.PhotoId,
                     enqueued.Status ?? "needs_review",
                     (enqueued.Tags ?? [])
                         .Select(t => new OcrResultTagDto(t.Bib, t.Confidence, t.Bbox))
@@ -153,7 +202,7 @@ public sealed class PhotoOcrWorker(
                 await using var updScope = scopeFactory.CreateAsyncScope();
                 var updPhotos = updScope.ServiceProvider.GetRequiredService<IPhotoAssetRepository>();
                 var updUow = updScope.ServiceProvider.GetRequiredService<IPhotoUnitOfWork>();
-                var fresh = await updPhotos.GetByIdWithTagsAsync(photo.Id, cancellationToken);
+                var fresh = await updPhotos.GetByIdWithTagsAsync(job.PhotoId, cancellationToken);
                 if (fresh is not null)
                 {
                     fresh.MarkProcessing(enqueued.RemoteJobId);
@@ -164,11 +213,11 @@ public sealed class PhotoOcrWorker(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Failed to enqueue OCR for photo {PhotoId}", photoId);
+            logger.LogWarning(ex, "Failed to enqueue OCR for photo {PhotoId}", job.PhotoId);
             await using var failScope = scopeFactory.CreateAsyncScope();
             var failPhotos = failScope.ServiceProvider.GetRequiredService<IPhotoAssetRepository>();
             var failUow = failScope.ServiceProvider.GetRequiredService<IPhotoUnitOfWork>();
-            var fresh = await failPhotos.GetByIdWithTagsAsync(photoId, cancellationToken);
+            var fresh = await failPhotos.GetByIdWithTagsAsync(job.PhotoId, cancellationToken);
             if (fresh is null)
             {
                 return;
@@ -180,4 +229,11 @@ public sealed class PhotoOcrWorker(
             await failUow.SaveChangesAsync(cancellationToken);
         }
     }
+
+    private sealed record ClaimedPhoto(
+        Guid PhotoId,
+        Guid EventId,
+        string ImageUrl,
+        Guid JobId,
+        EventBibRosterSnapshot Roster);
 }

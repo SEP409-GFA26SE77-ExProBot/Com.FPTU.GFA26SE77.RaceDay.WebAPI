@@ -27,7 +27,9 @@ public sealed class PhotoDbContext(DbContextOptions<PhotoDbContext> options) : D
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
             entity.Property(x => x.DiscardReason).HasMaxLength(500);
             entity.Property(x => x.OcrJobId).HasMaxLength(64);
+            entity.Property(x => x.IsPublished).IsRequired().HasDefaultValue(false);
             entity.HasIndex(x => new { x.EventId, x.Status });
+            entity.HasIndex(x => new { x.EventId, x.IsPublished, x.Status });
             entity.HasIndex(x => new { x.EventId, x.ContentSha256 });
             entity.HasMany(x => x.Tags)
                 .WithOne()
@@ -38,6 +40,7 @@ public sealed class PhotoDbContext(DbContextOptions<PhotoDbContext> options) : D
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.Ignore(x => x.DomainEvents);
             entity.Ignore(x => x.IsSearchable);
+            entity.Ignore(x => x.CanPublish);
         });
 
         modelBuilder.Entity<PhotoTag>(entity =>

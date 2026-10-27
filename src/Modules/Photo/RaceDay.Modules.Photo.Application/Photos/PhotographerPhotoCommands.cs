@@ -38,6 +38,8 @@ public sealed class BulkUploadPhotosCommandHandler(
     IFileStorage fileStorage) : IRequestHandler<BulkUploadPhotosCommand, BulkUploadResultDto>
 {
     private const long MaxBytes = 25L * 1024 * 1024;
+    /// <summary>Song song PutObject R2 trong 1 request (giới hạn tránh bão gateway/R2).</summary>
+    private const int UploadParallelism = 6;
 
     public async Task<BulkUploadResultDto> Handle(
         BulkUploadPhotosCommand request,
@@ -46,8 +48,10 @@ public sealed class BulkUploadPhotosCommandHandler(
         var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
         await EnsurePhotographerAsync(request.EventId, userId, staffAccess, cancellationToken);
 
-        var accepted = new List<Guid>();
+        // 1) Đọc + SHA tuần tự (multipart stream), lọc duplicate.
+        var pendingUploads = new List<(byte[] Bytes, string FileName, string ContentType, string Sha)>();
         var skipped = 0;
+        var seenSha = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var file in request.Files)
         {
@@ -67,39 +71,60 @@ public sealed class BulkUploadPhotosCommandHandler(
             var bytes = buffer.ToArray();
             var sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 
-            if (await photos.ExistsShaAsync(request.EventId, sha, cancellationToken))
+            if (!seenSha.Add(sha) || await photos.ExistsShaAsync(request.EventId, sha, cancellationToken))
             {
                 skipped++;
                 continue;
             }
 
-            buffer.Position = 0;
             var contentType = string.IsNullOrWhiteSpace(file.ContentType)
                 ? "application/octet-stream"
                 : file.ContentType;
-            var stored = await fileStorage.UploadAsync(
-                buffer,
-                file.FileName,
-                contentType,
-                $"event-photos/{request.EventId:N}",
-                cancellationToken);
+            pendingUploads.Add((bytes, file.FileName, contentType, sha));
+        }
 
-            var asset = PhotoAsset.CreatePending(
-                request.EventId,
-                userId,
-                stored.FileUrl,
-                sha,
-                file.FileName,
-                file.ContentType,
-                stored.SizeBytes,
-                request.Zone);
+        // 2) Upload R2 song song (DbContext chỉ Add sau — không share EF giữa task).
+        var gate = new SemaphoreSlim(UploadParallelism);
+        var uploadTasks = pendingUploads.Select(async item =>
+        {
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                await using var stream = new MemoryStream(item.Bytes, writable: false);
+                var stored = await fileStorage.UploadAsync(
+                    stream,
+                    item.FileName,
+                    item.ContentType,
+                    $"event-photos/{request.EventId:N}",
+                    cancellationToken);
 
+                return PhotoAsset.CreatePending(
+                    request.EventId,
+                    userId,
+                    stored.FileUrl,
+                    item.Sha,
+                    item.FileName,
+                    item.ContentType,
+                    stored.SizeBytes > 0 ? stored.SizeBytes : item.Bytes.LongLength,
+                    request.Zone);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+
+        var assets = await Task.WhenAll(uploadTasks);
+        foreach (var asset in assets)
+        {
             await photos.AddAsync(asset, cancellationToken);
-            accepted.Add(asset.Id);
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        return new BulkUploadResultDto(accepted.Count, skipped, accepted);
+        return new BulkUploadResultDto(
+            assets.Length,
+            skipped,
+            assets.Select(a => a.Id).ToList());
     }
 
     public static async Task EnsurePhotographerAsync(
@@ -249,5 +274,91 @@ public sealed class DiscardPhotoCommandHandler(
         photos.Update(photo);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return PhotoDtoMapper.ToDetail(photo);
+    }
+}
+
+public sealed record PublishPhotosCommand(
+    Guid EventId,
+    IReadOnlyList<Guid>? PhotoIds = null,
+    bool AllReady = false) : IRequest<PublishPhotosResultDto>;
+
+public sealed class PublishPhotosCommandValidator : AbstractValidator<PublishPhotosCommand>
+{
+    public PublishPhotosCommandValidator()
+    {
+        RuleFor(x => x.EventId).NotEmpty();
+        RuleFor(x => x)
+            .Must(x => x.AllReady || (x.PhotoIds is { Count: > 0 }))
+            .WithMessage("Chọn photoIds hoặc allReady=true.");
+        RuleFor(x => x.PhotoIds!)
+            .Must(ids => ids.Count <= 500)
+            .When(x => x.PhotoIds is not null)
+            .WithMessage("Tối đa 500 ảnh / lần publish.");
+    }
+}
+
+public sealed class PublishPhotosCommandHandler(
+    IPhotoAssetRepository photos,
+    IPhotoUnitOfWork unitOfWork,
+    ICurrentUserAccessor currentUser,
+    IEventStaffAccessQuery staffAccess) : IRequestHandler<PublishPhotosCommand, PublishPhotosResultDto>
+{
+    public async Task<PublishPhotosResultDto> Handle(
+        PublishPhotosCommand request,
+        CancellationToken cancellationToken)
+    {
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        await BulkUploadPhotosCommandHandler.EnsurePhotographerAsync(
+            request.EventId, userId, staffAccess, cancellationToken);
+
+        IReadOnlyList<PhotoAsset> targets;
+        if (request.AllReady)
+        {
+            // Cap một batch — FE có thể gọi lại đến hết.
+            targets = await photos.ListByEventAndStatusesAsync(
+                request.EventId,
+                [PhotoStatus.Matched, PhotoStatus.ManualCorrected],
+                skip: 0,
+                take: 500,
+                cancellationToken,
+                isPublished: false);
+        }
+        else
+        {
+            var ids = request.PhotoIds!.Distinct().ToList();
+            var loaded = new List<PhotoAsset>();
+            foreach (var id in ids)
+            {
+                var photo = await photos.GetByIdWithTagsAsync(id, cancellationToken);
+                if (photo is null || photo.EventId != request.EventId)
+                {
+                    throw new DomainException($"Ảnh {id} không thuộc giải này.");
+                }
+
+                loaded.Add(photo);
+            }
+
+            targets = loaded;
+        }
+
+        var count = 0;
+        foreach (var photo in targets)
+        {
+            if (!photo.CanPublish)
+            {
+                continue;
+            }
+
+            photo.Publish();
+            photos.Update(photo);
+            count++;
+        }
+
+        if (count > 0)
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return new PublishPhotosResultDto(count);
     }
 }

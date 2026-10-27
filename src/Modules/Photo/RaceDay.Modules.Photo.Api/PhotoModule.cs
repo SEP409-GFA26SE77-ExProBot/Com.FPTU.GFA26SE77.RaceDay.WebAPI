@@ -101,7 +101,31 @@ public static class PhotoModule
             Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
                 new ListPhotographerPhotosQuery(eventId, "matched", page ?? 1, pageSize ?? 50), ct)))
-            .WithSummary("Ảnh đã khớp (matched + manual_corrected)");
+            .WithSummary("Ảnh đã khớp (matched + manual_corrected) — gồm cả chưa/đã publish");
+
+        pho.MapGet("/events/{eventId:guid}/photos/ready", async (
+            Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ListPhotographerPhotosQuery(eventId, "ready", page ?? 1, pageSize ?? 50), ct)))
+            .WithSummary("Ảnh đã khớp, chưa publish — chờ photographer xuất bản");
+
+        pho.MapGet("/events/{eventId:guid}/photos/published", async (
+            Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ListPhotographerPhotosQuery(eventId, "published", page ?? 1, pageSize ?? 50), ct)))
+            .WithSummary("Ảnh đã publish — runner search được");
+
+        pho.MapPost("/events/{eventId:guid}/photos/publish", async (
+            Guid eventId,
+            PublishPhotosBody? body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new PublishPhotosCommand(
+                    eventId,
+                    body?.PhotoIds,
+                    body?.AllReady ?? false), ct)))
+            .WithSummary("Publish ảnh đã khớp → hiện trên search runner (bulk / allReady)");
 
         pho.MapGet("/events/{eventId:guid}/photos/review", async (
             Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
@@ -187,6 +211,18 @@ public static class PhotoModule
             Guid photoId, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetPhotoDetailQuery(photoId), ct)))
             .WithSummary("Chi tiết ảnh");
+
+        runner.MapGet("/photos/{photoId:guid}/download", async (
+            Guid photoId, IMediator mediator, CancellationToken ct) =>
+        {
+            var file = await mediator.Send(new DownloadPhotoQuery(photoId), ct);
+            return Results.File(
+                file.Content,
+                file.ContentType,
+                file.FileName,
+                enableRangeProcessing: false);
+        })
+            .WithSummary("Tải ảnh về máy (proxy storage — tránh CORS trình duyệt)");
 
         runner.MapPost("/photos/{photoId:guid}/disputes", async (
             Guid photoId, CreateDisputeBody body, IMediator mediator, CancellationToken ct) =>
@@ -278,6 +314,9 @@ public static class PhotoModule
     private sealed record DiscardPhotoBody(string? Reason);
     private sealed record RejectDisputeBody(string Reason);
     private sealed record CreateDisputeBody(string Reason);
+    private sealed record PublishPhotosBody(
+        IReadOnlyList<Guid>? PhotoIds = null,
+        bool AllReady = false);
 
     private sealed record OcrResultBody(
         [property: JsonPropertyName("status")] string Status,

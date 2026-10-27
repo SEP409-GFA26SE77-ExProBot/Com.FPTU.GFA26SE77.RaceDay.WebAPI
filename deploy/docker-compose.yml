@@ -65,9 +65,11 @@ services:
       Photo__Ocr__ServiceKey: dev-ocr-key-change-me
       Photo__Ocr__ThresholdAuto: "0.85"
       Photo__Ocr__ThresholdReviewMin: "0.50"
-      Photo__Ocr__WorkerMaxParallel: "2"
+      # Khớp OCR MAX_INFLIGHT=3 (overlap YOLO CUDA + Paddle CPU).
+      Photo__Ocr__WorkerMaxParallel: "3"
       Photo__Ocr__WorkerIdleDelaySeconds: "5"
-      Photo__Ocr__WorkerBusyDelaySeconds: "1"
+      # 0 = không sleep giữa wave OCR
+      Photo__Ocr__WorkerBusyDelaySeconds: "0"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

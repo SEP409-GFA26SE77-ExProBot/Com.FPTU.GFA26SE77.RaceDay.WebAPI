@@ -7,6 +7,7 @@ using RaceDay.Modules.Photo.Application.Abstractions;
 using RaceDay.Modules.Photo.Infrastructure.Ocr;
 using RaceDay.Modules.Photo.Infrastructure.Persistence;
 using RaceDay.Modules.Photo.Infrastructure.Repositories;
+using RaceDay.Modules.Photo.Infrastructure.Storage;
 
 namespace RaceDay.Modules.Photo.Infrastructure;
 
@@ -36,6 +37,12 @@ public static class DependencyInjection
 
             // PaddleOCR + YOLO có thể >30s / ảnh
             client.Timeout = TimeSpan.FromMinutes(3);
+        });
+
+        // Fetch R2/public URL server-side (trình duyệt bị CORS khi tải trực tiếp).
+        services.AddHttpClient<IPhotoContentFetcher, PhotoContentFetcher>(client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(2);
         });
 
         services.AddHostedService<PhotoDataSeeder>();

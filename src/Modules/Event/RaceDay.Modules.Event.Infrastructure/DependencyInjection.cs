@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Application.Abstractions;
@@ -11,6 +12,7 @@ using RaceDay.Modules.Event.Domain.Packages;
 using RaceDay.Modules.Event.Domain.Supplies;
 using RaceDay.Modules.Event.Infrastructure.Packages;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
+using RaceDay.Modules.Event.Infrastructure.Persistence.Repositories;
 using RaceDay.Modules.Event.Infrastructure.Repositories;
 
 namespace RaceDay.Modules.Event.Infrastructure;
@@ -33,10 +35,14 @@ public static class DependencyInjection
         services.AddScoped<IPackageCapacityOptionRepository, PackageCapacityOptionRepository>();
         services.AddScoped<IEventStaffMemberRepository, EventStaffMemberRepository>();
         services.AddScoped<IEventSupplyItemRepository, EventSupplyItemRepository>();
+        services.AddScoped<IEventDisputeRepository, EventDisputeRepository>();
+        services.AddScoped<IRecentJoinedEventQuery, RaceDay.Modules.Event.Infrastructure.Events.RecentJoinedEventQuery>();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<PackagePricingService>();
         services.AddScoped<IEventUnitOfWork, EventUnitOfWork>();
         services.AddHostedService<PackageExpiryLockHostedService>();
         services.AddHostedService<RegistrationWindowHostedService>();
+        services.AddScoped<IEventComplaintRepository, EventComplaintRepository>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Registrations.IRegistrationCheckoutInfoQuery,
             RaceDay.Modules.Event.Infrastructure.Registrations.RegistrationCheckoutInfoQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Packages.IPackageCheckoutInfoQuery,
@@ -94,21 +100,30 @@ public sealed class EventDataSeeder(
             {
                 await SeedPromoCodesAsync(db, cancellationToken);
                 await SeedPackageOptionsAsync(db, cancellationToken);
-                try
+
+                // Demo Quy Nhon/Sa Pa + leaderboard: tắt mặc định — dùng deploy/scripts/clear-and-seed
+                // (RaceDay Grand Marathon). Bật lại: Event__SeedDemoEvents=true
+                // Default false — clear-and-seed owns demo data. Opt-in: Event__SeedDemoEvents=true
+                var cfg = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+                var seedDemo = bool.TryParse(cfg["Event:SeedDemoEvents"], out var demoFlag) && demoFlag;
+                if (seedDemo)
                 {
-                    await SeedDemoEventsAsync(db, cancellationToken);
-                    await SeedLeaderboardDataAsync(db, cancellationToken);
-                }
-                catch (Exception demoEx)
-                {
-                    // Demo event seed có thể fail (vd thiếu BIB config) — không chặn supplies seed.
-                    logger.LogError(demoEx, "Event demo/leaderboard seed failed (tiếp tục supplies seed).");
+                    try
+                    {
+                        await SeedDemoEventsAsync(db, cancellationToken);
+                        await SeedLeaderboardDataAsync(db, cancellationToken);
+                    }
+                    catch (Exception demoEx)
+                    {
+                        logger.LogError(demoEx, "Event demo/leaderboard seed failed (tiếp tục supplies seed).");
+                    }
                 }
 
                 await NormalizeDistanceLeaderboardTypesAsync(db, cancellationToken);
                 await SeedDemoSuppliesAsync(db, cancellationToken);
-                // Demo events + R2 media refresh tắt — tránh tạo lại event/banner sau wipe sạch.
-                logger.LogInformation("Event schema migrated + promo/package/supplies seed checked.");
+                logger.LogInformation(
+                    "Event schema migrated + promo/package/supplies seed checked (SeedDemoEvents={SeedDemo}).",
+                    seedDemo);
             }
             catch (Exception seedEx)
             {

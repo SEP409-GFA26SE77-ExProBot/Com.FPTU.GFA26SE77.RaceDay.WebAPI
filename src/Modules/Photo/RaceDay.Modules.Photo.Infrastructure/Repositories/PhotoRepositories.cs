@@ -24,21 +24,39 @@ public sealed class PhotoAssetRepository(PhotoDbContext db) : IPhotoAssetReposit
         IReadOnlyCollection<PhotoStatus> statuses,
         int skip,
         int take,
-        CancellationToken cancellationToken = default)
-        => await db.Photos.AsNoTracking()
+        CancellationToken cancellationToken = default,
+        bool? isPublished = null)
+    {
+        var q = db.Photos.AsNoTracking()
             .Include(x => x.Tags)
-            .Where(x => x.EventId == eventId && statuses.Contains(x.Status))
+            .Where(x => x.EventId == eventId && statuses.Contains(x.Status));
+        if (isPublished is not null)
+        {
+            q = q.Where(x => x.IsPublished == isPublished.Value);
+        }
+
+        return await q
             .OrderByDescending(x => x.CreatedAtUtc)
             .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);
+    }
 
     public Task<int> CountByEventAndStatusesAsync(
         Guid eventId,
         IReadOnlyCollection<PhotoStatus> statuses,
-        CancellationToken cancellationToken = default)
-        => db.Photos.AsNoTracking()
-            .CountAsync(x => x.EventId == eventId && statuses.Contains(x.Status), cancellationToken);
+        CancellationToken cancellationToken = default,
+        bool? isPublished = null)
+    {
+        var q = db.Photos.AsNoTracking()
+            .Where(x => x.EventId == eventId && statuses.Contains(x.Status));
+        if (isPublished is not null)
+        {
+            q = q.Where(x => x.IsPublished == isPublished.Value);
+        }
+
+        return q.CountAsync(cancellationToken);
+    }
 
     public async Task<IReadOnlyList<PhotoAsset>> ListPendingForProcessAsync(
         Guid eventId,
@@ -86,6 +104,7 @@ public sealed class PhotoAssetRepository(PhotoDbContext db) : IPhotoAssetReposit
             .Include(x => x.Tags)
             .Where(x =>
                 x.EventId == eventId
+                && x.IsPublished
                 && Searchable.Contains(x.Status)
                 && x.Tags.Any(t => t.BibNormalized == bib))
             .OrderByDescending(x => x.CreatedAtUtc)
@@ -103,6 +122,7 @@ public sealed class PhotoAssetRepository(PhotoDbContext db) : IPhotoAssetReposit
         return db.Photos.AsNoTracking()
             .CountAsync(x =>
                 x.EventId == eventId
+                && x.IsPublished
                 && Searchable.Contains(x.Status)
                 && x.Tags.Any(t => t.BibNormalized == bib),
                 cancellationToken);
