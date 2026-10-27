@@ -9,6 +9,7 @@ using RaceDay.Modules.Event.Application.Packages;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Packages;
 using RaceDay.Modules.Event.Domain.Supplies;
+using RaceDay.Modules.Event.Infrastructure.Events;
 using RaceDay.Modules.Event.Infrastructure.Packages;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
 using RaceDay.Modules.Event.Infrastructure.Persistence.Repositories;
@@ -39,6 +40,7 @@ public static class DependencyInjection
         services.AddHostedService<PackageExpiryLockHostedService>();
         services.AddHostedService<RegistrationWindowHostedService>();
         services.AddScoped<IEventComplaintRepository, EventComplaintRepository>();
+        services.AddScoped<ICertificatePdfService, QuestPdfCertificateQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Registrations.IRegistrationCheckoutInfoQuery,
             RaceDay.Modules.Event.Infrastructure.Registrations.RegistrationCheckoutInfoQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Packages.IPackageCheckoutInfoQuery,
