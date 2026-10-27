@@ -333,6 +333,17 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
     public async Task AddAsync(EventRegistration registration, CancellationToken cancellationToken = default)
         => await db.Registrations.AddAsync(registration, cancellationToken);
 
+    public Task<EventRegistration?> GetFinishedByEventAndUserAsync(
+        Guid eventId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => db.Registrations.AsNoTracking()
+            .Where(x => x.EventId == eventId && x.UserId == userId
+                && x.Status == RegistrationStatus.Finished && x.FinishedAtUtc != null)
+            .OrderByDescending(x => x.FinishedAtUtc)
+            .ThenByDescending(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
     public void Update(EventRegistration registration) => db.Registrations.Update(registration);
 }
 

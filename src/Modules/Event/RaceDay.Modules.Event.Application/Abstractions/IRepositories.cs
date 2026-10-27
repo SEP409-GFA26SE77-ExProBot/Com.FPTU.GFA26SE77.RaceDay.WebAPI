@@ -55,6 +55,10 @@ public interface IEventRegistrationRepository
         Guid eventId,
         Guid userId,
         CancellationToken cancellationToken = default);
+    Task<EventRegistration?> GetFinishedByEventAndUserAsync(
+        Guid eventId,
+        Guid userId,
+        CancellationToken cancellationToken = default);
     Task AddAsync(EventRegistration registration, CancellationToken cancellationToken = default);
     void Update(EventRegistration registration);
 }
