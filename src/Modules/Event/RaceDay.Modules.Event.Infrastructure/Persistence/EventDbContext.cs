@@ -299,9 +299,19 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             builder.ToTable("event_complaints");
             builder.HasKey(x => x.Id);
 
+            // Cấu hình cột Title mới thêm
+            builder.Property(x => x.Title)
+                .IsRequired()
+                .HasMaxLength(200);
+
             builder.Property(x => x.Content)
                 .IsRequired()
                 .HasMaxLength(2000);
+
+            // Cấu hình cột EvidenceLinksJson kiểu jsonb
+            builder.Property(x => x.EvidenceLinksJson)
+                .IsRequired()
+                .HasColumnType("jsonb");
 
             builder.Property(x => x.ResponseContent)
                 .HasMaxLength(2000);

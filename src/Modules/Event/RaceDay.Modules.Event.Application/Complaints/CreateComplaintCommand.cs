@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentValidation;
 using MediatR;
 using RaceDay.Modules.Event.Application.Abstractions;
@@ -13,7 +14,9 @@ namespace RaceDay.Modules.Event.Application.Complaints;
 public sealed record CreateComplaintCommand(
     Guid EventId,
     Guid DistanceId,
-    string Content) : IRequest<EventComplaintDto>;
+    string Title,
+    string Content,
+    IReadOnlyList<string>? EvidenceLinks) : IRequest<EventComplaintDto>;
 
 public sealed class CreateComplaintCommandValidator : AbstractValidator<CreateComplaintCommand>
 {
@@ -21,7 +24,16 @@ public sealed class CreateComplaintCommandValidator : AbstractValidator<CreateCo
     {
         RuleFor(x => x.EventId).NotEmpty();
         RuleFor(x => x.DistanceId).NotEmpty();
+
+        // Validate cho Title mới thêm
+        RuleFor(x => x.Title).NotEmpty().MaximumLength(200);
+
         RuleFor(x => x.Content).NotEmpty().MaximumLength(2000);
+
+        // Validate giới hạn tối đa 5 link bằng chứng
+        RuleFor(x => x.EvidenceLinks)
+            .Must(x => x == null || x.Count <= 5)
+            .WithMessage("Chỉ được phép đính kèm tối đa 5 link bằng chứng.");
     }
 }
 
@@ -40,11 +52,19 @@ public sealed class CreateComplaintCommandHandler(
 
         var distance = race.GetDistance(request.DistanceId);
 
-        var complaint = EventComplaint.Create(race.Id, distance.Id, userId, request.Content);
+        // Khởi tạo entity kèm Title và EvidenceLinks
+        var complaint = EventComplaint.Create(
+            race.Id,
+            distance.Id,
+            userId,
+            request.Title,
+            request.Content,
+            request.EvidenceLinks);
 
         await complaints.AddAsync(complaint, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
+        // Trả về DTO đã được cập nhật thêm trường Title, EvidenceLinks và ProcessingStatus
         return new EventComplaintDto(
             complaint.Id,
             race.Id,
@@ -52,8 +72,11 @@ public sealed class CreateComplaintCommandHandler(
             distance.Id,
             distance.Name,
             userId,
+            complaint.Title,
             complaint.Content,
+            complaint.GetEvidenceLinks(),
             complaint.Status.ToString().ToLowerInvariant(),
+            "unprocessed", // Vì đơn mới tạo luôn ở trạng thái Pending (Chưa xử lý)
             complaint.ResponseContent,
             complaint.CreatedAtUtc,
             complaint.RepliedAtUtc);

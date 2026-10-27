@@ -5,123 +5,93 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
 using RaceDay.Modules.Event.Application.Abstractions;
-using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Complaints;
 
-public sealed record ListOrganizerComplaintsQuery(Guid? EventId = null)
-    : IRequest<IReadOnlyList<OrganizerEventComplaintsDto>>;
+// 1. Thêm tham số lọc và phân trang vào Query, đổi kiểu trả về sang dạng PagedDto
+public sealed record ListOrganizerComplaintsQuery(
+    Guid? EventId,
+    string? Status,
+    DateTime? FromDate,
+    DateTime? ToDate,
+    int Page,
+    int PageSize) : IRequest<OrganizerComplaintsPagedDto>;
 
 public sealed class ListOrganizerComplaintsQueryHandler(
     IRaceEventRepository events,
     IEventComplaintRepository complaints,
-    ICurrentUserAccessor currentUser) : IRequestHandler<ListOrganizerComplaintsQuery, IReadOnlyList<OrganizerEventComplaintsDto>>
+    ICurrentUserAccessor currentUser)
+    : IRequestHandler<ListOrganizerComplaintsQuery, OrganizerComplaintsPagedDto>
 {
-    public async Task<IReadOnlyList<OrganizerEventComplaintsDto>> Handle(
-        ListOrganizerComplaintsQuery request,
-        CancellationToken cancellationToken)
+    public async Task<OrganizerComplaintsPagedDto> Handle(ListOrganizerComplaintsQuery request, CancellationToken cancellationToken)
     {
         var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
+        var targetEventIds = new List<Guid>();
 
-        List<RaceEvent> targetEvents = new();
-
-        // 1. Nếu là Admin
-        if (currentUser.IsAdmin)
+        // 2. Xác định danh sách EventId hợp lệ mà Organizer/Admin được phép xem
+        if (request.EventId.HasValue)
         {
-            if (request.EventId.HasValue)
-            {
-                // Nếu Admin truyền eventId cụ thể thì chỉ lấy giải đó
-                var ev = await events.GetByIdAsync(request.EventId.Value, cancellationToken);
-                if (ev != null) targetEvents.Add(ev);
-            }
-            else
-            {
-                // Nếu Admin để trống eventId: Lấy toàn bộ các giải có trong hệ thống thông qua các khiếu nại hoặc qua danh sách giải
-                // Ta có thể lấy tất cả các khiếu nại bằng cách truyền null hoặc xử lý lấy tất cả giải.
-                // Ở đây ta gom tất cả các EventId đang có khiếu nại, HOẶC nếu repository của bạn hỗ trợ lấy tất cả giải thì tuyệt vời.
-                // Cách an toàn nhất là lấy tất cả complaints từ DB trước:
-                var allComplaints = await complaints.ListByEventIdsAsync(null!, cancellationToken);
-                var activeEventIds = allComplaints.Select(c => c.EventId).Distinct().ToList();
-
-                foreach (var eventId in activeEventIds)
-                {
-                    var ev = await events.GetByIdAsync(eventId, cancellationToken);
-                    if (ev != null) targetEvents.Add(ev);
-                }
-            }
+            targetEventIds.Add(request.EventId.Value);
         }
-        else
+        else if (!currentUser.IsAdmin)
         {
-            // 2. Logic dành cho Organizer thông thường (chỉ xem giải của mình)
+            // Nếu không phải Admin và không truyền EventId: Lấy các giải của Organizer này
             var myEvents = await events.ListByOrganizerAsync(userId, cancellationToken);
-            if (myEvents.Count == 0)
-            {
-                return Array.Empty<OrganizerEventComplaintsDto>();
-            }
+            targetEventIds = myEvents.Select(e => e.Id).ToList();
 
-            if (request.EventId.HasValue)
+            // Nếu Organizer chưa có giải nào, trả về danh sách rỗng luôn
+            if (targetEventIds.Count == 0)
             {
-                targetEvents = myEvents.Where(e => e.Id == request.EventId.Value).ToList();
-            }
-            else
-            {
-                targetEvents = myEvents.ToList();
+                return new OrganizerComplaintsPagedDto(new List<EventComplaintDto>(), request.Page, request.PageSize, 0, 0);
             }
         }
 
-        if (targetEvents.Count == 0)
+        // 3. Gọi DB thực hiện Lọc, Phân trang và Đếm số lượng
+        var (dbItems, total, pending) = await complaints.SearchOrganizerComplaintsAsync(
+            targetEventIds,
+            currentUser.IsAdmin,
+            request.Status,
+            request.FromDate,
+            request.ToDate,
+            request.Page,
+            request.PageSize,
+            cancellationToken);
+
+        var resultItems = new List<EventComplaintDto>();
+
+        // 4. Map dữ liệu sang DTO (Bổ sung Title, EvidenceLinks, ProcessingStatus)
+        foreach (var c in dbItems)
         {
-            return Array.Empty<OrganizerEventComplaintsDto>();
-        }
-
-        var eventIds = targetEvents.Select(e => e.Id).ToList();
-        var rawComplaints = await complaints.ListByEventIdsAsync(eventIds, cancellationToken);
-
-        var result = new List<OrganizerEventComplaintsDto>();
-
-        foreach (var raceSummary in targetEvents)
-        {
-            var race = await events.GetByIdWithDetailsAsync(raceSummary.Id, cancellationToken);
-            if (race is null) continue;
-
-            var eventComplaints = rawComplaints
-                .Where(c => c.EventId == race.Id)
-                .Select(c =>
-                {
-                    string distanceName = "N/A";
-                    try
-                    {
-                        distanceName = race.GetDistance(c.DistanceId).Name;
-                    }
-                    catch
-                    {
-                        /* Ignore missing distance */
-                    }
-
-                    return new EventComplaintDto(
-                        c.Id,
-                        race.Id,
-                        race.Name,
-                        c.DistanceId,
-                        distanceName,
-                        c.UserId,
-                        c.Content,
-                        c.Status.ToString().ToLowerInvariant(),
-                        c.ResponseContent,
-                        c.CreatedAtUtc,
-                        c.RepliedAtUtc);
-                })
-                .OrderByDescending(c => c.CreatedAtUtc)
-                .ToList();
-
-            if (eventComplaints.Count > 0)
+            var race = await events.GetByIdAsync(c.EventId, cancellationToken);
+            string distanceName = "N/A";
+            try
             {
-                result.Add(new OrganizerEventComplaintsDto(race.Id, race.Name, eventComplaints));
+                distanceName = race?.GetDistance(c.DistanceId).Name ?? "N/A";
             }
+            catch
+            {
+                /* Ignore missing distance */
+            }
+
+            resultItems.Add(new EventComplaintDto(
+                c.Id,
+                c.EventId,
+                race?.Name ?? "N/A",
+                c.DistanceId,
+                distanceName,
+                c.UserId,
+                c.Title,
+                c.Content,
+                c.GetEvidenceLinks(),
+                c.Status.ToString(),
+                c.Status == Domain.Complaints.ComplaintStatus.Pending ? "Unprocessed" : "Processed",
+                c.ResponseContent,
+                c.CreatedAtUtc,
+                c.RepliedAtUtc));
         }
 
-        return result;
+        return new OrganizerComplaintsPagedDto(resultItems, request.Page, request.PageSize, total, pending);
     }
 }
