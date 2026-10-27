@@ -7,7 +7,6 @@ using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Modules.Event.Domain.Staff;
 using RaceDay.Modules.Event.Domain.Complaints;
 using RaceDay.Modules.Event.Domain.Supplies;
-using RaceDay.Modules.Event.Domain.Complaints;
 
 namespace RaceDay.Modules.Event.Infrastructure.Persistence;
 
@@ -30,7 +29,6 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
     public DbSet<EventStaffMember> StaffMembers => Set<EventStaffMember>();
     public DbSet<EventComplaint> Complaints => Set<EventComplaint>();
     public DbSet<EventSupplyItem> SupplyItems => Set<EventSupplyItem>();
-    public DbSet<EventComplaint> Complaints => Set<EventComplaint>();
     public DbSet<EventDispute> Disputes => Set<EventDispute>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -103,10 +101,6 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
 
             entity.OwnsOne(x => x.Coordinates, coordinates =>
             {
-<<<<<<< HEAD
-                c.Property(p => p.Lat).HasColumnName("coord_lat").IsRequired();
-                c.Property(p => p.Lng).HasColumnName("coord_lng").IsRequired();
-=======
                 coordinates.Property(x => x.Lat)
                     .HasColumnName("coord_lat")
                     .IsRequired();
@@ -114,25 +108,10 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
                 coordinates.Property(x => x.Lng)
                     .HasColumnName("coord_lng")
                     .IsRequired();
->>>>>>> 131c616ad8cf8fec36cddba6fad712af820a0463
             });
 
             entity.OwnsOne(x => x.Organizer, organizer =>
             {
-<<<<<<< HEAD
-                o.Property(p => p.Name).HasColumnName("org_name").HasMaxLength(200).IsRequired();
-                o.Property(p => p.LegalEntity).HasColumnName("org_legal_entity").HasMaxLength(200);
-                o.Property(p => p.Email).HasColumnName("org_email").HasMaxLength(100);
-                o.Property(p => p.Phone).HasColumnName("org_phone").HasMaxLength(30);
-                o.Property(p => p.Website).HasColumnName("org_website").HasMaxLength(300);
-                o.Property(p => p.Verified).HasColumnName("org_verified");
-                o.Property(p => p.AccountHolder).HasColumnName("org_account_holder").HasMaxLength(200);
-                o.Property(p => p.AccountNumber).HasColumnName("org_account_number").HasMaxLength(50);
-                o.Property(p => p.BankName).HasColumnName("org_bank_name").HasMaxLength(100);
-                o.Property(p => p.BankBranch).HasColumnName("org_bank_branch").HasMaxLength(100);
-                o.Property(p => p.SwiftCode).HasColumnName("org_swift").HasMaxLength(20);
-                o.Property(p => p.TransferNote).HasColumnName("org_transfer_note").HasMaxLength(300);
-=======
                 organizer.Property(x => x.Name)
                     .HasColumnName("org_name")
                     .HasMaxLength(200)
@@ -180,16 +159,10 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
                 organizer.Property(x => x.TransferNote)
                     .HasColumnName("org_transfer_note")
                     .HasMaxLength(300);
->>>>>>> 131c616ad8cf8fec36cddba6fad712af820a0463
             });
 
             entity.OwnsOne(x => x.Weather, weather =>
             {
-<<<<<<< HEAD
-                w.Property(p => p.Temp).HasColumnName("weather_temp").HasMaxLength(40).IsRequired();
-                w.Property(p => p.Condition).HasColumnName("weather_condition").HasMaxLength(100);
-                w.Property(p => p.Humidity).HasColumnName("weather_humidity").HasMaxLength(40);
-=======
                 weather.Property(x => x.Temp)
                     .HasColumnName("weather_temp")
                     .HasMaxLength(40)
@@ -202,19 +175,10 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
                 weather.Property(x => x.Humidity)
                     .HasColumnName("weather_humidity")
                     .HasMaxLength(40);
->>>>>>> 131c616ad8cf8fec36cddba6fad712af820a0463
             });
 
             entity.OwnsOne(x => x.Permit, permit =>
             {
-<<<<<<< HEAD
-                p.Property(x => x.FileUrl).HasColumnName("permit_file_url").HasMaxLength(500).IsRequired();
-                p.Property(x => x.FileName).HasColumnName("permit_file_name").HasMaxLength(255);
-                p.Property(x => x.PermitNumber).HasColumnName("permit_number").HasMaxLength(100);
-                p.Property(x => x.IssuingAuthority).HasColumnName("permit_authority").HasMaxLength(200);
-                p.Property(x => x.IssueDate).HasColumnName("permit_issue_date");
-                p.Property(x => x.ValidUntil).HasColumnName("permit_valid_until");
-=======
                 permit.Property(x => x.FileUrl)
                     .HasColumnName("permit_file_url")
                     .HasMaxLength(500)
@@ -237,7 +201,6 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
 
                 permit.Property(x => x.ValidUntil)
                     .HasColumnName("permit_valid_until");
->>>>>>> 131c616ad8cf8fec36cddba6fad712af820a0463
             });
 
             entity.HasMany(x => x.Distances)
@@ -392,16 +355,7 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
             entity.Property(x => x.FinishedAtUtc);
             entity.Property(x => x.ResultSeconds);
 
-<<<<<<< HEAD
             entity.HasIndex(x => new { x.EventId, x.DistanceId, x.UserId })
-=======
-            entity.HasIndex(x => new
-            {
-                x.EventId,
-                x.DistanceId,
-                x.UserId
-            })
->>>>>>> 131c616ad8cf8fec36cddba6fad712af820a0463
                 .IsUnique()
                 .HasFilter("\"Status\" NOT IN ('Rejected', 'Cancelled')");
 
