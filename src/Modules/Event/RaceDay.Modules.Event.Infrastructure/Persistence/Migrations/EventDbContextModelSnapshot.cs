@@ -43,6 +43,10 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("EvidenceLinksJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTime?>("RepliedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -57,6 +61,11 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");

@@ -271,20 +271,25 @@ public static class EventModule
 
         // ── Endpoints Khiếu Nại cho Organizer ──
         organizerApi.MapGet("/complaints", async (
-            Guid? eventId,
+            [FromQuery] Guid? eventId,
+            [FromQuery] string? status,
+            [FromQuery] DateTime? fromDate,
+            [FromQuery] DateTime? toDate,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize,
             IMediator mediator,
             CancellationToken ct) =>
-            Results.Ok(await mediator.Send(new ListOrganizerComplaintsQuery(eventId), ct)))
+            Results.Ok(await mediator.Send(new ListOrganizerComplaintsQuery(eventId, status, fromDate, toDate, page ?? 1, pageSize ?? 10), ct)))
             .WithSummary("Organizer xem danh sách khiếu nại gom nhóm theo giải")
-            .WithDescription("Query tuỳ chọn: ?eventId=... Nếu để trống sẽ lấy tất cả giải của organizer.");
+            .WithDescription("Hỗ trợ lọc theo trạng thái (Pending/Accepted/Rejected), khoảng thời gian và phân trang.");
 
         organizerApi.MapPost("/complaints/{complaintId:guid}/reply", async (
             Guid complaintId,
             ReplyComplaintRequest body,
             IMediator mediator,
             CancellationToken ct) =>
-            Results.Ok(await mediator.Send(new ReplyComplaintCommand(complaintId, body.ResponseContent), ct)))
-            .WithSummary("Organizer gửi phản hồi khiếu nại");
+            Results.Ok(await mediator.Send(new ReplyComplaintCommand(complaintId, body.ResponseContent, body.Decision), ct)))
+            .WithSummary("Organizer gửi phản hồi và quyết định khiếu nại (Accepted/Rejected)");
 
         var userApi = app.MapGroup("/api/v1/event")
             .WithTags(ApiTags.EventRunner)
@@ -387,18 +392,23 @@ public static class EventModule
             IMediator mediator,
             CancellationToken ct) =>
         {
-            var result = await mediator.Send(new CreateComplaintCommand(body.EventId, body.DistanceId, body.Content), ct);
+            var result = await mediator.Send(new CreateComplaintCommand(body.EventId, body.DistanceId, body.Title, body.Content, body.EvidenceLinks), ct);
             return Results.Created($"/api/v1/event/complaints/{result.Id}", result);
         })
         .WithSummary("VĐV gửi thông tin khiếu nại tới BTC")
-        .WithDescription("Body: { eventId, distanceId, content }.")
+        .WithDescription("Body: { eventId, distanceId, title, content, evidenceLinks (mảng URL) }.")
         .Produces<EventComplaintDto>(StatusCodes.Status201Created);
+
         userApi.MapGet("/complaints/mine", async (
+            [FromQuery] Guid? eventId,
+            [FromQuery] string? status,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize,
             IMediator mediator,
             CancellationToken ct) =>
-            Results.Ok(await mediator.Send(new GetMyComplaintsQuery(), ct)))
+            Results.Ok(await mediator.Send(new GetMyComplaintsQuery(eventId, status, page ?? 1, pageSize ?? 10), ct)))
         .WithSummary("VĐV xem danh sách khiếu nại của chính mình")
-        .WithDescription("Trả về toàn bộ danh sách khiếu nại do VĐV đang đăng nhập gửi kèm trạng thái và phản hồi từ BTC.");
+        .WithDescription("Trả về danh sách khiếu nại có phân trang và lọc theo trạng thái (Pending/Accepted/Rejected).");
 
         var adminApi = app.MapGroup("/api/v1/event/admin")
             .WithTags(ApiTags.EventAdmin)
@@ -614,6 +624,6 @@ public static class EventModule
     }
 
     // ĐÃ CHUYỂN VÀO TRONG CLASS EventModule
-    private sealed record CreateComplaintRequest(Guid EventId, Guid DistanceId, string Content);
-    private sealed record ReplyComplaintRequest(string ResponseContent);
+    private sealed record CreateComplaintRequest(Guid EventId, Guid DistanceId, string Title, string Content, IReadOnlyList<string>? EvidenceLinks);
+    private sealed record ReplyComplaintRequest(string ResponseContent, string Decision);
 }

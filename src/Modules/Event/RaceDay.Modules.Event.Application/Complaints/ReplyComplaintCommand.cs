@@ -1,16 +1,21 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
-
+using System.Threading;
+using System.Threading.Tasks;
 using FluentValidation;
 using MediatR;
 using RaceDay.Modules.Event.Application.Abstractions;
+using RaceDay.Modules.Event.Domain.Complaints;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Complaints;
 
-public sealed record ReplyComplaintCommand(Guid ComplaintId, string ResponseContent) : IRequest<EventComplaintDto>;
+// 1. Thêm tham số Decision vào Command
+public sealed record ReplyComplaintCommand(
+    Guid ComplaintId,
+    string ResponseContent,
+    string Decision) : IRequest<EventComplaintDto>;
 
 public sealed class ReplyComplaintCommandValidator : AbstractValidator<ReplyComplaintCommand>
 {
@@ -18,6 +23,12 @@ public sealed class ReplyComplaintCommandValidator : AbstractValidator<ReplyComp
     {
         RuleFor(x => x.ComplaintId).NotEmpty();
         RuleFor(x => x.ResponseContent).NotEmpty().MaximumLength(2000);
+
+        // 2. Kiểm tra Decision chỉ được là Accepted hoặc Rejected
+        RuleFor(x => x.Decision)
+            .Must(x => x.Equals("Accepted", StringComparison.OrdinalIgnoreCase) ||
+                       x.Equals("Rejected", StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Quyết định (Decision) phải là 'Accepted' hoặc 'Rejected'.");
     }
 }
 
@@ -42,12 +53,18 @@ public sealed class ReplyComplaintCommandHandler(
             throw new DomainException("Bạn không phải chủ giải này.");
         }
 
-        complaint.Reply(userId, request.ResponseContent);
+        // 3. Chuyển string Decision sang Enum ComplaintStatus
+        var decision = Enum.Parse<ComplaintStatus>(request.Decision, true);
+
+        // Gọi hàm Reply đã được cập nhật ở Domain
+        complaint.Reply(userId, request.ResponseContent, decision);
+
         complaints.Update(complaint);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
         var distance = race.GetDistance(complaint.DistanceId);
 
+        // 4. Trả về DTO với các trường mới
         return new EventComplaintDto(
             complaint.Id,
             race.Id,
@@ -55,8 +72,11 @@ public sealed class ReplyComplaintCommandHandler(
             distance.Id,
             distance.Name,
             complaint.UserId,
+            complaint.Title,
             complaint.Content,
+            complaint.GetEvidenceLinks(),
             complaint.Status.ToString().ToLowerInvariant(),
+            "processed", // Giao diện cần trạng thái xử lý
             complaint.ResponseContent,
             complaint.CreatedAtUtc,
             complaint.RepliedAtUtc);
