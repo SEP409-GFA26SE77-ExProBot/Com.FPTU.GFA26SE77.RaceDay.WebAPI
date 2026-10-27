@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RaceDay.Modules.Event.Application.Events;
+using RaceDay.Modules.Event.Application.Disputes;
 using RaceDay.Modules.Event.Application.Events.Update;
 using RaceDay.Modules.Event.Application.Packages;
 using RaceDay.Modules.Event.Application.Registrations;
@@ -346,6 +347,24 @@ public static class EventModule
             Results.Ok(await mediator.Send(new ListMyRegistrationsQuery(), ct)))
             .WithSummary("Đăng ký của tôi (FE /my-registrations)");
 
+        userApi.MapGet("/joined/recent", async (int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListRecentJoinedEventsQuery(page ?? 1, pageSize ?? 20), ct)))
+            .WithSummary("Các giải runner đã tham gia trong 1 tháng gần đây")
+            .WithDescription("Theo ngày diễn ra giải, từ ngày UTC hiện tại lùi 1 tháng đến hôm nay (bao gồm hai đầu). Chỉ lấy đăng ký confirmed/finished; mỗi giải xuất hiện một lần. Có phân trang.")
+            .Produces<RunnerPageDto<RecentJoinedEventDto>>();
+
+        userApi.MapGet("/disputes/mine", async (int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListMyEventDisputesQuery(page ?? 1, pageSize ?? 10), ct)))
+            .WithSummary("Danh sách khiếu nại của runner đang đăng nhập (có phân trang)")
+            .Produces<RunnerPageDto<EventDisputeDto>>();
+
+        userApi.MapPost("/disputes", async (CreateEventDisputeCommand body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(body, ct);
+            return Results.Created("/api/v1/event/disputes/mine", result);
+        })
+            .WithSummary("Runner gửi khiếu nại cho giải đã tham gia trong 1 tháng gần đây")
+            .Produces<EventDisputeDto>(StatusCodes.Status201Created);
         userApi.MapGet("/leaderboards/mine", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetMyLeaderboardResultsQuery(), ct)))
             .WithSummary("Bảng xếp hạng / Thành tích cá nhân của Runner đang đăng nhập")
