@@ -12,7 +12,7 @@ public sealed class PhotoOcrSettings(IConfiguration configuration) : IPhotoOcrSe
         ParseDouble(configuration["Photo:Ocr:ThresholdReviewMin"], 0.50);
 
     public int WorkerMaxParallel =>
-        Math.Clamp(ParseInt(configuration["Photo:Ocr:WorkerMaxParallel"], 2), 1, 4);
+        Math.Clamp(ParseInt(configuration["Photo:Ocr:WorkerMaxParallel"], 3), 1, 8);
 
     public int WorkerIdleDelaySeconds =>
         Math.Clamp(ParseInt(configuration["Photo:Ocr:WorkerIdleDelaySeconds"], 5), 1, 60);

@@ -18,6 +18,9 @@ public sealed class PhotoAsset : AggregateRoot
     public PhotoStatus Status { get; private set; }
     public string? DiscardReason { get; private set; }
     public string? OcrJobId { get; private set; }
+    /// <summary>Photographer phải publish mới hiện trên search runner.</summary>
+    public bool IsPublished { get; private set; }
+    public DateTime? PublishedAtUtc { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -59,6 +62,8 @@ public sealed class PhotoAsset : AggregateRoot
             SizeBytes = sizeBytes,
             Zone = zone?.Trim(),
             Status = PhotoStatus.Pending,
+            IsPublished = false,
+            PublishedAtUtc = null,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
@@ -184,7 +189,41 @@ public sealed class PhotoAsset : AggregateRoot
     }
 
     public bool IsSearchable =>
-        Status is PhotoStatus.Matched or PhotoStatus.ManualCorrected;
+        IsPublished
+        && Status is PhotoStatus.Matched or PhotoStatus.ManualCorrected;
+
+    public bool CanPublish =>
+        !IsPublished
+        && Status is PhotoStatus.Matched or PhotoStatus.ManualCorrected;
+
+    public void Publish()
+    {
+        if (Status is not (PhotoStatus.Matched or PhotoStatus.ManualCorrected))
+        {
+            throw new DomainException("Chỉ ảnh đã khớp (matched / đã sửa BIB) mới publish được.");
+        }
+
+        if (IsPublished)
+        {
+            return;
+        }
+
+        IsPublished = true;
+        PublishedAtUtc = DateTime.UtcNow;
+        Touch();
+    }
+
+    public void Unpublish()
+    {
+        if (!IsPublished)
+        {
+            return;
+        }
+
+        IsPublished = false;
+        PublishedAtUtc = null;
+        Touch();
+    }
 
     private void ReplaceOcrTags(IReadOnlyList<(string Bib, double Confidence, string? BboxJson)> tags)
     {

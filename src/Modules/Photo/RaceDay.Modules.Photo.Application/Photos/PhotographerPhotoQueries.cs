@@ -26,31 +26,54 @@ public sealed class ListPhotographerPhotosQueryHandler(
         await BulkUploadPhotosCommandHandler.EnsurePhotographerAsync(
             request.EventId, userId, staffAccess, cancellationToken);
 
-        var statuses = request.Bucket.Trim().ToLowerInvariant() switch
+        var bucket = request.Bucket.Trim().ToLowerInvariant();
+        PhotoStatus[] statuses;
+        bool? publishedFilter = null;
+        switch (bucket)
         {
-            "pending" => new[]
-            {
-                PhotoStatus.Pending, PhotoStatus.Queued, PhotoStatus.Processing, PhotoStatus.Failed
-            },
-            // Thanh tiến trình: chỉ còn đang chờ/ chạy — Failed không tính "còn pending" (tránh treo UI).
-            "queue" => new[]
-            {
-                PhotoStatus.Pending, PhotoStatus.Queued, PhotoStatus.Processing
-            },
-            "matched" => new[] { PhotoStatus.Matched, PhotoStatus.ManualCorrected },
-            "review" => new[] { PhotoStatus.NeedsReview, PhotoStatus.RunnerReported },
-            "discarded" => new[] { PhotoStatus.Discarded },
-            _ => throw new DomainException("Bucket phải là pending|queue|matched|review|discarded.")
-        };
+            case "pending":
+                statuses =
+                [
+                    PhotoStatus.Pending, PhotoStatus.Queued, PhotoStatus.Processing, PhotoStatus.Failed
+                ];
+                break;
+            case "queue":
+                statuses =
+                [
+                    PhotoStatus.Pending, PhotoStatus.Queued, PhotoStatus.Processing
+                ];
+                break;
+            case "matched":
+                statuses = [PhotoStatus.Matched, PhotoStatus.ManualCorrected];
+                break;
+            case "ready":
+                // Đã khớp OCR/sửa tay nhưng chưa public cho runner.
+                statuses = [PhotoStatus.Matched, PhotoStatus.ManualCorrected];
+                publishedFilter = false;
+                break;
+            case "published":
+                statuses = [PhotoStatus.Matched, PhotoStatus.ManualCorrected];
+                publishedFilter = true;
+                break;
+            case "review":
+                statuses = [PhotoStatus.NeedsReview, PhotoStatus.RunnerReported];
+                break;
+            case "discarded":
+                statuses = [PhotoStatus.Discarded];
+                break;
+            default:
+                throw new DomainException(
+                    "Bucket phải là pending|queue|matched|ready|published|review|discarded.");
+        }
 
         var page = Math.Max(1, request.Page);
         var pageSize = Math.Clamp(request.PageSize, 1, 100);
         var skip = (page - 1) * pageSize;
 
         var total = await photos.CountByEventAndStatusesAsync(
-            request.EventId, statuses, cancellationToken);
+            request.EventId, statuses, cancellationToken, publishedFilter);
         var items = await photos.ListByEventAndStatusesAsync(
-            request.EventId, statuses, skip, pageSize, cancellationToken);
+            request.EventId, statuses, skip, pageSize, cancellationToken, publishedFilter);
 
         return new PagedPhotosDto(
             items.Select(PhotoDtoMapper.ToListItem).ToList(),

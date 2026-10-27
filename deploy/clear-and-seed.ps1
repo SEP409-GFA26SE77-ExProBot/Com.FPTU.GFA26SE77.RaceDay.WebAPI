@@ -71,14 +71,18 @@ for ($i = 0; $i -lt 30; $i++) {
 }
 if (-not $ok) { throw "Postgres not ready: $pg" }
 
-Write-Step "Apply clear_and_seed.sql"
-$bytes = [IO.File]::ReadAllBytes($SqlFile)
-if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
-    $bytes = $bytes[3..($bytes.Length - 1)]
-}
-[Text.Encoding]::UTF8.GetString($bytes) |
-    docker exec -i $pg psql -U postgres -d postgres -v ON_ERROR_STOP=1 | Out-Host
+# Do NOT pipe SQL through PowerShell stdin (Windows re-encodes -> mojibake).
+# Copy UTF-8 file into the container, then psql -f.
+Write-Step "Apply clear_and_seed.sql (UTF-8 docker cp)"
+$remoteSql = "/tmp/raceday_clear_and_seed.sql"
+docker cp $SqlFile "${pg}:${remoteSql}"
+if ($LASTEXITCODE -ne 0) { throw "docker cp failed" }
+
+docker exec -e PGCLIENTENCODING=UTF8 $pg `
+    psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f $remoteSql | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "psql failed (exit $LASTEXITCODE)" }
+
+docker exec $pg rm -f $remoteSql 2>$null | Out-Null
 
 if ($mongo) {
     Write-Step "Clear Mongo audit_entries"

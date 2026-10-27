@@ -14,11 +14,13 @@ public interface IPhotoAssetRepository
         IReadOnlyCollection<PhotoStatus> statuses,
         int skip,
         int take,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool? isPublished = null);
     Task<int> CountByEventAndStatusesAsync(
         Guid eventId,
         IReadOnlyCollection<PhotoStatus> statuses,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool? isPublished = null);
     Task<IReadOnlyList<PhotoAsset>> ListPendingForProcessAsync(
         Guid eventId,
         int take,
@@ -93,3 +95,13 @@ public interface IOcrClient
         IReadOnlyList<string>? rosterBibs,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>Server-side fetch ảnh (bypass CORS trình duyệt) để runner tải về.</summary>
+public interface IPhotoContentFetcher
+{
+    Task<PhotoContentBytes> FetchAsync(string fileUrl, CancellationToken cancellationToken = default);
+}
+
+public sealed record PhotoContentBytes(
+    byte[] Content,
+    string ContentType);

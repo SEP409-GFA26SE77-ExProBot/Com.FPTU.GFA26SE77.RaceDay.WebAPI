@@ -48,8 +48,12 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-step "Apply clear_and_seed.sql"
-docker exec -i "$PG" psql -U postgres -d postgres -v ON_ERROR_STOP=1 < "$SQL_FILE"
+step "Apply clear_and_seed.sql (UTF-8 via docker cp)"
+REMOTE_SQL="/tmp/raceday_clear_and_seed.sql"
+docker cp "$SQL_FILE" "$PG:$REMOTE_SQL"
+docker exec -e PGCLIENTENCODING=UTF8 "$PG" \
+  psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$REMOTE_SQL"
+docker exec "$PG" rm -f "$REMOTE_SQL" >/dev/null 2>&1 || true
 
 if [[ -n "$MONGO" ]]; then
   step "Clear Mongo audit_entries"

@@ -16,7 +16,9 @@ public sealed record PhotoListItemDto(
     string? Zone,
     IReadOnlyList<PhotoTagDto> Tags,
     DateTime CreatedAtUtc,
-    string? DiscardReason = null);
+    string? DiscardReason = null,
+    bool IsPublished = false,
+    DateTime? PublishedAtUtc = null);
 
 public sealed record PhotoDetailDto(
     Guid Id,
@@ -28,7 +30,11 @@ public sealed record PhotoDetailDto(
     string? DiscardReason,
     IReadOnlyList<PhotoTagDto> Tags,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    bool IsPublished = false,
+    DateTime? PublishedAtUtc = null);
+
+public sealed record PublishPhotosResultDto(int PublishedCount);
 
 public sealed record BulkUploadResultDto(
     int Accepted,
@@ -72,7 +78,9 @@ public static class PhotoDtoMapper
             t.Source == PhotoTagSource.Manual ? "manual" : "ocr",
             t.BboxJson)).ToList(),
         p.CreatedAtUtc,
-        p.DiscardReason);
+        p.DiscardReason,
+        p.IsPublished,
+        p.PublishedAtUtc);
 
     public static PhotoDetailDto ToDetail(PhotoAsset p) => new(
         p.Id,
@@ -88,5 +96,7 @@ public static class PhotoDtoMapper
             t.Source == PhotoTagSource.Manual ? "manual" : "ocr",
             t.BboxJson)).ToList(),
         p.CreatedAtUtc,
-        p.UpdatedAtUtc);
+        p.UpdatedAtUtc,
+        p.IsPublished,
+        p.PublishedAtUtc);
 }
