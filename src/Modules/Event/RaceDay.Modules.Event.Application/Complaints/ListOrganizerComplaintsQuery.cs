@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediatR;
+using FluentValidation;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
@@ -19,6 +20,19 @@ public sealed record ListOrganizerComplaintsQuery(
     int Page,
     int PageSize) : IRequest<OrganizerComplaintsPagedDto>;
 
+public sealed class ListOrganizerComplaintsQueryValidator : AbstractValidator<ListOrganizerComplaintsQuery>
+{
+    public ListOrganizerComplaintsQueryValidator()
+    {
+        RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000);
+        RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
+        RuleFor(x => x.Status).Must(ComplaintFilterValidation.IsValidStatus)
+            .WithMessage("Trạng thái phải là Pending, Accepted hoặc Rejected.");
+        RuleFor(x => x).Must(x => !x.FromDate.HasValue || !x.ToDate.HasValue || x.FromDate <= x.ToDate)
+            .WithMessage("Ngày kết thúc phải từ ngày bắt đầu trở đi.");
+    }
+}
+
 public sealed class ListOrganizerComplaintsQueryHandler(
     IRaceEventRepository events,
     IEventComplaintRepository complaints,
@@ -31,15 +45,16 @@ public sealed class ListOrganizerComplaintsQueryHandler(
         var targetEventIds = new List<Guid>();
 
         // 2. Xác định danh sách EventId hợp lệ mà Organizer/Admin được phép xem
-        if (request.EventId.HasValue)
+        if (currentUser.IsAdmin && request.EventId.HasValue)
         {
             targetEventIds.Add(request.EventId.Value);
         }
         else if (!currentUser.IsAdmin)
         {
-            // Nếu không phải Admin và không truyền EventId: Lấy các giải của Organizer này
+            // Luôn đối chiếu EventId được lọc với các giải của chính Organizer.
             var myEvents = await events.ListByOrganizerAsync(userId, cancellationToken);
-            targetEventIds = myEvents.Select(e => e.Id).ToList();
+            targetEventIds = myEvents.Where(e => !request.EventId.HasValue || e.Id == request.EventId.Value)
+                .Select(e => e.Id).ToList();
 
             // Nếu Organizer chưa có giải nào, trả về danh sách rỗng luôn
             if (targetEventIds.Count == 0)
@@ -64,7 +79,7 @@ public sealed class ListOrganizerComplaintsQueryHandler(
         // 4. Map dữ liệu sang DTO (Bổ sung Title, EvidenceLinks, ProcessingStatus)
         foreach (var c in dbItems)
         {
-            var race = await events.GetByIdAsync(c.EventId, cancellationToken);
+            var race = await events.GetByIdWithDetailsAsync(c.EventId, cancellationToken);
             string distanceName = "N/A";
             try
             {

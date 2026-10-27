@@ -32,8 +32,12 @@ public sealed class CreateComplaintCommandValidator : AbstractValidator<CreateCo
 
         // Validate giới hạn tối đa 5 link bằng chứng
         RuleFor(x => x.EvidenceLinks)
-            .Must(x => x == null || x.Count <= 5)
-            .WithMessage("Chỉ được phép đính kèm tối đa 5 link bằng chứng.");
+            .Must(x => x is { Count: >= 1 and <= 5 })
+            .WithMessage("Cần từ 1 đến 5 link bằng chứng.");
+        RuleForEach(x => x.EvidenceLinks).Must(link =>
+            Uri.TryCreate(link, UriKind.Absolute, out var uri)
+            && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            .WithMessage("Link bằng chứng phải là URL http hoặc https hợp lệ.");
     }
 }
 
