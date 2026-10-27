@@ -1,27 +1,40 @@
 ﻿using MediatR;
 using RaceDay.Modules.Event.Application.Abstractions;
+using FluentValidation;
+using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Certificates;
 
-public sealed record GetRunnerCertificateQuery(Guid RegistrationId) : IRequest<CertificateDataDto>;
+public sealed record GetRunnerCertificateQuery(Guid EventId) : IRequest<CertificateDataDto>;
+
+public sealed class GetRunnerCertificateQueryValidator : AbstractValidator<GetRunnerCertificateQuery>
+{
+    public GetRunnerCertificateQueryValidator()
+    {
+        RuleFor(x => x.EventId).NotEmpty().WithMessage("EventId không hợp lệ.");
+    }
+}
 
 public sealed class GetRunnerCertificateQueryHandler(
     IEventRegistrationRepository registrations,
-    IRaceEventRepository events)
+    IRaceEventRepository events,
+    ICurrentUserAccessor currentUser)
     : IRequestHandler<GetRunnerCertificateQuery, CertificateDataDto>
 {
     public async Task<CertificateDataDto> Handle(GetRunnerCertificateQuery request, CancellationToken cancellationToken)
     {
-        // 1. Lấy thông tin đăng ký của VĐV
-        var reg = await registrations.GetByIdAsync(request.RegistrationId, cancellationToken)
-            ?? throw new DomainException("Không tìm thấy thông tin đăng ký của vận động viên.");
+        var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập để tải giấy chứng nhận.");
+        if (userId == Guid.Empty)
+            throw new DomainException("Cần đăng nhập để tải giấy chứng nhận.");
 
-        // 2. Kiểm tra xem VĐV đã hoàn thành (Finished) chưa
-        if (reg.Status.ToString() != "Finished" || reg.FinishedAtUtc == null)
+        var reg = await registrations.GetFinishedByEventAndUserAsync(request.EventId, userId, cancellationToken)
+            ?? throw new DomainException("Bạn chưa hoàn thành giải chạy này, không thể tải giấy chứng nhận.");
+
+        if (reg.Status != RegistrationStatus.Finished || reg.FinishedAtUtc is null)
         {
-            throw new DomainException("Vận động viên chưa hoàn thành giải đấu, không thể xuất giấy chứng nhận.");
+            throw new DomainException("Bạn chưa hoàn thành giải chạy này, không thể tải giấy chứng nhận.");
         }
 
         // 3. Lấy thông tin giải đấu và cự ly

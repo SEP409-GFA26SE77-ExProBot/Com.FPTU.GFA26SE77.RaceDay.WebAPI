@@ -405,13 +405,13 @@ public static class EventModule
             .WithDescription("Body: { eventId, bib, distanceId }.")
             .Produces<FinishResultDto>(StatusCodes.Status200OK);
         // Endpoint tải giấy chứng nhận hoàn thành của VĐV dưới dạng file PDF
-        userApi.MapGet("/registrations/{registrationId:guid}/certificate", async (
-            Guid registrationId,
+        userApi.MapGet("/certificate", async (
+            [FromQuery] Guid eventId,
             IMediator mediator,
             ICertificatePdfService pdfService,
             CancellationToken ct) =>
         {
-            var certData = await mediator.Send(new GetRunnerCertificateQuery(registrationId), ct);
+            var certData = await mediator.Send(new GetRunnerCertificateQuery(eventId), ct);
             var pdfBytes = pdfService.GenerateCertificatePdf(certData);
 
             string safeName = certData.RunnerName.Replace(" ", "_");
@@ -420,7 +420,10 @@ public static class EventModule
             return Results.File(pdfBytes, "application/pdf", fileName);
         })
         .WithSummary("Tải giấy chứng nhận hoàn thành giải chạy (PDF)")
-        .WithDescription("Chỉ VĐV đã hoàn thành (Finished) mới gọi được API này để tải chứng nhận thành tích cá nhân.");
+        .WithDescription("Query: eventId. UserId lấy từ token đăng nhập. Mọi vai trò (User/Runner/Organizer/...) đều có thể tải chứng nhận nếu chính tài khoản đó đã hoàn thành (Finished) giải này; nếu chưa hoàn thành trả về lỗi 400.")
+        .Produces(StatusCodes.Status200OK, contentType: "application/pdf")
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized);
         userApi.MapPost("/check-in", async (CheckInRequestDto body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
                 new CheckInRegistrationCommand(body.EventId, body.Bib, body.QrPayload), ct)))
