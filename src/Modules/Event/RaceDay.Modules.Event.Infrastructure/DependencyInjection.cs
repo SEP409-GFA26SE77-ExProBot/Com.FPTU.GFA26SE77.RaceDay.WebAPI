@@ -1,14 +1,18 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Application.Abstractions;
+using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Application.Packages;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Packages;
+using RaceDay.Modules.Event.Domain.Supplies;
 using RaceDay.Modules.Event.Infrastructure.Packages;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
+using RaceDay.Modules.Event.Infrastructure.Persistence.Repositories;
 using RaceDay.Modules.Event.Infrastructure.Repositories;
 
 namespace RaceDay.Modules.Event.Infrastructure;
@@ -30,16 +34,31 @@ public static class DependencyInjection
         services.AddScoped<IPackageDurationOptionRepository, PackageDurationOptionRepository>();
         services.AddScoped<IPackageCapacityOptionRepository, PackageCapacityOptionRepository>();
         services.AddScoped<IEventStaffMemberRepository, EventStaffMemberRepository>();
+        services.AddScoped<IEventSupplyItemRepository, EventSupplyItemRepository>();
+        services.AddScoped<IEventDisputeRepository, EventDisputeRepository>();
+        services.AddScoped<IRecentJoinedEventQuery, RaceDay.Modules.Event.Infrastructure.Events.RecentJoinedEventQuery>();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<PackagePricingService>();
         services.AddScoped<IEventUnitOfWork, EventUnitOfWork>();
         services.AddHostedService<PackageExpiryLockHostedService>();
         services.AddHostedService<RegistrationWindowHostedService>();
+        services.AddScoped<IEventComplaintRepository, EventComplaintRepository>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Registrations.IRegistrationCheckoutInfoQuery,
             RaceDay.Modules.Event.Infrastructure.Registrations.RegistrationCheckoutInfoQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Packages.IPackageCheckoutInfoQuery,
             PackageCheckoutInfoQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventDistanceAccessQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventDistanceAccessQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventOrganizerAccessQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventOrganizerAccessQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventStaffAccessQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventStaffAccessQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventBibRosterQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventBibRosterQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IRunnerRaceDayQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.RunnerRaceDayQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventSosOpsAccessQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventSosOpsAccessQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IEventFinanceQuery,
             RaceDay.Modules.Event.Infrastructure.Finance.EventFinanceQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IRegistrationCapacityPort,
@@ -81,8 +100,30 @@ public sealed class EventDataSeeder(
             {
                 await SeedPromoCodesAsync(db, cancellationToken);
                 await SeedPackageOptionsAsync(db, cancellationToken);
-                // Demo events + R2 media refresh tắt — tránh tạo lại event/banner sau wipe sạch.
-                logger.LogInformation("Event schema migrated + promo/package seed checked.");
+
+                // Demo Quy Nhon/Sa Pa + leaderboard: tắt mặc định — dùng deploy/scripts/clear-and-seed
+                // (RaceDay Grand Marathon). Bật lại: Event__SeedDemoEvents=true
+                // Default false — clear-and-seed owns demo data. Opt-in: Event__SeedDemoEvents=true
+                var cfg = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+                var seedDemo = bool.TryParse(cfg["Event:SeedDemoEvents"], out var demoFlag) && demoFlag;
+                if (seedDemo)
+                {
+                    try
+                    {
+                        await SeedDemoEventsAsync(db, cancellationToken);
+                        await SeedLeaderboardDataAsync(db, cancellationToken);
+                    }
+                    catch (Exception demoEx)
+                    {
+                        logger.LogError(demoEx, "Event demo/leaderboard seed failed (tiếp tục supplies seed).");
+                    }
+                }
+
+                await NormalizeDistanceLeaderboardTypesAsync(db, cancellationToken);
+                await SeedDemoSuppliesAsync(db, cancellationToken);
+                logger.LogInformation(
+                    "Event schema migrated + promo/package/supplies seed checked (SeedDemoEvents={SeedDemo}).",
+                    seedDemo);
             }
             catch (Exception seedEx)
             {
@@ -98,6 +139,76 @@ public sealed class EventDataSeeder(
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>
+    /// Backfill Type chip BXH từ km (road/5K/21K… → 5KM/HM). Không đụng DistanceKm / map.
+    /// </summary>
+    private static async Task NormalizeDistanceLeaderboardTypesAsync(EventDbContext db, CancellationToken ct)
+    {
+        var rows = await db.Distances.ToListAsync(ct);
+        var changed = 0;
+        foreach (var d in rows)
+        {
+            var next = DistanceLeaderboardTypes.Normalize(d.Type, d.DistanceKm);
+            if (string.Equals(d.Type, next, StringComparison.Ordinal))
+                continue;
+            d.UpdateDetails(d.Name, d.DistanceKm, d.Capacity, d.Price, d.StartAt, d.EndAt, next, d.Color);
+            changed++;
+        }
+
+        if (changed > 0)
+            await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Seed vật phẩm tiếp tế mặc định (khớp FE DEFAULT_SUPPLIES / screenshot) cho mọi giải
+    /// chưa có dòng nào — idempotent.
+    /// </summary>
+    private static async Task SeedDemoSuppliesAsync(EventDbContext db, CancellationToken ct)
+    {
+        var eventIds = await db.RaceEvents.AsNoTracking().Select(x => x.Id).ToListAsync(ct);
+        if (eventIds.Count == 0)
+        {
+            return;
+        }
+
+        (string Name, int Qty, string Notes)[] defaults =
+        [
+            ("Nước khoáng thiên nhiên 500ml", 80,
+                "Thùng 24 chai. Phân bổ đồng đều cho các trạm tiếp nước."),
+            ("Nước điện giải thể thao Pocari Sweat 500ml", 50,
+                "Thùng 24 chai. Cần chuẩn bị thùng xốp ướp đá lạnh."),
+            ("Chuối tiêu chín tiếp sức VĐV", 30,
+                "Thùng 15kg quả chín vừa, chia đều cho trạm giữa và vạch đích."),
+            ("Gel năng lượng chạy bộ thể thao", 12,
+                "Thùng 24 gói. Kiểm tra hạn sử dụng trước khi giao nhận."),
+            ("Bình xịt lạnh giảm đau & Dụng cụ y tế", 6,
+                "Thùng 12 bình xịt lạnh + bông băng thun co giãn sơ cứu."),
+        ];
+
+        var added = 0;
+        foreach (var eventId in eventIds)
+        {
+            if (await db.SupplyItems.AnyAsync(x => x.EventId == eventId, ct))
+            {
+                continue;
+            }
+
+            for (var i = 0; i < defaults.Length; i++)
+            {
+                var row = defaults[i];
+                await db.SupplyItems.AddAsync(
+                    EventSupplyItem.Create(eventId, row.Name, row.Qty, EventSupplyItem.DefaultUnit, row.Notes, i),
+                    ct);
+                added++;
+            }
+        }
+
+        if (added > 0)
+        {
+            await db.SaveChangesAsync(ct);
+        }
+    }
 
     private static async Task SeedPromoCodesAsync(EventDbContext db, CancellationToken ct)
     {
@@ -310,16 +421,13 @@ public sealed class EventDataSeeder(
 
     private static List<EventDistance> BuildQuyNhonDistances(Guid eventId)
     {
-        var start = new NamedGeoPoint("Start Quy Nhơn", 13.782967, 109.219663);
-        var finish = new NamedGeoPoint("Finish Quy Nhơn", 13.782967, 109.219663);
-
-        var d5 = EventDistance.Create(eventId, "5K", "Fun Run 5K", 5, 15, 12, 0, 4000, 450_000m, "VND", "#22c55e", start, finish, "{}");
+        var d5 = EventDistance.Create(eventId, "Fun Run 5K", 5, 4000, 450_000m, "#22c55e", type: "5KM", routeGeometryJson: "{}");
         SetId(d5, DemoDist5k);
-        var d10 = EventDistance.Create(eventId, "10K", "City 10K", 10, 30, 18, 0, 3500, 650_000m, "VND", "#0ea5e9", start, finish, "{}");
+        var d10 = EventDistance.Create(eventId, "City 10K", 10, 3500, 650_000m, "#0ea5e9", type: "10KM", routeGeometryJson: "{}");
         SetId(d10, DemoDist10k);
-        var d21 = EventDistance.Create(eventId, "21K", "Half Marathon", 21.1, 80, 35, 0, 2500, 990_000m, "VND", "#F59E0B", start, finish, "{}");
+        var d21 = EventDistance.Create(eventId, "Half Marathon", 21.1, 2500, 990_000m, "#F59E0B", type: "HM", routeGeometryJson: "{}");
         SetId(d21, DemoDist21k);
-        var d42 = EventDistance.Create(eventId, "42K", "Full Marathon", 42.195, 150, 40, 0, 2000, 1_450_000m, "VND", "#EF4444", start, finish, "{}");
+        var d42 = EventDistance.Create(eventId, "Full Marathon", 42.195, 2000, 1_450_000m, "#EF4444", type: "M", routeGeometryJson: "{}");
         SetId(d42, DemoDist42k);
         return [d5, d10, d21, d42];
     }
@@ -331,41 +439,28 @@ public sealed class EventDataSeeder(
             return;
         }
 
-        // Raw SQL — tránh EF OwnsOne StartLocation null khi Add Distances tách khỏi aggregate.
         await db.Database.ExecuteSqlRawAsync(
             """
             INSERT INTO event.event_distances (
                 "Id", "EventId", "Type", "Name", "DistanceKm",
-                "ElevationGainM", "MaxElevationM", "MinElevationM",
                 "Capacity", "RegisteredCount", "Price", "Currency", "Color",
-                start_name, start_lat, start_lng, finish_name, finish_lat, finish_lng,
                 "RouteGeometryJson"
             ) VALUES
             ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1', {0}, '5K', 'Fun Run 5K', 5,
-             15, 12, 0, 4000, 0, 450000, 'VND', '#22c55e',
-             'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{{}}'::jsonb),
+             4000, 0, 450000, 'VND', '#22c55e', '{{}}'::jsonb),
             ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2', {0}, '10K', 'City 10K', 10,
-             30, 18, 0, 3500, 0, 650000, 'VND', '#0ea5e9',
-             'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.7855, 109.221, '{{}}'::jsonb),
+             3500, 0, 650000, 'VND', '#0ea5e9', '{{}}'::jsonb),
             ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb4', {0}, '21K', 'Half Marathon', 21.1,
-             80, 35, 0, 2500, 0, 990000, 'VND', '#F59E0B',
-             'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{{}}'::jsonb),
+             2500, 0, 990000, 'VND', '#F59E0B', '{{}}'::jsonb),
             ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb5', {0}, '42K', 'Full Marathon', 42.195,
-             150, 40, 0, 2000, 0, 1450000, 'VND', '#EF4444',
-             'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{{}}'::jsonb)
+             2000, 0, 1450000, 'VND', '#EF4444', '{{}}'::jsonb)
             ON CONFLICT ("Id") DO UPDATE SET
                 "Name" = EXCLUDED."Name",
                 "Price" = EXCLUDED."Price",
                 "Type" = EXCLUDED."Type",
                 "DistanceKm" = EXCLUDED."DistanceKm",
                 "Capacity" = EXCLUDED."Capacity",
-                "Color" = EXCLUDED."Color",
-                start_name = EXCLUDED.start_name,
-                start_lat = EXCLUDED.start_lat,
-                start_lng = EXCLUDED.start_lng,
-                finish_name = EXCLUDED.finish_name,
-                finish_lat = EXCLUDED.finish_lat,
-                finish_lng = EXCLUDED.finish_lng
+                "Color" = EXCLUDED."Color"
             """,
             DemoEventQuyNhonId);
     }
@@ -399,10 +494,7 @@ public sealed class EventDataSeeder(
 
         SetId(sapa, DemoEventSapaId);
         var s21 = EventDistance.Create(
-            sapa.Id, "21K", "Cloud Valley", 21, 980, 2150, 1450, 800, 900_000m, "VND", "#F59E0B",
-            new NamedGeoPoint("Sa Pa Square", 22.3364, 103.8438),
-            new NamedGeoPoint("Sa Pa Square", 22.3364, 103.8438),
-            "{}");
+            sapa.Id, "Cloud Valley", 21, 800, 900_000m, "#F59E0B", type: "HM", routeGeometryJson: "{}");
         SetId(s21, DemoDistSapa21k);
         sapa.ReplaceDistances([s21]);
         sapa.ReplaceDocuments([
@@ -422,5 +514,36 @@ public sealed class EventDataSeeder(
         var prop = entity.GetType().GetProperty("Id")
                    ?? throw new InvalidOperationException("Entity missing Id");
         prop.SetValue(entity, id);
+    }
+    private static async Task SeedLeaderboardDataAsync(EventDbContext db, CancellationToken ct)
+    {
+        if (await db.Registrations.AnyAsync(r => r.EventId == DemoEventQuyNhonId
+            && r.DistanceId == DemoDist5k
+            && r.FullName.StartsWith("Runner Test Leaderboard"), ct))
+        {
+            return;
+        }
+
+        var runners = new List<RaceDay.Modules.Event.Domain.Registrations.EventRegistration>();
+        var startTime = DateTime.UtcNow.AddHours(-1);
+
+        for (int i = 1; i <= 5; i++)
+        {
+            var reg = RaceDay.Modules.Event.Domain.Registrations.EventRegistration.Create(
+                DemoEventQuyNhonId, DemoDist5k, Guid.NewGuid(),
+                $"Runner Test Leaderboard {i}", $"runner{i}@leaderboard.test", "0901234567",
+                null, null, null, null, null, null, null, null, null, null, null, "[]", null, null, true);
+
+            reg.Confirm($"BIB500{i}");
+            reg.Start(startTime);
+
+            long resultSeconds = 1500 + (i * 120);
+            reg.Finish(startTime.AddSeconds(resultSeconds), resultSeconds);
+
+            runners.Add(reg);
+        }
+
+        db.Registrations.AddRange(runners);
+        await db.SaveChangesAsync(ct);
     }
 }

@@ -182,6 +182,11 @@ namespace RaceDay.Modules.Iam.Infrastructure.Persistence.Migrations
                         .HasColumnType("smallint")
                         .HasColumnName("gender");
 
+                    b.Property<string>("IdNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("id_number");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(255)

@@ -10,8 +10,13 @@ using RaceDay.Modules.Iam.Application.Auth.Register;
 using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Map.Api;
 using RaceDay.Modules.Map.Application.Courses;
+using RaceDay.Modules.Device.Api;
+using RaceDay.Modules.Device.Application.Auth;
+using RaceDay.Modules.Photo.Api;
+using RaceDay.Modules.Photo.Application.Photos;
 using RaceDay.Modules.Payment.Api;
 using RaceDay.Modules.Payment.Application;
+using RaceDay.Modules.RaceMonitoring.Api;
 using RaceDay.Shared.Infrastructure;
 using RaceDay.Shared.Web;
 using RaceDay.Shared.Web.OpenApi;
@@ -31,6 +36,8 @@ builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(CreateCheckoutCommand).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(GetCourseQuery).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(GetOrganizerWalletQuery).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(RequestDeviceCodeCommand).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(BulkUploadPhotosCommand).Assembly);
 });
 
 builder.Services.AddCors(options =>
@@ -54,6 +61,9 @@ builder.Services.AddAuditLogModule(builder.Configuration);
 builder.Services.AddPaymentModule(builder.Configuration);
 builder.Services.AddMapModule(builder.Configuration);
 builder.Services.AddFinanceModule(builder.Configuration);
+builder.Services.AddDeviceModule(builder.Configuration);
+builder.Services.AddPhotoModule(builder.Configuration);
+builder.Services.AddRaceMonitoringModule(builder.Configuration);
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -97,6 +107,19 @@ builder.Services.AddSwaggerGen(options =>
             2. Organizer xin rút → Admin `.../finance/admin/payouts/{id}/approve`
             3. Runner hoàn: `POST /api/v1/finance/runner/refunds` (số tiền = payment.Amount × % policy)
             4. Organizer reject đăng ký đã trả → hoàn 100% tự động
+
+            ### G. Device (Wear Device Flow + SOS)
+            1. Watch: `POST /api/v1/device/auth/code` → QR
+            2. Runner phone: `GET/POST /api/v1/device/link/{userCode}`
+            3. Watch poll: `POST /api/v1/device/auth/token` → JWT scope `sos:create`
+            4. Watch: `POST /api/v1/device/sos` (+ locations)
+            Docs: `docs/Device_Wear_SOS_API_Flows.md`
+
+            ### H. Photo (photographer + OCR + runner search)
+            1. Staff Photographer Active trên event (invite → login)
+            2. `POST /api/v1/photo/photographer/events/{id}/photos/bulk-upload` → 202 Pending
+            3. `POST .../photos/process` → Queued → OCR worker → callback `/internal/photos/{id}/ocr-result`
+            4. Runner: `GET /api/v1/photo/photos?eventId=&bib=`
 
             Docs: `docs/RaceDay_API_Guide.docx` ← sync từ `docs/RaceDay_API_Flows.md` + `docs/api-samples/`
             """
@@ -175,6 +198,9 @@ app.MapAuditLogEndpoints();
 app.MapPaymentEndpoints();
 app.MapMapEndpoints();
 app.MapFinanceEndpoints();
+app.MapDeviceEndpoints();
+app.MapPhotoEndpoints();
+app.MapRaceMonitoringEndpoints();
 
 app.Run();
 

@@ -1,6 +1,6 @@
 # RaceDay WebAPI — Modular Monolith
 
-.NET 10 modular monolith: Shared kernel + feature modules (IAM, Event, Payment, AuditLog) + YARP API Gateway.
+.NET 10 modular monolith: Shared kernel + feature modules (IAM, Event, Payment, AuditLog, RaceMonitoring) + YARP API Gateway.
 
 Open **`RaceDay.slnx`** (không dùng legacy `WebApplication1`).
 
@@ -33,6 +33,7 @@ SEP_WebAPI/
 │   │   ├── Event/               # Giải + đăng ký — schema `event`
 │   │   ├── Payment/             # PayOS checkout — schema `payment`
 │   │   ├── AuditLog/            # Audit — MongoDB
+│   │   ├── RaceMonitoring/      # Giám sát giải — scaffold, chưa có schema
 │   │   └── _Template/           # Copy khi tạo module mới
 │   ├── Hosts/RaceDay.Api/       # Composition root (chạy API :5080)
 │   └── Gateways/RaceDay.ApiGateway/  # YARP public edge (:5000)
@@ -223,6 +224,7 @@ Flow FE: **upload trước** → lấy `fileUrl` → mới gọi create event / 
 | Event | PostgreSQL + EF + UoW | `event` |
 | Payment | PostgreSQL + EF + UoW | `payment` |
 | AuditLog | MongoDB | database `raceday` |
+| RaceMonitoring | PostgreSQL packages sẵn, chưa gắn DbContext | schema chưa tạo |
 | Cache | Redis | — |
 | Bus | RabbitMQ (+ MediatR in-process) | — |
 

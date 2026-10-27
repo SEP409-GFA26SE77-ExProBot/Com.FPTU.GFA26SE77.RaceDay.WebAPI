@@ -146,7 +146,7 @@ public sealed class CreateRegistrationCommandValidator : AbstractValidator<Creat
         RuleFor(x => x.Phone).NotEmpty().MaximumLength(20).VietnamPhone();
         RuleFor(x => x.DateOfBirth).DateOfBirth();
         RuleFor(x => x.Gender).MaximumLength(20).OptionalGenderLabel();
-        RuleFor(x => x.IdNumber).MaximumLength(20).OptionalIdNumber();
+        RuleFor(x => x.IdNumber).MaximumLength(30).OptionalIdNumber();
         RuleFor(x => x.HeightCm).OptionalHeightCm();
         RuleFor(x => x.WeightKg).OptionalWeightKg();
         RuleFor(x => x.BloodType).MaximumLength(10).OptionalBloodType();
@@ -377,17 +377,42 @@ public sealed class ApproveRegistrationCommandHandler(
             throw new DomainException("Bạn không phải chủ giải này.");
         }
 
-        var bib = request.BibNumber;
-        if (string.IsNullOrWhiteSpace(bib))
+        EventDistance distance;
+        try
         {
-            bib = await registrations.NextBibNumberAsync(reg.EventId, cancellationToken);
+            distance = race.GetDistance(reg.DistanceId);
+        }
+        catch (DomainException)
+        {
+            throw new DomainException("Không tìm thấy cự ly của đăng ký — không thể cấp BIB.");
+        }
+
+        if (!distance.HasBibRange)
+        {
+            throw new DomainException(
+                $"Cự ly «{distance.Name}» chưa cấu hình dải BIB. " +
+                "Vào Cấu hình BIB theo cự ly — hệ thống không tự cấp 1001…");
+        }
+
+        string bib;
+        if (string.IsNullOrWhiteSpace(request.BibNumber))
+        {
+            bib = await registrations.NextBibNumberAsync(
+                reg.EventId, reg.DistanceId, cancellationToken);
+        }
+        else
+        {
+            bib = distance.NormalizeAssignedBib(request.BibNumber);
+            var clash = await registrations.GetByEventAndBibAsync(
+                reg.EventId, bib, cancellationToken);
+            if (clash is not null && clash.Id != reg.Id)
+            {
+                throw new DomainException($"BIB {bib} đã được cấp cho VĐV khác trên giải này.");
+            }
         }
 
         reg.Confirm(bib);
         registrations.Update(reg);
-
-        EventDistance? distance = null;
-        try { distance = race.GetDistance(reg.DistanceId); } catch { /* ignore */ }
 
         var ticketCode = RegistrationEmailTemplates.BuildTicketCode(reg);
         var qrJson = RegistrationEmailTemplates.BuildQrJson(reg, distance);
@@ -399,11 +424,6 @@ public sealed class ApproveRegistrationCommandHandler(
 
         try
         {
-            if (distance is null)
-            {
-                throw new DomainException("Không tìm thấy cự ly của đăng ký.");
-            }
-
             await emailSender.SendAsync(
                 RegistrationEmailTemplates.TicketConfirmed(reg, race, distance, ticketCode, qrJson),
                 cancellationToken);
@@ -503,7 +523,7 @@ public sealed class ResubmitRejectedRegistrationCommandValidator
         RuleFor(x => x.Phone).NotEmpty().MaximumLength(20).VietnamPhone();
         RuleFor(x => x.DateOfBirth).DateOfBirth();
         RuleFor(x => x.Gender).MaximumLength(20).OptionalGenderLabel();
-        RuleFor(x => x.IdNumber).MaximumLength(20).OptionalIdNumber();
+        RuleFor(x => x.IdNumber).MaximumLength(30).OptionalIdNumber();
         RuleFor(x => x.HeightCm).OptionalHeightCm();
         RuleFor(x => x.WeightKg).OptionalWeightKg();
         RuleFor(x => x.BloodType).MaximumLength(10).OptionalBloodType();

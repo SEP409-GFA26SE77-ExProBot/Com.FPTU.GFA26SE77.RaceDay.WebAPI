@@ -17,7 +17,8 @@ public sealed record UserDto(
     string? ProfileDescription,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    string? AvatarUrl = null);
+    string? AvatarUrl = null,
+    string? IdNumber = null);
 
 internal static class UserDtoMapper
 {
@@ -36,5 +37,6 @@ internal static class UserDtoMapper
         user.Profile?.Description,
         user.CreatedAt,
         user.UpdatedAt,
-        user.Profile?.AvatarUrl);
+        user.Profile?.AvatarUrl,
+        user.IdNumber);
 }

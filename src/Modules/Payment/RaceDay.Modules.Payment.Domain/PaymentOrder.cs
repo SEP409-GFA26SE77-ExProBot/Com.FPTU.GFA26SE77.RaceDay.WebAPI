@@ -249,7 +249,29 @@ public sealed class PaymentOrder : AggregateRoot
             throw new DomainException("Không hủy payment đã paid.");
         }
 
+        if (Status == PaymentStatus.Cancelled)
+        {
+            return;
+        }
+
         Status = PaymentStatus.Cancelled;
+        Touch();
+    }
+
+    /// <summary>PayOS link/QR hết hạn hoặc TTL nội bộ — không tái dùng CheckoutUrl.</summary>
+    public void MarkExpired()
+    {
+        if (Status == PaymentStatus.Paid)
+        {
+            throw new DomainException("Không đánh hết hạn payment đã paid.");
+        }
+
+        if (Status is PaymentStatus.Expired or PaymentStatus.Cancelled or PaymentStatus.Refunded)
+        {
+            return;
+        }
+
+        Status = PaymentStatus.Expired;
         Touch();
     }
 

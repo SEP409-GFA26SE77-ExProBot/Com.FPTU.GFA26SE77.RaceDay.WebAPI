@@ -1,4 +1,5 @@
 using FluentValidation;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -35,6 +36,21 @@ public static class IamModule
         // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddValidatorsFromAssembly(typeof(RegisterUserCommand).Assembly);
         services.AddIamInfrastructure(configuration);
+        services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
+        {
+            var previous = options.Events.OnTokenValidated;
+            options.Events.OnTokenValidated = async context =>
+            {
+                if (previous is not null)
+                {
+                    await previous(context);
+                }
+                if (context.Result?.Failure is null)
+                {
+                    await CurrentAccountValidation.ValidateAsync(context);
+                }
+            };
+        });
         return services;
     }
 
@@ -87,74 +103,81 @@ public static class IamModule
         .WithSummary("Đặt lại mật khẩu bằng OTP");
 
         publicApi.MapPost("/auth/change-password", async (ChangePasswordCommand command, IMediator mediator, CancellationToken ct) =>
-            {
-                await mediator.Send(command, ct);
-                return Results.Ok(new { message = "Đã đổi mật khẩu thành công." });
-            })
+        {
+            await mediator.Send(command, ct);
+            return Results.Ok(new { message = "Đã đổi mật khẩu thành công." });
+        })
             .RequireAuthorization(AuthPolicies.PublicUser)
             .WithSummary("Đổi mật khẩu (cần JWT)");
 
         publicApi.MapGet("/me", async (IMediator mediator, CancellationToken ct) =>
-            {
-                var result = await mediator.Send(new GetMyProfileQuery(), ct);
-                return Results.Ok(result);
-            })
+        {
+            var result = await mediator.Send(new GetMyProfileQuery(), ct);
+            return Results.Ok(result);
+        })
             .RequireAuthorization(AuthPolicies.PublicUser)
             .WithSummary("Hồ sơ user đang đăng nhập");
 
         publicApi.MapPut("/me", async (UpdateMyProfileBody body, IMediator mediator, CancellationToken ct) =>
-            {
-                var result = await mediator.Send(new UpdateMyProfileCommand(
-                    body.FullName,
-                    body.Phone,
-                    body.DateOfBirth,
-                    body.Gender,
-                    body.AvatarUrl), ct);
-                return Results.Ok(result);
-            })
+        {
+            // CÁCH SỬA LỖI CS1503: Sử dụng Named Arguments (truyền đích danh tham số)
+            var result = await mediator.Send(new UpdateMyProfileCommand(
+                FullName: body.FullName,
+                Phone: body.Phone,
+                AvatarUrl: body.AvatarUrl,
+                DateOfBirth: body.DateOfBirth,
+                Gender: body.Gender,
+                IdNumber: body.IdNumber), ct);
+            return Results.Ok(result);
+        })
             .RequireAuthorization(AuthPolicies.PublicUser)
-            .WithSummary("Cập nhật hồ sơ cá nhân (họ tên, SĐT, DOB, gender, avatarUrl)");
+            .WithSummary("Cập nhật hồ sơ cá nhân (họ tên, SĐT, DOB, gender, CCCD/hộ chiếu, avatarUrl)")
+            .WithDescription("idNumber: CCCD/CMND gồm 9 hoặc 12 chữ số, hoặc hộ chiếu gồm 6–12 ký tự bắt đầu bằng chữ. Bỏ qua/null để giữ giá trị hiện tại; gửi chuỗi rỗng để xóa.");
 
         publicApi.MapPost("/me/avatar", async (
             IFormFile file,
             IMediator mediator,
             IFileStorage storage,
             CancellationToken ct) =>
+        {
+            if (file.Length == 0)
             {
-                if (file.Length == 0)
-                {
-                    return Results.BadRequest(new { message = "File trống." });
-                }
+                return Results.BadRequest(new { message = "File trống." });
+            }
 
-                var ext = Path.GetExtension(file.FileName)?.ToLowerInvariant();
-                var extOk = ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif";
-                if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !extOk)
-                {
-                    return Results.BadRequest(new { message = "Chỉ chấp nhận ảnh JPG, PNG, WEBP, GIF." });
-                }
+            var ext = Path.GetExtension(file.FileName)?.ToLowerInvariant();
+            var extOk = ext is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif";
+            if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !extOk)
+            {
+                return Results.BadRequest(new { message = "Chỉ chấp nhận ảnh JPG, PNG, WEBP, GIF." });
+            }
 
-                if (file.Length > 2 * 1024 * 1024)
-                {
-                    return Results.BadRequest(new { message = "Ảnh tối đa 2MB." });
-                }
+            if (file.Length > 2 * 1024 * 1024)
+            {
+                return Results.BadRequest(new { message = "Ảnh tối đa 2MB." });
+            }
 
-                await using var stream = file.OpenReadStream();
-                var stored = await storage.UploadAsync(
-                    stream,
-                    file.FileName,
-                    string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType,
-                    folder: "avatars",
-                    ct);
+            await using var stream = file.OpenReadStream();
+            var stored = await storage.UploadAsync(
+                stream,
+                file.FileName,
+                string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType,
+                folder: "avatars",
+                ct);
 
-                var me = await mediator.Send(new GetMyProfileQuery(), ct);
-                var updated = await mediator.Send(new UpdateMyProfileCommand(
-                    me.FullName,
-                    me.Phone,
-                    me.DateOfBirth,
-                    me.Gender,
-                    stored.FileUrl), ct);
-                return Results.Ok(updated);
-            })
+            var me = await mediator.Send(new GetMyProfileQuery(), ct);
+
+            // CÁCH SỬA LỖI CS1503: Sử dụng Named Arguments (truyền đích danh tham số)
+            var updated = await mediator.Send(new UpdateMyProfileCommand(
+                FullName: me.FullName,
+                Phone: me.Phone,
+                AvatarUrl: stored.FileUrl,
+                DateOfBirth: me.DateOfBirth,
+                Gender: me.Gender,
+                IdNumber: me.IdNumber), ct);
+
+            return Results.Ok(updated);
+        })
             .DisableAntiforgery()
             .RequireAuthorization(AuthPolicies.PublicUser)
             .WithSummary("Upload ảnh đại diện → avatars/ + cập nhật profile");
@@ -198,10 +221,12 @@ public static class IamModule
                 body.Status,
                 body.ProfileDescription,
                 body.ContactEmail,
-                body.ContactPhone), ct);
+                body.ContactPhone,
+                body.IdNumber), ct);
             return Results.NoContent();
         })
-        .WithSummary("Cập nhật user");
+        .WithSummary("Cập nhật user")
+        .WithDescription("Hỗ trợ idNumber (Identity number). Bỏ qua/null để giữ giá trị hiện tại; gửi chuỗi rỗng để xóa.");
 
         adminApi.MapPost("/users/{userId:guid}/lock", async (Guid userId, IMediator mediator, CancellationToken ct) =>
         {
@@ -245,4 +270,18 @@ public sealed record UpdateMyProfileBody(
     string? Phone,
     DateOnly? DateOfBirth,
     GenderDto Gender,
-    string? AvatarUrl = null);
+    string? AvatarUrl = null,
+    string? IdNumber = null);
+
+public sealed record UpdateUserRequest(
+    string Username,
+    string FullName,
+    string? Phone,
+    DateOnly? DateOfBirth,
+    GenderDto Gender,
+    Guid RoleId,
+    UserStatusDto Status,
+    string? ProfileDescription,
+    string? ContactEmail,
+    string? ContactPhone,
+    string? IdNumber = null);

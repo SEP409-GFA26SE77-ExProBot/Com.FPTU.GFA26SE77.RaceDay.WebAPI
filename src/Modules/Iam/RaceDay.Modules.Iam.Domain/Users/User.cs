@@ -16,6 +16,8 @@ public sealed class User : AggregateRoot
     public string FullName { get; private set; } = string.Empty;
     public string? Phone { get; private set; }
     public DateOnly? DateOfBirth { get; private set; }
+    /// <summary>CCCD/CMND (9|12 số) hoặc hộ chiếu.</summary>
+    public string? IdNumber { get; private set; }
     public Gender Gender { get; private set; } = Gender.Unknown;
     public UserStatus Status { get; private set; } = UserStatus.Pending;
     public bool EmailVerified { get; private set; }
@@ -137,7 +139,8 @@ public sealed class User : AggregateRoot
         Gender gender,
         string? profileDescription,
         string? contactEmail,
-        string? contactPhone)
+        string? contactPhone,
+        string? idNumber = null)
     {
         if (string.IsNullOrWhiteSpace(fullName))
         {
@@ -148,6 +151,7 @@ public sealed class User : AggregateRoot
         Phone = phone;
         DateOfBirth = dateOfBirth;
         Gender = gender;
+        IdNumber = string.IsNullOrWhiteSpace(idNumber) ? null : idNumber.Trim().ToUpperInvariant();
         UpdatedAt = DateTime.UtcNow;
         Profile?.UpdateContact(profileDescription, contactEmail, contactPhone);
         Raise(new UserUpdatedDomainEvent(Id, Email, Username, FullName));
@@ -267,7 +271,7 @@ public sealed class User : AggregateRoot
 
         if (Status == UserStatus.Pending || !EmailVerified)
         {
-            throw new DomainException("Tài khoản chưa xác thực email. Vui lòng nhập OTP.");
+            throw new DomainException("Tài khoản chưa xác thực email. Vui lòng xác thực.");
         }
     }
 

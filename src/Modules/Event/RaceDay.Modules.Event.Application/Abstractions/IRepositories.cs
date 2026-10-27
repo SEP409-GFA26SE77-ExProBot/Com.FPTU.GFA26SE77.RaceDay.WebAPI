@@ -2,6 +2,7 @@ using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Packages;
 using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Modules.Event.Domain.Staff;
+using RaceDay.Modules.Event.Domain.Supplies;
 
 namespace RaceDay.Modules.Event.Application.Abstractions;
 
@@ -41,7 +42,11 @@ public interface IEventRegistrationRepository
     Task<IReadOnlyList<EventRegistration>> ListByUserAsync(Guid userId, CancellationToken cancellationToken = default);
     Task<bool> ExistsForUserDistanceAsync(Guid eventId, Guid distanceId, Guid userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<EventRegistration>> ListActiveByUserEventAsync(Guid eventId, Guid userId, CancellationToken cancellationToken = default);
-    Task<string> NextBibNumberAsync(Guid eventId, CancellationToken cancellationToken = default);
+    /// <summary>Cấp BIB tiếp theo theo dải của cự ly đăng ký (số 4 chữ số).</summary>
+    Task<string> NextBibNumberAsync(
+        Guid eventId,
+        Guid distanceId,
+        CancellationToken cancellationToken = default);
     Task<EventRegistration?> GetByEventAndBibAsync(
         Guid eventId,
         string bibNumber,
@@ -129,4 +134,16 @@ public interface IEventStaffMemberRepository
     Task<IReadOnlyList<EventStaffMember>> ListActiveByUserIdAsync(
         Guid userId,
         CancellationToken cancellationToken = default);
+}
+
+public interface IEventSupplyItemRepository
+{
+    Task<EventSupplyItem?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EventSupplyItem>> ListByEventAsync(
+        Guid eventId,
+        CancellationToken cancellationToken = default);
+    Task AddAsync(EventSupplyItem item, CancellationToken cancellationToken = default);
+    void Update(EventSupplyItem item);
+    void Remove(EventSupplyItem item);
+    Task RemoveAllForEventAsync(Guid eventId, CancellationToken cancellationToken = default);
 }
