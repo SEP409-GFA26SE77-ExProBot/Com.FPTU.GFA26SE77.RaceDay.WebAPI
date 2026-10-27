@@ -457,10 +457,10 @@ public static class EventModule
             CancellationToken ct) =>
         {
             var result = await mediator.Send(new CreateComplaintCommand(body.EventId, body.DistanceId, body.Title, body.Content, body.EvidenceLinks), ct);
-            return Results.Created($"/api/v1/event/complaints/{result.Id}", result);
+            return Results.Created($"/api/v1/event/complaints/detail?complaintId={result.Id}", result);
         })
         .WithSummary("VĐV gửi thông tin khiếu nại tới BTC")
-        .WithDescription("Body: { eventId, distanceId, title, content, evidenceLinks (mảng URL) }.")
+        .WithDescription("Body: { eventId, distanceId, title, content, evidenceLinks (1–5 URL HTTP/HTTPS) }.")
         .Produces<EventComplaintDto>(StatusCodes.Status201Created);
 
         userApi.MapGet("/complaints/mine", async (
@@ -473,6 +473,20 @@ public static class EventModule
             Results.Ok(await mediator.Send(new GetMyComplaintsQuery(eventId, status, page ?? 1, pageSize ?? 10), ct)))
         .WithSummary("VĐV xem danh sách khiếu nại của chính mình")
         .WithDescription("Trả về danh sách khiếu nại có phân trang và lọc theo trạng thái (Pending/Accepted/Rejected).");
+
+        userApi.MapGet("/complaints/detail", async (
+            [FromQuery] Guid complaintId, IMediator mediator, CancellationToken ct) =>
+        {
+            var detail = await mediator.Send(new GetComplaintDetailQuery(complaintId), ct);
+            return detail is null
+                ? (IResult)Results.NotFound(new { error = "Không tìm thấy khiếu nại hoặc bạn không có quyền xem." })
+                : Results.Ok(detail);
+        })
+        .WithSummary("Chi tiết khiếu nại và phản hồi của ban tổ chức")
+        .WithDescription("Query: complaintId. Chỉ người gửi, chủ giải hoặc Admin được xem; trả về cùng các trường như danh sách complaints/mine.")
+        .Produces<EventComplaintDto>()
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         var adminApi = app.MapGroup("/api/v1/event/admin")
             .WithTags(ApiTags.EventAdmin)
