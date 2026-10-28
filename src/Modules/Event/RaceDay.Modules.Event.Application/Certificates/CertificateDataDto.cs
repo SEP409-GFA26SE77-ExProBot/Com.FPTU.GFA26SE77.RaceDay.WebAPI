@@ -1,13 +1,17 @@
 ﻿namespace RaceDay.Modules.Event.Application.Certificates;
 
 public sealed record CertificateDataDto(
+    Guid RegistrationId,
     string RunnerName,
-    string BibNumber,
-    string RaceName,
-    string DistanceName,
-    double DistanceKm,
+    string EventName,
+    string? Bib,
+    string Distance,
+    DateOnly RaceDate,
+    string Status,
     string FinishTime,
-    string Pace,
-    int? Rank,
-    DateTime CompletedAtUtc
+    long ResultSeconds,
+    DateTime FinishedAtUtc,
+    DateTime? StartedAtUtc,
+    double DistanceKm,
+    string Pace
 );
