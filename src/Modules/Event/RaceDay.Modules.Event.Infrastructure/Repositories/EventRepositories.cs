@@ -339,7 +339,7 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
         CancellationToken cancellationToken = default)
         => db.Registrations.AsNoTracking()
             .Where(x => x.EventId == eventId && x.UserId == userId
-                && x.Status == RegistrationStatus.Finished && x.FinishedAtUtc != null)
+                && x.Status == RegistrationStatus.Finished && x.RaceStatus == RaceStatus.Finished && x.FinishedAtUtc != null)
             .OrderByDescending(x => x.FinishedAtUtc)
             .ThenByDescending(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);

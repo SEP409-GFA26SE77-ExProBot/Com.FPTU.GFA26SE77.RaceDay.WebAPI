@@ -3,6 +3,7 @@ using MediatR;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Application.Registrations;
 using RaceDay.Modules.Event.Domain.Events;
+using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
 
@@ -39,6 +40,7 @@ public sealed class GetRunnerCertificateQueryHandler(
         }
 
         if (reg.Status != RegistrationStatus.Finished
+            || reg.RaceStatus != RaceStatus.Finished
             || reg.FinishedAtUtc is null
             || reg.ResultSeconds is null or < 0)
         {

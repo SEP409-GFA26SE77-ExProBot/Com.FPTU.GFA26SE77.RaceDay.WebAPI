@@ -50,6 +50,7 @@ public sealed class GetDistanceLeaderboardQueryHandler(
         var finishedRunnersQuery = allRegistrations
             .Where(r => r.DistanceId == request.DistanceId
                      && r.Status == RegistrationStatus.Finished
+                     && r.RaceStatus == RaceStatus.Finished
                      && r.ResultSeconds.HasValue);
 
         // Lọc thêm theo giới tính nếu có truyền lên (bỏ qua nếu truyền "All" hoặc để trống)

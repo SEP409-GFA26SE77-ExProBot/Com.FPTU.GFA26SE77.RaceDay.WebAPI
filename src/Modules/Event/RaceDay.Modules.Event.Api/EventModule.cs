@@ -388,6 +388,23 @@ public static class EventModule
             Results.Ok(await mediator.Send(new ListMyStaffAssignmentsQuery(), ct)))
             .WithSummary("Các giải staff/volunteer đang được assign (Active)");
 
+        userApi.MapPatch("/{eventId:guid}/registrations/{registrationId:guid}/race-status", async (
+            Guid eventId, Guid registrationId, ChangeRaceStatusRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ChangeRaceStatusCommand(eventId, registrationId, body.Status, body.Reason), ct)))
+            .RequireAuthorization(AuthPolicies.HumanUser)
+            .WithSummary("Ghi nhận DNS / DNF / DQ cho VĐV")
+            .WithDescription("Body: { status: dns|dnf|dq, reason: 1–1000 ký tự }. "
+                + "Admin, chủ giải hoặc Volunteer/Coordinator Active đã liên kết tài khoản của đúng giải. "
+                + "DNS: chưa xuất phát, đã đến giờ xuất phát (UTC); DNF: đang chạy; DQ: chưa chạy/đang chạy/đã finish. "
+                + "Không đảo quyết định. Gửi lại cùng status/reason trả quyết định ban đầu. "
+                + "409: trạng thái đã bị cập nhật đồng thời, cần tải lại dữ liệu.")
+            .Produces<RaceStatusChangeDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status409Conflict);
+
         // Endpoint /start
         userApi.MapPost("/start", async (StartRequestDto body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(

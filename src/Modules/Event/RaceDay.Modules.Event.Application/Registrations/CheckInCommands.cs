@@ -169,7 +169,8 @@ public sealed record CheckInListItemDto(
     bool CheckedIn,
     DateTime? CheckedInAtUtc,
     string? DistanceLabel,
-    double? DistanceKm);
+    double? DistanceKm,
+    string RaceStatus = "not_started");
 
 public sealed record ListEventCheckInsQuery(Guid EventId)
     : IRequest<IReadOnlyList<CheckInListItemDto>>;
@@ -227,7 +228,8 @@ public sealed class ListEventCheckInsQueryHandler(
                     CheckedIn: r.CheckedInAtUtc is not null,
                     r.CheckedInAtUtc,
                     distanceLabel,
-                    distanceKm);
+                    distanceKm,
+                    RegistrationDtoMapper.ToApiRaceStatus(r.RaceStatus));
             })
             .OrderByDescending(x => x.CheckedInAtUtc.HasValue)
             .ThenByDescending(x => x.CheckedInAtUtc)
