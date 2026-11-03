@@ -1,0 +1,16 @@
+                              Table "iam.profiles"
+       Column        |           Type           | Collation | Nullable | Default 
+---------------------+--------------------------+-----------+----------+---------
+ user_id             | uuid                     |           | not null | 
+ description         | character varying(255)   |           |          | 
+ contact_email       | character varying(100)   |           |          | 
+ contact_phone       | character varying(100)   |           |          | 
+ verification_status | smallint                 |           | not null | 0
+ verified_at         | timestamp with time zone |           |          | 
+ verified_by         | character varying(100)   |           |          | 
+ avatar_url          | character varying(500)   |           |          | 
+Indexes:
+    "profiles_pkey" PRIMARY KEY, btree (user_id)
+Foreign-key constraints:
+    "profiles_user_id_fkey" FOREIGN KEY (user_id) REFERENCES iam.users(user_id) ON DELETE CASCADE
+

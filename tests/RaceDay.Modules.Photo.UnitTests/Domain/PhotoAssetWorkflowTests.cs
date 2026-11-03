@@ -17,6 +17,12 @@ public class PhotoAssetWorkflowTests
         Assert.Equal(PhotoStatus.Matched, photo.Status);
         Assert.Single(photo.Tags);
         Assert.Equal("A0042", photo.Tags.First().BibNormalized);
+        Assert.False(photo.IsPublished);
+        Assert.False(photo.IsSearchable);
+        Assert.True(photo.CanPublish);
+
+        photo.Publish();
+        Assert.True(photo.IsPublished);
         Assert.True(photo.IsSearchable);
     }
 

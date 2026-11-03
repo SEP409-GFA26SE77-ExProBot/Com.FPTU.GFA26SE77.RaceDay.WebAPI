@@ -1,0 +1,31 @@
+                                          Table "payment.payments"
+        Column        |           Type           | Collation | Nullable |              Default              
+----------------------+--------------------------+-----------+----------+-----------------------------------
+ Id                   | uuid                     |           | not null | 
+ RegistrationId       | uuid                     |           |          | 
+ UserId               | uuid                     |           | not null | 
+ Amount               | numeric(15,2)            |           | not null | 
+ Currency             | character varying(10)    |           | not null | 
+ PaymentMethod        | character varying(50)    |           |          | 
+ Status               | character varying(40)    |           | not null | 
+ PaymentGateway       | character varying(100)   |           |          | 
+ TransactionReference | character varying(255)   |           |          | 
+ OrderCode            | bigint                   |           | not null | 
+ CheckoutUrl          | character varying(1000)  |           |          | 
+ PaidAtUtc            | timestamp with time zone |           |          | 
+ CreatedAtUtc         | timestamp with time zone |           | not null | 
+ UpdatedAtUtc         | timestamp with time zone |           | not null | 
+ Purpose              | character varying(40)    |           | not null | 'Registration'::character varying
+ ReferenceId          | uuid                     |           |          | 
+ DiscountAmount       | numeric(15,2)            |           |          | 
+ ListAmount           | numeric(15,2)            |           |          | 
+ PromoCode            | character varying(50)    |           |          | 
+Indexes:
+    "payments_pkey" PRIMARY KEY, btree ("Id")
+    "IX_payments_OrderCode" UNIQUE, btree ("OrderCode")
+    "IX_payments_ReferenceId" btree ("ReferenceId")
+    "IX_payments_RegistrationId" btree ("RegistrationId")
+    "IX_payments_UserId" btree ("UserId")
+Referenced by:
+    TABLE "payment.payment_transactions" CONSTRAINT "payment_transactions_PaymentId_fkey" FOREIGN KEY ("PaymentId") REFERENCES payment.payments("Id") ON DELETE CASCADE
+

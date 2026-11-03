@@ -5,7 +5,8 @@ namespace RaceDay.Modules.Photo.Application.Photos;
 public sealed record PhotoTagDto(
     string Bib,
     double Confidence,
-    string Source);
+    string Source,
+    string? BboxJson = null);
 
 public sealed record PhotoListItemDto(
     Guid Id,
@@ -14,7 +15,10 @@ public sealed record PhotoListItemDto(
     string Status,
     string? Zone,
     IReadOnlyList<PhotoTagDto> Tags,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    string? DiscardReason = null,
+    bool IsPublished = false,
+    DateTime? PublishedAtUtc = null);
 
 public sealed record PhotoDetailDto(
     Guid Id,
@@ -26,7 +30,11 @@ public sealed record PhotoDetailDto(
     string? DiscardReason,
     IReadOnlyList<PhotoTagDto> Tags,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    bool IsPublished = false,
+    DateTime? PublishedAtUtc = null);
+
+public sealed record PublishPhotosResultDto(int PublishedCount);
 
 public sealed record BulkUploadResultDto(
     int Accepted,
@@ -67,8 +75,12 @@ public static class PhotoDtoMapper
         p.Tags.Select(t => new PhotoTagDto(
             t.BibNormalized,
             t.Confidence,
-            t.Source == PhotoTagSource.Manual ? "manual" : "ocr")).ToList(),
-        p.CreatedAtUtc);
+            t.Source == PhotoTagSource.Manual ? "manual" : "ocr",
+            t.BboxJson)).ToList(),
+        p.CreatedAtUtc,
+        p.DiscardReason,
+        p.IsPublished,
+        p.PublishedAtUtc);
 
     public static PhotoDetailDto ToDetail(PhotoAsset p) => new(
         p.Id,
@@ -81,7 +93,10 @@ public static class PhotoDtoMapper
         p.Tags.Select(t => new PhotoTagDto(
             t.BibNormalized,
             t.Confidence,
-            t.Source == PhotoTagSource.Manual ? "manual" : "ocr")).ToList(),
+            t.Source == PhotoTagSource.Manual ? "manual" : "ocr",
+            t.BboxJson)).ToList(),
         p.CreatedAtUtc,
-        p.UpdatedAtUtc);
+        p.UpdatedAtUtc,
+        p.IsPublished,
+        p.PublishedAtUtc);
 }

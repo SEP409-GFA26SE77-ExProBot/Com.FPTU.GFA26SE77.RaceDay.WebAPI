@@ -7,6 +7,7 @@ using RaceDay.Modules.Photo.Application.Abstractions;
 using RaceDay.Modules.Photo.Infrastructure.Ocr;
 using RaceDay.Modules.Photo.Infrastructure.Persistence;
 using RaceDay.Modules.Photo.Infrastructure.Repositories;
+using RaceDay.Modules.Photo.Infrastructure.Storage;
 
 namespace RaceDay.Modules.Photo.Infrastructure;
 
@@ -24,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<IPhotoAssetRepository, PhotoAssetRepository>();
         services.AddScoped<IPhotoDisputeRepository, PhotoDisputeRepository>();
         services.AddScoped<IPhotoUnitOfWork, PhotoUnitOfWork>();
+        services.AddSingleton<IPhotoOcrSettings, PhotoOcrSettings>();
 
         var ocrBase = configuration["Photo:Ocr:BaseUrl"];
         services.AddHttpClient<IOcrClient, OcrClient>(client =>
@@ -33,7 +35,14 @@ public static class DependencyInjection
                 client.BaseAddress = new Uri(ocrBase.TrimEnd('/') + "/");
             }
 
-            client.Timeout = TimeSpan.FromSeconds(30);
+            // PaddleOCR + YOLO có thể >30s / ảnh
+            client.Timeout = TimeSpan.FromMinutes(3);
+        });
+
+        // Fetch R2/public URL server-side (trình duyệt bị CORS khi tải trực tiếp).
+        services.AddHttpClient<IPhotoContentFetcher, PhotoContentFetcher>(client =>
+        {
+            client.Timeout = TimeSpan.FromMinutes(2);
         });
 
         services.AddHostedService<PhotoDataSeeder>();

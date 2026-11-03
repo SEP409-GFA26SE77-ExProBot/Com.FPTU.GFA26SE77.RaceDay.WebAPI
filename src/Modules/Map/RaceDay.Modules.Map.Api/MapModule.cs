@@ -58,7 +58,8 @@ public static class MapModule
             .WithSummary("GET course theo (event, distance) — FE organizer setup map + simulator")
             .WithDescription(
                 "Chưa có course → trả empty (polyline []). Organizer/Admin luôn được đọc; "
-                + "user khác chỉ khi giải Approved / RegistrationOpen / Closed / Completed.");
+                + "Active event staff (Coordinator/Volunteer/Photographer) được đọc kể cả draft; "
+                + "caller khác chỉ khi giải Approved / RegistrationOpen / Closed / Completed.");
 
         api.MapPut("/events/{eventId:guid}/distances/{distanceId:guid}/course", async (
             Guid eventId,

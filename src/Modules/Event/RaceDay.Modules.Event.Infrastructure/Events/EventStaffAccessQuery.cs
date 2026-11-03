@@ -17,4 +17,14 @@ public sealed class EventStaffAccessQuery(EventDbContext db) : IEventStaffAccess
                  && x.Role == EventStaffRole.Photographer
                  && x.Status == EventStaffStatus.Active,
             cancellationToken);
+
+    public Task<bool> ExistsActiveStaffUserAsync(
+        Guid eventId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => db.StaffMembers.AsNoTracking().AnyAsync(
+            x => x.EventId == eventId
+                 && x.UserId == userId
+                 && x.Status == EventStaffStatus.Active,
+            cancellationToken);
 }

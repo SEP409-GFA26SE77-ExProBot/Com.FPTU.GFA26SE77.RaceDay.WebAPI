@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Application.Abstractions;
@@ -8,8 +9,11 @@ using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Application.Packages;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Packages;
+using RaceDay.Modules.Event.Domain.Supplies;
+using RaceDay.Modules.Event.Infrastructure.Events;
 using RaceDay.Modules.Event.Infrastructure.Packages;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
+using RaceDay.Modules.Event.Infrastructure.Persistence.Repositories;
 using RaceDay.Modules.Event.Infrastructure.Repositories;
 
 namespace RaceDay.Modules.Event.Infrastructure;
@@ -25,16 +29,22 @@ public static class DependencyInjection
 
         services.AddScoped<IRaceEventRepository, RaceEventRepository>();
         services.AddScoped<IEventRegistrationRepository, EventRegistrationRepository>();
+        services.AddScoped<IRaceStatusChangeRepository, RaceStatusChangeRepository>();
         services.AddScoped<IRegistrationCheckpointPassageRepository, RegistrationCheckpointPassageRepository>();
         services.AddScoped<IEventPackagePurchaseRepository, EventPackagePurchaseRepository>();
         services.AddScoped<IPromoCodeRepository, PromoCodeRepository>();
         services.AddScoped<IPackageDurationOptionRepository, PackageDurationOptionRepository>();
         services.AddScoped<IPackageCapacityOptionRepository, PackageCapacityOptionRepository>();
         services.AddScoped<IEventStaffMemberRepository, EventStaffMemberRepository>();
+        services.AddScoped<IEventSupplyItemRepository, EventSupplyItemRepository>();
+        services.AddScoped<IEventDisputeRepository, EventDisputeRepository>();
+        services.AddScoped<IRecentJoinedEventQuery, RaceDay.Modules.Event.Infrastructure.Events.RecentJoinedEventQuery>();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<PackagePricingService>();
         services.AddScoped<IEventUnitOfWork, EventUnitOfWork>();
         services.AddHostedService<PackageExpiryLockHostedService>();
         services.AddHostedService<RegistrationWindowHostedService>();
+        services.AddScoped<IEventComplaintRepository, EventComplaintRepository>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Registrations.IRegistrationCheckoutInfoQuery,
             RaceDay.Modules.Event.Infrastructure.Registrations.RegistrationCheckoutInfoQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Packages.IPackageCheckoutInfoQuery,
@@ -96,11 +106,30 @@ public sealed class EventDataSeeder(
             {
                 await SeedPromoCodesAsync(db, cancellationToken);
                 await SeedPackageOptionsAsync(db, cancellationToken);
-                await SeedDemoEventsAsync(db, cancellationToken);
-                await SeedLeaderboardDataAsync(db, cancellationToken);
+
+                // Demo Quy Nhon/Sa Pa + leaderboard: tắt mặc định — dùng deploy/scripts/clear-and-seed
+                // (RaceDay Grand Marathon). Bật lại: Event__SeedDemoEvents=true
+                // Default false — clear-and-seed owns demo data. Opt-in: Event__SeedDemoEvents=true
+                var cfg = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+                var seedDemo = bool.TryParse(cfg["Event:SeedDemoEvents"], out var demoFlag) && demoFlag;
+                if (seedDemo)
+                {
+                    try
+                    {
+                        await SeedDemoEventsAsync(db, cancellationToken);
+                        await SeedLeaderboardDataAsync(db, cancellationToken);
+                    }
+                    catch (Exception demoEx)
+                    {
+                        logger.LogError(demoEx, "Event demo/leaderboard seed failed (tiếp tục supplies seed).");
+                    }
+                }
+
                 await NormalizeDistanceLeaderboardTypesAsync(db, cancellationToken);
-                // Demo events + R2 media refresh tắt — tránh tạo lại event/banner sau wipe sạch.
-                logger.LogInformation("Event schema migrated + promo/package seed checked.");
+                await SeedDemoSuppliesAsync(db, cancellationToken);
+                logger.LogInformation(
+                    "Event schema migrated + promo/package/supplies seed checked (SeedDemoEvents={SeedDemo}).",
+                    seedDemo);
             }
             catch (Exception seedEx)
             {
@@ -135,6 +164,56 @@ public sealed class EventDataSeeder(
 
         if (changed > 0)
             await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Seed vật phẩm tiếp tế mặc định (khớp FE DEFAULT_SUPPLIES / screenshot) cho mọi giải
+    /// chưa có dòng nào — idempotent.
+    /// </summary>
+    private static async Task SeedDemoSuppliesAsync(EventDbContext db, CancellationToken ct)
+    {
+        var eventIds = await db.RaceEvents.AsNoTracking().Select(x => x.Id).ToListAsync(ct);
+        if (eventIds.Count == 0)
+        {
+            return;
+        }
+
+        (string Name, int Qty, string Notes)[] defaults =
+        [
+            ("Nước khoáng thiên nhiên 500ml", 80,
+                "Thùng 24 chai. Phân bổ đồng đều cho các trạm tiếp nước."),
+            ("Nước điện giải thể thao Pocari Sweat 500ml", 50,
+                "Thùng 24 chai. Cần chuẩn bị thùng xốp ướp đá lạnh."),
+            ("Chuối tiêu chín tiếp sức VĐV", 30,
+                "Thùng 15kg quả chín vừa, chia đều cho trạm giữa và vạch đích."),
+            ("Gel năng lượng chạy bộ thể thao", 12,
+                "Thùng 24 gói. Kiểm tra hạn sử dụng trước khi giao nhận."),
+            ("Bình xịt lạnh giảm đau & Dụng cụ y tế", 6,
+                "Thùng 12 bình xịt lạnh + bông băng thun co giãn sơ cứu."),
+        ];
+
+        var added = 0;
+        foreach (var eventId in eventIds)
+        {
+            if (await db.SupplyItems.AnyAsync(x => x.EventId == eventId, ct))
+            {
+                continue;
+            }
+
+            for (var i = 0; i < defaults.Length; i++)
+            {
+                var row = defaults[i];
+                await db.SupplyItems.AddAsync(
+                    EventSupplyItem.Create(eventId, row.Name, row.Qty, EventSupplyItem.DefaultUnit, row.Notes, i),
+                    ct);
+                added++;
+            }
+        }
+
+        if (added > 0)
+        {
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     private static async Task SeedPromoCodesAsync(EventDbContext db, CancellationToken ct)

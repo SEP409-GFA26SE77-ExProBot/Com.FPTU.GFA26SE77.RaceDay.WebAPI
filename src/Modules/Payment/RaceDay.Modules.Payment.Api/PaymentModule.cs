@@ -50,8 +50,10 @@ public static class PaymentModule
         .RequireAuthorization(AuthPolicies.PublicUser)
         .WithSummary("Tạo link thanh toán PayOS cho đăng ký (pending_payment)")
         .WithDescription(
-            "FE: sau POST /event/{id}/registrations → gọi checkout với registrationId + returnUrl/cancelUrl. "
-            + "Mock mode: checkoutUrl mở trang giả PayOS (nút Thanh toán / Hủy).");
+            "Idempotent theo registrationId: tái dùng pending còn sống (CheckoutUrl). "
+            + "PayOS EXPIRED/CANCELLED hoặc quá PayOS:LinkTtlMinutes → MarkExpired + tạo orderCode mới. "
+            + "Webhook/sync PAID vẫn idempotent trên cùng PaymentOrder. "
+            + "FE: sau POST /event/{id}/registrations → checkout(registrationId, returnUrl, cancelUrl).");
 
         api.MapPost("/checkout/package", async (CreatePackageCheckoutRequest body, IMediator mediator, CancellationToken ct) =>
         {
@@ -62,8 +64,7 @@ public static class PaymentModule
         .RequireAuthorization(AuthPolicies.PublicUser)
         .WithSummary("Tạo link thanh toán PayOS cho gói sự kiện (event package)")
         .WithDescription(
-            "FE: sau POST /event/organizer/packages/purchases → gọi checkout/package. "
-            + "Mock mode: giống registration checkout.");
+            "Idempotent theo packagePurchaseId — cùng luật TTL/EXPIRED như checkout registration.");
 
         api.MapGet("/mine", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyPaymentsQuery(), ct)))
@@ -80,7 +81,8 @@ public static class PaymentModule
             .RequireAuthorization(AuthPolicies.PublicUser)
             .WithSummary("Đồng bộ trạng thái từ PayOS (sau returnUrl / khi chưa có webhook)")
             .WithDescription(
-                "Live: FE gọi sau khi user thanh toán xong và quay về returnUrl. "
+                "Live: FE gọi sau returnUrl. PAID → ConfirmPaymentPaid (idempotent). "
+                + "EXPIRED/CANCELLED hoặc quá LinkTtlMinutes → MarkExpired. "
                 + "Nếu PayOS status=PAID → đăng ký chuyển pending_approval. "
                 + "Khuyến nghị vẫn cấu hình webhook public (ngrok) cho production.");
 

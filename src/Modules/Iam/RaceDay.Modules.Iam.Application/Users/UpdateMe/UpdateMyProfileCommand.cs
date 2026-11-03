@@ -9,12 +9,13 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Iam.Application.Users.UpdateMe;
 
+// ── Đã chuẩn hóa thứ tự tham số khớp với IamModule.cs ──────────────────
 public sealed record UpdateMyProfileCommand(
     string FullName,
     string? Phone,
+    string? AvatarUrl,
     DateOnly? DateOfBirth,
     GenderDto Gender,
-    string? AvatarUrl = null,
     string? IdNumber = null) : IRequest<UserDto>;
 
 public sealed class UpdateMyProfileCommandValidator : AbstractValidator<UpdateMyProfileCommand>
@@ -61,6 +62,11 @@ public sealed class UpdateMyProfileCommandHandler(
             phone = null;
         }
 
+        // ── Thay InputRules.NormalizeIdNumber bằng xử lý trực tiếp ──
+        var normalizedIdNumber = request.IdNumber is null
+            ? user.IdNumber
+            : (string.IsNullOrWhiteSpace(request.IdNumber) ? null : request.IdNumber.Trim());
+
         user.UpdateProfile(
             request.FullName,
             phone,
@@ -69,7 +75,7 @@ public sealed class UpdateMyProfileCommandHandler(
             user.Profile?.Description,
             user.Email,
             phone,
-            request.IdNumber is null ? user.IdNumber : InputRules.NormalizeIdNumber(request.IdNumber));
+            normalizedIdNumber);
 
         if (request.AvatarUrl is not null)
         {

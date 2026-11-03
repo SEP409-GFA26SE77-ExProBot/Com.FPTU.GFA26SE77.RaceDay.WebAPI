@@ -2,15 +2,19 @@ using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using RaceDay.Modules.Event.Application.Certificates;
+using RaceDay.Modules.Event.Application.Complaints;
 using RaceDay.Modules.Event.Application.Events;
+using RaceDay.Modules.Event.Application.Disputes;
 using RaceDay.Modules.Event.Application.Events.Update;
 using RaceDay.Modules.Event.Application.Packages;
 using RaceDay.Modules.Event.Application.Registrations;
 using RaceDay.Modules.Event.Application.Staff;
+using RaceDay.Modules.Event.Application.Supplies;
 using RaceDay.Modules.Event.Infrastructure;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Web.Auth;
@@ -55,7 +59,6 @@ public static class EventModule
         .WithDescription("id, name, distanceKm, type (chip BXH). Không trả giá vé / startAt / endAt. Organizer setup: GET /organizer/{eventId}/distances.");
 
         // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
-        // PublicUser = RequireAuthenticatedUser — mọi user đã login (USER/RUNNER/ORGANIZER/…)
         publicApi.MapGet("/{eventId:guid}/distances/{distanceId:guid}/leaderboard", async (
             Guid eventId,
             Guid distanceId,
@@ -70,6 +73,7 @@ public static class EventModule
             return Results.Ok(await mediator.Send(query, ct));
         })
         .WithSummary("Bảng xếp hạng cự ly (Phân trang, Lọc Giới tính)");
+
         // không bắt role ORGANIZER riêng (không cần duyệt tài khoản organizer).
         var organizerApi = app.MapGroup("/api/v1/event/organizer")
             .WithTags(ApiTags.EventOrganizer)
@@ -268,6 +272,51 @@ public static class EventModule
         })
             .WithSummary("Gỡ nhân sự khỏi giải");
 
+        organizerApi.MapGet("/{eventId:guid}/supplies", async (
+            Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListEventSuppliesQuery(eventId), ct)))
+            .WithSummary("Danh sách vật phẩm tiếp tế (đơn vị thùng)");
+
+        organizerApi.MapPut("/{eventId:guid}/supplies", async (
+            Guid eventId, UpdateEventSuppliesRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ReplaceEventSuppliesCommand(eventId, body), ct)))
+            .WithSummary("Thay thế toàn bộ danh sách vật phẩm tiếp tế");
+
+        organizerApi.MapPost("/{eventId:guid}/supplies", async (
+            Guid eventId, CreateEventSupplyRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new AddEventSupplyCommand(eventId, body), ct)))
+            .WithSummary("Thêm 1 vật phẩm tiếp tế");
+
+        organizerApi.MapDelete("/{eventId:guid}/supplies/{supplyId:guid}", async (
+            Guid eventId, Guid supplyId, IMediator mediator, CancellationToken ct) =>
+        {
+            await mediator.Send(new DeleteEventSupplyCommand(eventId, supplyId), ct);
+            return Results.NoContent();
+        })
+            .WithSummary("Xóa 1 vật phẩm tiếp tế");
+
+        // ── Endpoints Khiếu Nại cho Organizer ──
+        organizerApi.MapGet("/complaints", async (
+            [FromQuery] Guid? eventId,
+            [FromQuery] string? status,
+            [FromQuery] DateTime? fromDate,
+            [FromQuery] DateTime? toDate,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListOrganizerComplaintsQuery(eventId, status, fromDate, toDate, page ?? 1, pageSize ?? 10), ct)))
+            .WithSummary("Organizer xem danh sách khiếu nại gom nhóm theo giải")
+            .WithDescription("Hỗ trợ lọc theo trạng thái (Pending/Accepted/Rejected), khoảng thời gian và phân trang.");
+
+        organizerApi.MapPost("/complaints/{complaintId:guid}/reply", async (
+            Guid complaintId,
+            ReplyComplaintRequest body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ReplyComplaintCommand(complaintId, body.ResponseContent, body.Decision), ct)))
+            .WithSummary("Organizer gửi phản hồi và quyết định khiếu nại (Accepted/Rejected)");
+
         var userApi = app.MapGroup("/api/v1/event")
             .WithTags(ApiTags.EventRunner)
             .RequireAuthorization(AuthPolicies.PublicUser)
@@ -298,10 +347,30 @@ public static class EventModule
         userApi.MapGet("/registrations/mine", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyRegistrationsQuery(), ct)))
             .WithSummary("Đăng ký của tôi (FE /my-registrations)");
+
+        userApi.MapGet("/joined/recent", async (int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListRecentJoinedEventsQuery(page ?? 1, pageSize ?? 20), ct)))
+            .WithSummary("Các giải runner đã tham gia trong 1 tháng gần đây")
+            .WithDescription("Theo ngày diễn ra giải, từ ngày UTC hiện tại lùi 1 tháng đến hôm nay (bao gồm hai đầu). Chỉ lấy đăng ký confirmed/finished; mỗi giải xuất hiện một lần. Có phân trang.")
+            .Produces<RunnerPageDto<RecentJoinedEventDto>>();
+
+        userApi.MapGet("/disputes/mine", async (int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ListMyEventDisputesQuery(page ?? 1, pageSize ?? 10), ct)))
+            .WithSummary("Danh sách khiếu nại của runner đang đăng nhập (có phân trang)")
+            .Produces<RunnerPageDto<EventDisputeDto>>();
+
+        userApi.MapPost("/disputes", async (CreateEventDisputeCommand body, IMediator mediator, CancellationToken ct) =>
+        {
+            var result = await mediator.Send(body, ct);
+            return Results.Created("/api/v1/event/disputes/mine", result);
+        })
+            .WithSummary("Runner gửi khiếu nại cho giải đã tham gia trong 1 tháng gần đây")
+            .Produces<EventDisputeDto>(StatusCodes.Status201Created);
         userApi.MapGet("/leaderboards/mine", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetMyLeaderboardResultsQuery(), ct)))
             .WithSummary("Bảng xếp hạng / Thành tích cá nhân của Runner đang đăng nhập")
             .WithDescription("Trả về danh sách kết quả các giải & cự ly mà Runner đã hoàn thành (Finished) kèm thứ hạng (Rank), Total Time, Pace.");
+
         userApi.MapGet("/registrations/{registrationId:guid}", async (Guid registrationId, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetMyRegistrationByIdQuery(registrationId), ct)))
             .WithSummary("Chi tiết đăng ký / ticket (BIB + qrPayload khi confirmed)");
@@ -318,6 +387,24 @@ public static class EventModule
         userApi.MapGet("/staff/me", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyStaffAssignmentsQuery(), ct)))
             .WithSummary("Các giải staff/volunteer đang được assign (Active)");
+
+        userApi.MapPatch("/{eventId:guid}/registrations/{registrationId:guid}/race-status", async (
+            Guid eventId, Guid registrationId, ChangeRaceStatusRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ChangeRaceStatusCommand(eventId, registrationId, body.Status, body.Reason), ct)))
+            .RequireAuthorization(AuthPolicies.HumanUser)
+            .WithSummary("Ghi nhận DNS / DNF / DQ cho VĐV")
+            .WithDescription("Body: { status: dns|dnf|dq, reason: 1–1000 ký tự }. "
+                + "Admin, chủ giải hoặc Volunteer/Coordinator Active đã liên kết tài khoản của đúng giải. "
+                + "DNS: chưa xuất phát, đã đến giờ xuất phát (UTC); DNF: đang chạy; DQ: chưa chạy/đang chạy/đã finish. "
+                + "Không đảo quyết định. Gửi lại cùng status/reason trả quyết định ban đầu. "
+                + "409: trạng thái đã bị cập nhật đồng thời, cần tải lại dữ liệu.")
+            .Produces<RaceStatusChangeDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status409Conflict);
+
         // Endpoint /start
         userApi.MapPost("/start", async (StartRequestDto body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
@@ -325,6 +412,7 @@ public static class EventModule
             .WithSummary("Staff/organizer ghi nhận xuất phát (Start) cho VĐV")
             .WithDescription("Body: { eventId, bib }.")
             .Produces<StartResultDto>(StatusCodes.Status200OK);
+
         // Endpoint /finish
         userApi.MapPost("/finish", async (FinishRequestDto body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
@@ -332,6 +420,19 @@ public static class EventModule
             .WithSummary("Staff/organizer ghi nhận finish cho VĐV")
             .WithDescription("Body: { eventId, bib, distanceId }.")
             .Produces<FinishResultDto>(StatusCodes.Status200OK);
+
+        userApi.MapGet("/registrations/{registrationId:guid}/certificate", async (
+            Guid registrationId, IMediator mediator, CancellationToken ct) =>
+        {
+            var certificate = await mediator.Send(new GetRunnerCertificateQuery(registrationId), ct);
+            return certificate is null ? Results.Ok(false) : Results.Ok(certificate);
+        })
+            .WithSummary("Thông tin chứng nhận tham gia của đăng ký")
+            .WithDescription("Chỉ chủ đăng ký được xem. Trả về JSON gồm registrationId, runnerName, eventName, bib, distance, distanceKm, raceDate (yyyy-MM-dd), status, finishTime (HH:mm:ss), resultSeconds, startedAtUtc, finishedAtUtc và pace (mm:ss/km). Thời gian = finishedAtUtc - startedAtUtc; nếu chưa quét start riêng, dùng resultSeconds đã ghi nhận. Pace = thời gian / distanceKm, làm tròn đến giây gần nhất. Chỉ cấp khi trạng thái là finished và có kết quả hợp lệ; nếu chưa hoàn thành hoặc thiếu dữ liệu kết quả, trả về false (HTTP 200). Giao diện tự tạo PDF từ dữ liệu này.")
+            .Produces(StatusCodes.Status200OK, contentType: "application/json")
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized);
+
         userApi.MapPost("/check-in", async (CheckInRequestDto body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
                 new CheckInRegistrationCommand(body.EventId, body.Bib, body.QrPayload), ct)))
@@ -358,6 +459,44 @@ public static class EventModule
             "Giải phải registration-open. Tiếp: POST /api/v1/payment/checkout. "
             + "PayOS PAID → pending_approval. Organizer approve → confirmed + bib + qrPayload.");
 
+        // ── Endpoint Khiếu Nại cho VĐV ──
+        userApi.MapPost("/complaints", async (
+            CreateComplaintRequest body,
+            IMediator mediator,
+            CancellationToken ct) =>
+        {
+            var result = await mediator.Send(new CreateComplaintCommand(body.EventId, body.DistanceId, body.Title, body.Content, body.EvidenceLinks), ct);
+            return Results.Created($"/api/v1/event/complaints/detail?complaintId={result.Id}", result);
+        })
+        .WithSummary("VĐV gửi thông tin khiếu nại tới BTC")
+        .WithDescription("Body: { eventId, distanceId, title, content, evidenceLinks (1–5 URL HTTP/HTTPS) }.")
+        .Produces<EventComplaintDto>(StatusCodes.Status201Created);
+
+        userApi.MapGet("/complaints/mine", async (
+            [FromQuery] Guid? eventId,
+            [FromQuery] string? status,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetMyComplaintsQuery(eventId, status, page ?? 1, pageSize ?? 10), ct)))
+        .WithSummary("VĐV xem danh sách khiếu nại của chính mình")
+        .WithDescription("Trả về danh sách khiếu nại có phân trang và lọc theo trạng thái (Pending/Accepted/Rejected).");
+
+        userApi.MapGet("/complaints/detail", async (
+            [FromQuery] Guid complaintId, IMediator mediator, CancellationToken ct) =>
+        {
+            var detail = await mediator.Send(new GetComplaintDetailQuery(complaintId), ct);
+            return detail is null
+                ? (IResult)Results.NotFound(new { error = "Không tìm thấy khiếu nại hoặc bạn không có quyền xem." })
+                : Results.Ok(detail);
+        })
+        .WithSummary("Chi tiết khiếu nại và phản hồi của ban tổ chức")
+        .WithDescription("Query: complaintId. Chỉ người gửi, chủ giải hoặc Admin được xem; trả về cùng các trường như danh sách complaints/mine.")
+        .Produces<EventComplaintDto>()
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status401Unauthorized);
+
         var adminApi = app.MapGroup("/api/v1/event/admin")
             .WithTags(ApiTags.EventAdmin)
             .RequireAuthorization(AuthPolicies.AdminOnly)
@@ -383,7 +522,7 @@ public static class EventModule
             Guid eventId, RejectRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new RejectRaceEventCommand(eventId, body.Reason), ct)))
             .WithSummary("Từ chối giải (cần reason)");
-     
+
         // ── Admin promo-code management ───────────────────────────────
 
         var promoApi = app.MapGroup("/api/v1/event/admin/promos")
@@ -570,4 +709,8 @@ public static class EventModule
             HeightCm, WeightKg, BloodType, EmergencyName, EmergencyPhone,
             ShirtType, ShirtSize, ShirtColor, MedicalCodes, HealthCertFileName, HealthCertUrl, LiabilityAccepted);
     }
+
+    // ĐÃ CHUYỂN VÀO TRONG CLASS EventModule
+    private sealed record CreateComplaintRequest(Guid EventId, Guid DistanceId, string Title, string Content, IReadOnlyList<string>? EvidenceLinks);
+    private sealed record ReplyComplaintRequest(string ResponseContent, string Decision);
 }

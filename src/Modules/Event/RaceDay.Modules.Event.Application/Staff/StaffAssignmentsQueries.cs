@@ -13,7 +13,9 @@ public sealed record StaffAssignmentDto(
     string Status,
     string? StationId,
     string? StationLabel,
-    DateOnly? EventDate);
+    DateOnly? EventDate,
+    DateOnly? EndDate = null,
+    TimeOnly? StartTime = null);
 
 public sealed record ListMyStaffAssignmentsQuery : IRequest<IReadOnlyList<StaffAssignmentDto>>;
 
@@ -49,7 +51,9 @@ public sealed class ListMyStaffAssignmentsQueryHandler(
                 EventStaffMapper.ToStatusApi(m.Status),
                 m.StationId,
                 m.StationLabel,
-                race.EventDate));
+                race.EventDate,
+                race.EndDate,
+                race.StartTime));
         }
 
         return result;

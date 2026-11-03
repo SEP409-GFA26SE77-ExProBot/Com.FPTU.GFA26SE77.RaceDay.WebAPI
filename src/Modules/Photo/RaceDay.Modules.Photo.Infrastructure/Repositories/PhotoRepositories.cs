@@ -24,21 +24,39 @@ public sealed class PhotoAssetRepository(PhotoDbContext db) : IPhotoAssetReposit
         IReadOnlyCollection<PhotoStatus> statuses,
         int skip,
         int take,
-        CancellationToken cancellationToken = default)
-        => await db.Photos.AsNoTracking()
+        CancellationToken cancellationToken = default,
+        bool? isPublished = null)
+    {
+        var q = db.Photos.AsNoTracking()
             .Include(x => x.Tags)
-            .Where(x => x.EventId == eventId && statuses.Contains(x.Status))
+            .Where(x => x.EventId == eventId && statuses.Contains(x.Status));
+        if (isPublished is not null)
+        {
+            q = q.Where(x => x.IsPublished == isPublished.Value);
+        }
+
+        return await q
             .OrderByDescending(x => x.CreatedAtUtc)
             .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);
+    }
 
     public Task<int> CountByEventAndStatusesAsync(
         Guid eventId,
         IReadOnlyCollection<PhotoStatus> statuses,
-        CancellationToken cancellationToken = default)
-        => db.Photos.AsNoTracking()
-            .CountAsync(x => x.EventId == eventId && statuses.Contains(x.Status), cancellationToken);
+        CancellationToken cancellationToken = default,
+        bool? isPublished = null)
+    {
+        var q = db.Photos.AsNoTracking()
+            .Where(x => x.EventId == eventId && statuses.Contains(x.Status));
+        if (isPublished is not null)
+        {
+            q = q.Where(x => x.IsPublished == isPublished.Value);
+        }
+
+        return q.CountAsync(cancellationToken);
+    }
 
     public async Task<IReadOnlyList<PhotoAsset>> ListPendingForProcessAsync(
         Guid eventId,
@@ -61,6 +79,19 @@ public sealed class PhotoAssetRepository(PhotoDbContext db) : IPhotoAssetReposit
             .Take(take)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<PhotoAsset>> ListStuckProcessingAsync(
+        TimeSpan olderThan,
+        int take,
+        CancellationToken cancellationToken = default)
+    {
+        var cutoff = DateTime.UtcNow - olderThan;
+        return await db.Photos
+            .Where(x => x.Status == PhotoStatus.Processing && x.UpdatedAtUtc < cutoff)
+            .OrderBy(x => x.UpdatedAtUtc)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<PhotoAsset>> SearchByEventAndBibAsync(
         Guid eventId,
         string bibNormalized,
@@ -73,6 +104,7 @@ public sealed class PhotoAssetRepository(PhotoDbContext db) : IPhotoAssetReposit
             .Include(x => x.Tags)
             .Where(x =>
                 x.EventId == eventId
+                && x.IsPublished
                 && Searchable.Contains(x.Status)
                 && x.Tags.Any(t => t.BibNormalized == bib))
             .OrderByDescending(x => x.CreatedAtUtc)
@@ -90,6 +122,7 @@ public sealed class PhotoAssetRepository(PhotoDbContext db) : IPhotoAssetReposit
         return db.Photos.AsNoTracking()
             .CountAsync(x =>
                 x.EventId == eventId
+                && x.IsPublished
                 && Searchable.Contains(x.Status)
                 && x.Tags.Any(t => t.BibNormalized == bib),
                 cancellationToken);
@@ -108,7 +141,43 @@ public sealed class PhotoAssetRepository(PhotoDbContext db) : IPhotoAssetReposit
     public async Task AddAsync(PhotoAsset photo, CancellationToken cancellationToken = default)
         => await db.Photos.AddAsync(photo, cancellationToken);
 
-    public void Update(PhotoAsset photo) => db.Photos.Update(photo);
+    public void Update(PhotoAsset photo)
+    {
+        // Already-tracked aggregates (Include tags) must NOT use Update() —
+        // it marks new child tags as Modified → concurrency 0-row on INSERT path.
+        var entry = db.Entry(photo);
+        if (entry.State == EntityState.Detached)
+        {
+            db.Photos.Update(photo);
+        }
+    }
+
+    public async Task<PhotoAsset?> ReloadForOcrApplyAsync(
+        Guid photoId,
+        CancellationToken cancellationToken = default)
+    {
+        await db.PhotoTags
+            .Where(t => t.PhotoId == photoId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        foreach (var tracked in db.ChangeTracker.Entries<PhotoAsset>()
+                     .Where(e => e.Entity.Id == photoId)
+                     .ToList())
+        {
+            tracked.State = EntityState.Detached;
+        }
+
+        foreach (var tracked in db.ChangeTracker.Entries<PhotoTag>()
+                     .Where(e => e.Entity.PhotoId == photoId)
+                     .ToList())
+        {
+            tracked.State = EntityState.Detached;
+        }
+
+        return await db.Photos
+            .Include(x => x.Tags)
+            .FirstOrDefaultAsync(x => x.Id == photoId, cancellationToken);
+    }
 }
 
 public sealed class PhotoDisputeRepository(PhotoDbContext db) : IPhotoDisputeRepository

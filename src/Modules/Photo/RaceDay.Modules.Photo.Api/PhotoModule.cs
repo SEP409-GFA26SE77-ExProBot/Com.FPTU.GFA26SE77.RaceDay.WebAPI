@@ -3,6 +3,7 @@ using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
@@ -46,12 +47,21 @@ public static class PhotoModule
             .RequireAuthorization(AuthPolicies.PublicUser)
             .RequireRateLimiting("authenticated");
 
+        // FE chia lô ~40MB; chỉ nới body trên endpoint này (không đổi Kestrel global).
+        const long bulkUploadBodyLimitBytes = 64L * 1024 * 1024;
+
         pho.MapPost("/events/{eventId:guid}/photos/bulk-upload", async (
             Guid eventId,
             HttpRequest request,
             IMediator mediator,
             CancellationToken ct) =>
         {
+            var maxBody = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+            if (maxBody is { IsReadOnly: false })
+            {
+                maxBody.MaxRequestBodySize = bulkUploadBodyLimitBytes;
+            }
+
             if (!request.HasFormContentType)
             {
                 return Results.BadRequest(new { message = "Expect multipart/form-data." });
@@ -73,7 +83,7 @@ public static class PhotoModule
         })
             .DisableAntiforgery()
             .WithSummary("Bulk upload ảnh (Pending) — Active Photographer của event")
-            .WithDescription("Multipart ≤25MB/file. JWT Photographer không đủ — cần staff Active role Photographer.");
+            .WithDescription("Multipart ≤25MB/file, ≤500 file/request. JWT Photographer không đủ — cần staff Active role Photographer.");
 
         pho.MapGet("/events/{eventId:guid}/photos/pending", async (
             Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
@@ -81,17 +91,53 @@ public static class PhotoModule
                 new ListPhotographerPhotosQuery(eventId, "pending", page ?? 1, pageSize ?? 50), ct)))
             .WithSummary("Danh sách ảnh pending/queued/processing/failed");
 
+        pho.MapGet("/events/{eventId:guid}/photos/queue", async (
+            Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ListPhotographerPhotosQuery(eventId, "queue", page ?? 1, pageSize ?? 50), ct)))
+            .WithSummary("Hàng OCR còn chạy (pending/queued/processing — không gồm failed)");
+
         pho.MapGet("/events/{eventId:guid}/photos/matched", async (
             Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
                 new ListPhotographerPhotosQuery(eventId, "matched", page ?? 1, pageSize ?? 50), ct)))
-            .WithSummary("Ảnh đã khớp (matched + manual_corrected)");
+            .WithSummary("Ảnh đã khớp (matched + manual_corrected) — gồm cả chưa/đã publish");
+
+        pho.MapGet("/events/{eventId:guid}/photos/ready", async (
+            Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ListPhotographerPhotosQuery(eventId, "ready", page ?? 1, pageSize ?? 50), ct)))
+            .WithSummary("Ảnh đã khớp, chưa publish — chờ photographer xuất bản");
+
+        pho.MapGet("/events/{eventId:guid}/photos/published", async (
+            Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ListPhotographerPhotosQuery(eventId, "published", page ?? 1, pageSize ?? 50), ct)))
+            .WithSummary("Ảnh đã publish — runner search được");
+
+        pho.MapPost("/events/{eventId:guid}/photos/publish", async (
+            Guid eventId,
+            PublishPhotosBody? body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new PublishPhotosCommand(
+                    eventId,
+                    body?.PhotoIds,
+                    body?.AllReady ?? false), ct)))
+            .WithSummary("Publish ảnh đã khớp → hiện trên search runner (bulk / allReady)");
 
         pho.MapGet("/events/{eventId:guid}/photos/review", async (
             Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
                 new ListPhotographerPhotosQuery(eventId, "review", page ?? 1, pageSize ?? 50), ct)))
             .WithSummary("Ảnh cần review / runner reported");
+
+        pho.MapGet("/events/{eventId:guid}/photos/discarded", async (
+            Guid eventId, int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ListPhotographerPhotosQuery(eventId, "discarded", page ?? 1, pageSize ?? 50), ct)))
+            .WithSummary("Ảnh đã loại (OCR no_bib / photographer reject)");
 
         pho.MapPost("/events/{eventId:guid}/photos/process", async (
             Guid eventId, IMediator mediator, CancellationToken ct) =>
@@ -107,6 +153,25 @@ public static class PhotoModule
             Results.Ok(await mediator.Send(
                 new CorrectPhotoBibCommand(eventId, photoId, body.Bib), ct)))
             .WithSummary("Sửa BIB (chỉ NeedsReview / RunnerReported) → ManualCorrected");
+
+        pho.MapPost("/events/{eventId:guid}/photos/{photoId:guid}/discard", async (
+            Guid eventId,
+            Guid photoId,
+            DiscardPhotoBody? body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new DiscardPhotoCommand(eventId, photoId, body?.Reason), ct)))
+            .WithSummary("Reject / loại ảnh (needs_review, pending, failed) → Discarded");
+
+        pho.MapGet("/events/{eventId:guid}/photos/{photoId:guid}", async (
+            Guid eventId,
+            Guid photoId,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new GetPhotographerPhotoDetailQuery(eventId, photoId), ct)))
+            .WithSummary("Chi tiết 1 ảnh (photographer — mọi status)");
 
         pho.MapGet("/events/{eventId:guid}/disputes", async (
             Guid eventId, IMediator mediator, CancellationToken ct) =>
@@ -146,6 +211,18 @@ public static class PhotoModule
             Guid photoId, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetPhotoDetailQuery(photoId), ct)))
             .WithSummary("Chi tiết ảnh");
+
+        runner.MapGet("/photos/{photoId:guid}/download", async (
+            Guid photoId, IMediator mediator, CancellationToken ct) =>
+        {
+            var file = await mediator.Send(new DownloadPhotoQuery(photoId), ct);
+            return Results.File(
+                file.Content,
+                file.ContentType,
+                file.FileName,
+                enableRangeProcessing: false);
+        })
+            .WithSummary("Tải ảnh về máy (proxy storage — tránh CORS trình duyệt)");
 
         runner.MapPost("/photos/{photoId:guid}/disputes", async (
             Guid photoId, CreateDisputeBody body, IMediator mediator, CancellationToken ct) =>
@@ -234,8 +311,12 @@ public static class PhotoModule
     }
 
     private sealed record CorrectBibBody(string Bib);
+    private sealed record DiscardPhotoBody(string? Reason);
     private sealed record RejectDisputeBody(string Reason);
     private sealed record CreateDisputeBody(string Reason);
+    private sealed record PublishPhotosBody(
+        IReadOnlyList<Guid>? PhotoIds = null,
+        bool AllReady = false);
 
     private sealed record OcrResultBody(
         [property: JsonPropertyName("status")] string Status,

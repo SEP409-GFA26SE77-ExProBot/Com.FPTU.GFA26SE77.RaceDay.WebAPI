@@ -1,0 +1,28 @@
+                                Table "iam.users"
+        Column        |           Type           | Collation | Nullable | Default 
+----------------------+--------------------------+-----------+----------+---------
+ user_id              | uuid                     |           | not null | 
+ email                | character varying(100)   |           | not null | 
+ username             | character varying(50)    |           | not null | 
+ role_id              | uuid                     |           | not null | 
+ password_hash        | character varying(255)   |           | not null | 
+ full_name            | character varying(100)   |           | not null | 
+ phone                | character varying(20)    |           |          | 
+ date_of_birth        | date                     |           |          | 
+ gender               | smallint                 |           | not null | 
+ status               | smallint                 |           | not null | 
+ email_verified       | boolean                  |           | not null | 
+ created_at           | timestamp with time zone |           | not null | 
+ updated_at           | timestamp with time zone |           | not null | 
+ must_change_password | boolean                  |           | not null | false
+ id_number            | character varying(30)    |           |          | 
+Indexes:
+    "users_pkey" PRIMARY KEY, btree (user_id)
+    "IX_users_email" UNIQUE, btree (email)
+    "IX_users_role_id" btree (role_id)
+    "ix_users_username" UNIQUE, btree (username) WHERE username IS NOT NULL AND btrim(username::text) <> ''::text
+Foreign-key constraints:
+    "users_role_id_fkey" FOREIGN KEY (role_id) REFERENCES iam.roles(role_id) ON DELETE RESTRICT
+Referenced by:
+    TABLE "iam.profiles" CONSTRAINT "profiles_user_id_fkey" FOREIGN KEY (user_id) REFERENCES iam.users(user_id) ON DELETE CASCADE
+

@@ -85,6 +85,11 @@ public sealed class UpdateUserCommandHandler(
             user.ChangeUsername(normalizedUsername);
         }
 
+        // ── Thay InputRules.NormalizeIdNumber bằng xử lý trực tiếp ──
+        var normalizedIdNumber = request.IdNumber is null
+            ? user.IdNumber
+            : (string.IsNullOrWhiteSpace(request.IdNumber) ? null : request.IdNumber.Trim());
+
         user.UpdateProfile(
             request.FullName,
             request.Phone,
@@ -93,7 +98,7 @@ public sealed class UpdateUserCommandHandler(
             request.ProfileDescription,
             request.ContactEmail,
             request.ContactPhone,
-            request.IdNumber is null ? user.IdNumber : InputRules.NormalizeIdNumber(request.IdNumber));
+            normalizedIdNumber);
         user.ChangeRole(request.RoleId);
         user.SetStatus(request.Status.ToDomain());
 

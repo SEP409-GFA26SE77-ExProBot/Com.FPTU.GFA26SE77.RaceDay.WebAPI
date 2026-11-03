@@ -17,6 +17,8 @@ public sealed class PhotoDbContext(DbContextOptions<PhotoDbContext> options) : D
         {
             entity.ToTable("photos");
             entity.HasKey(x => x.Id);
+            // Client-generated Guid (Entity base) — never treat as store-generated
+            entity.Property(x => x.Id).ValueGeneratedNever();
             entity.Property(x => x.Url).HasMaxLength(2000).IsRequired();
             entity.Property(x => x.ContentSha256).HasMaxLength(64);
             entity.Property(x => x.OriginalFileName).HasMaxLength(260);
@@ -25,7 +27,9 @@ public sealed class PhotoDbContext(DbContextOptions<PhotoDbContext> options) : D
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
             entity.Property(x => x.DiscardReason).HasMaxLength(500);
             entity.Property(x => x.OcrJobId).HasMaxLength(64);
+            entity.Property(x => x.IsPublished).IsRequired().HasDefaultValue(false);
             entity.HasIndex(x => new { x.EventId, x.Status });
+            entity.HasIndex(x => new { x.EventId, x.IsPublished, x.Status });
             entity.HasIndex(x => new { x.EventId, x.ContentSha256 });
             entity.HasMany(x => x.Tags)
                 .WithOne()
@@ -36,12 +40,14 @@ public sealed class PhotoDbContext(DbContextOptions<PhotoDbContext> options) : D
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.Ignore(x => x.DomainEvents);
             entity.Ignore(x => x.IsSearchable);
+            entity.Ignore(x => x.CanPublish);
         });
 
         modelBuilder.Entity<PhotoTag>(entity =>
         {
             entity.ToTable("photo_tags");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).ValueGeneratedNever();
             entity.Property(x => x.BibNormalized).HasMaxLength(30).IsRequired();
             entity.Property(x => x.BboxJson).HasMaxLength(128);
             entity.Property(x => x.Source).HasConversion<string>().HasMaxLength(16).IsRequired();
@@ -53,6 +59,7 @@ public sealed class PhotoDbContext(DbContextOptions<PhotoDbContext> options) : D
         {
             entity.ToTable("photo_disputes");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).ValueGeneratedNever();
             entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
             entity.Property(x => x.ReviewNote).HasMaxLength(1000);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(16).IsRequired();

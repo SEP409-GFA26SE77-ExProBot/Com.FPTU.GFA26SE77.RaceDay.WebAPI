@@ -1,3 +1,5 @@
+using Amazon.S3;
+using Amazon.S3.Model;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -50,12 +52,46 @@ public sealed class LocalFileStorage(
 
 /// <summary>
 /// Cloudflare R2 via S3-compatible API. Configure Storage:Provider=R2 + R2 credentials.
-/// Uses AWS SDK put-object against the R2 endpoint.
+/// Reuses one <see cref="AmazonS3Client"/> (DI singleton) — tránh tạo client mỗi PutObject.
 /// </summary>
-public sealed class CloudflareR2FileStorage(
-    IConfiguration configuration,
-    ILogger<CloudflareR2FileStorage> logger) : IFileStorage
+public sealed class CloudflareR2FileStorage : IFileStorage, IDisposable
 {
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<CloudflareR2FileStorage> _logger;
+    private readonly Lazy<IAmazonS3> _client;
+    private readonly string _bucket;
+    private readonly string _publicBase;
+
+    public CloudflareR2FileStorage(
+        IConfiguration configuration,
+        ILogger<CloudflareR2FileStorage> logger)
+    {
+        _configuration = configuration;
+        _logger = logger;
+        _bucket = configuration["Storage:R2:Bucket"]
+            ?? throw new InvalidOperationException("Storage:R2:Bucket missing.");
+        _publicBase = configuration["Storage:PublicBaseUrl"]?.TrimEnd('/')
+            ?? throw new InvalidOperationException("Storage:PublicBaseUrl missing for R2.");
+        _client = new Lazy<IAmazonS3>(CreateClient, LazyThreadSafetyMode.ExecutionAndPublication);
+    }
+
+    private IAmazonS3 CreateClient()
+    {
+        var accountId = _configuration["Storage:R2:AccountId"]
+            ?? throw new InvalidOperationException("Storage:R2:AccountId missing.");
+        var accessKey = _configuration["Storage:R2:AccessKeyId"]
+            ?? throw new InvalidOperationException("Storage:R2:AccessKeyId missing.");
+        var secretKey = _configuration["Storage:R2:SecretAccessKey"]
+            ?? throw new InvalidOperationException("Storage:R2:SecretAccessKey missing.");
+
+        var config = new AmazonS3Config
+        {
+            ServiceURL = $"https://{accountId}.r2.cloudflarestorage.com",
+            ForcePathStyle = true
+        };
+        return new AmazonS3Client(accessKey, secretKey, config);
+    }
+
     public async Task<StoredFile> UploadAsync(
         Stream content,
         string fileName,
@@ -63,30 +99,12 @@ public sealed class CloudflareR2FileStorage(
         string folder,
         CancellationToken cancellationToken = default)
     {
-        var accountId = configuration["Storage:R2:AccountId"]
-            ?? throw new InvalidOperationException("Storage:R2:AccountId missing.");
-        var accessKey = configuration["Storage:R2:AccessKeyId"]
-            ?? throw new InvalidOperationException("Storage:R2:AccessKeyId missing.");
-        var secretKey = configuration["Storage:R2:SecretAccessKey"]
-            ?? throw new InvalidOperationException("Storage:R2:SecretAccessKey missing.");
-        var bucket = configuration["Storage:R2:Bucket"]
-            ?? throw new InvalidOperationException("Storage:R2:Bucket missing.");
-        var publicBase = configuration["Storage:PublicBaseUrl"]?.TrimEnd('/')
-            ?? throw new InvalidOperationException("Storage:PublicBaseUrl missing for R2.");
-
         var safeFolder = string.IsNullOrWhiteSpace(folder) ? "misc" : folder.Trim().ToLowerInvariant();
         var key = $"{safeFolder}/{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}{Path.GetExtension(fileName)}";
 
-        var config = new Amazon.S3.AmazonS3Config
+        var put = new PutObjectRequest
         {
-            ServiceURL = $"https://{accountId}.r2.cloudflarestorage.com",
-            ForcePathStyle = true
-        };
-        using var client = new Amazon.S3.AmazonS3Client(accessKey, secretKey, config);
-
-        var put = new Amazon.S3.Model.PutObjectRequest
-        {
-            BucketName = bucket,
+            BucketName = _bucket,
             Key = key,
             InputStream = content,
             ContentType = contentType,
@@ -95,16 +113,24 @@ public sealed class CloudflareR2FileStorage(
         };
         try
         {
-            await client.PutObjectAsync(put, cancellationToken);
+            await _client.Value.PutObjectAsync(put, cancellationToken);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "R2 upload failed for {Key}", key);
+            _logger.LogError(ex, "R2 upload failed for {Key}", key);
             throw new InvalidOperationException($"Upload R2 thất bại: {ex.Message}", ex);
         }
 
-        var url = $"{publicBase}/{key}";
-        logger.LogInformation("Uploaded R2 object {Key}", key);
+        var url = $"{_publicBase}/{key}";
+        _logger.LogInformation("Uploaded R2 object {Key}", key);
         return new StoredFile(Path.GetFileName(fileName), url, contentType, content.CanSeek ? content.Length : 0);
+    }
+
+    public void Dispose()
+    {
+        if (_client.IsValueCreated)
+        {
+            _client.Value.Dispose();
+        }
     }
 }

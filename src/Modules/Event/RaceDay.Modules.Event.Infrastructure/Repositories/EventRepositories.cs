@@ -3,6 +3,7 @@ using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Modules.Event.Domain.Staff;
+using RaceDay.Modules.Event.Domain.Supplies;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
 using RaceDay.Shared.Domain.Exceptions;
 
@@ -332,6 +333,17 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
     public async Task AddAsync(EventRegistration registration, CancellationToken cancellationToken = default)
         => await db.Registrations.AddAsync(registration, cancellationToken);
 
+    public Task<EventRegistration?> GetFinishedByEventAndUserAsync(
+        Guid eventId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => db.Registrations.AsNoTracking()
+            .Where(x => x.EventId == eventId && x.UserId == userId
+                && x.Status == RegistrationStatus.Finished && x.RaceStatus == RaceStatus.Finished && x.FinishedAtUtc != null)
+            .OrderByDescending(x => x.FinishedAtUtc)
+            .ThenByDescending(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
     public void Update(EventRegistration registration) => db.Registrations.Update(registration);
 }
 
@@ -416,4 +428,30 @@ public sealed class EventStaffMemberRepository(EventDbContext db) : IEventStaffM
             .Where(x => x.UserId == userId && x.Status == EventStaffStatus.Active)
             .OrderByDescending(x => x.UpdatedAtUtc)
             .ToListAsync(cancellationToken);
+}
+
+public sealed class EventSupplyItemRepository(EventDbContext db) : IEventSupplyItemRepository
+{
+    public Task<EventSupplyItem?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => db.SupplyItems.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+    public async Task<IReadOnlyList<EventSupplyItem>> ListByEventAsync(
+        Guid eventId,
+        CancellationToken cancellationToken = default)
+        => await db.SupplyItems
+            .AsNoTracking()
+            .Where(x => x.EventId == eventId)
+            .OrderBy(x => x.SortOrder)
+            .ThenBy(x => x.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+
+    public async Task AddAsync(EventSupplyItem item, CancellationToken cancellationToken = default)
+        => await db.SupplyItems.AddAsync(item, cancellationToken);
+
+    public void Update(EventSupplyItem item) => db.SupplyItems.Update(item);
+
+    public void Remove(EventSupplyItem item) => db.SupplyItems.Remove(item);
+
+    public async Task RemoveAllForEventAsync(Guid eventId, CancellationToken cancellationToken = default)
+        => await db.SupplyItems.Where(x => x.EventId == eventId).ExecuteDeleteAsync(cancellationToken);
 }
