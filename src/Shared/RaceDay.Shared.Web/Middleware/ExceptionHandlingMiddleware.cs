@@ -36,6 +36,12 @@ public sealed class ExceptionHandlingMiddleware(
             var detail = ex.InnerException?.Message ?? ex.Message;
             await WriteAsync(context, HttpStatusCode.BadRequest, detail);
         }
+        catch (Exception ex) when (ex.GetType().Name == "DbUpdateConcurrencyException")
+        {
+            logger.LogWarning(ex, "Concurrent database update");
+            await WriteAsync(context, HttpStatusCode.Conflict,
+                "Dữ liệu đã được cập nhật bởi thao tác khác. Vui lòng tải lại trước khi thử lại.");
+        }
         catch (Exception ex) when (IsDbUpdateException(ex))
         {
             logger.LogWarning(ex, "Database update failed");

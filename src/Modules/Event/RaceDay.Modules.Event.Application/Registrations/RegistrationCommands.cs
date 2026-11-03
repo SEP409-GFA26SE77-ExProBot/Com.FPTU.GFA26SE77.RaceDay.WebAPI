@@ -51,10 +51,14 @@ public sealed record RegistrationDto(
     DateTime? CheckedInAtUtc = null,
     Guid? CheckedInByUserId = null,
     DateTime? FinishedAtUtc = null,
-    long? ResultSeconds = null);
+    long? ResultSeconds = null,
+    string RaceStatus = "not_started");
 
 public static class RegistrationDtoMapper
 {
+    public static string ToApiRaceStatus(RaceStatus status) => status == RaceStatus.NotStarted
+        ? "not_started" : status.ToString().ToLowerInvariant();
+
     public static string ToApiStatus(RegistrationStatus status) => status switch
     {
         RegistrationStatus.PendingPayment => "pending_payment",
@@ -109,7 +113,8 @@ public static class RegistrationDtoMapper
             r.CheckedInAtUtc,
             r.CheckedInByUserId,
             r.FinishedAtUtc,
-            r.ResultSeconds);
+            r.ResultSeconds,
+            ToApiRaceStatus(r.RaceStatus));
     }
 }
 

@@ -11,6 +11,7 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence;
 
 public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : DbContext(options)
 {
+    public DbSet<RaceStatusChange> RaceStatusChanges => Set<RaceStatusChange>();
     public DbSet<RaceEvent> RaceEvents => Set<RaceEvent>();
     public DbSet<EventDistance> Distances => Set<EventDistance>();
     public DbSet<EventCheckpoint> Checkpoints => Set<EventCheckpoint>();
@@ -177,6 +178,7 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
             entity.ToTable("event_registrations");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
+            entity.Property(x => x.RaceStatus).HasConversion<string>().HasMaxLength(20).IsConcurrencyToken();
             entity.Property(x => x.FullName).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Phone).HasMaxLength(20).IsRequired();
@@ -206,6 +208,19 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options) : D
                 .IsUnique()
                 .HasFilter("\"Status\" NOT IN ('Rejected', 'Cancelled')");
             entity.HasIndex(x => x.EventId);
+            entity.Ignore(x => x.DomainEvents);
+        });
+
+        modelBuilder.Entity<RaceStatusChange>(entity =>
+        {
+            entity.ToTable("event_registration_race_status_changes");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PreviousStatus).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+            entity.HasIndex(x => new { x.RegistrationId, x.ChangedAtUtc });
+            entity.HasOne<EventRegistration>().WithMany().HasForeignKey(x => x.RegistrationId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.Ignore(x => x.DomainEvents);
         });
 

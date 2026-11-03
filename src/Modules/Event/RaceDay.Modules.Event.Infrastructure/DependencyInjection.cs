@@ -29,6 +29,7 @@ public static class DependencyInjection
 
         services.AddScoped<IRaceEventRepository, RaceEventRepository>();
         services.AddScoped<IEventRegistrationRepository, EventRegistrationRepository>();
+        services.AddScoped<IRaceStatusChangeRepository, RaceStatusChangeRepository>();
         services.AddScoped<IRegistrationCheckpointPassageRepository, RegistrationCheckpointPassageRepository>();
         services.AddScoped<IEventPackagePurchaseRepository, EventPackagePurchaseRepository>();
         services.AddScoped<IPromoCodeRepository, PromoCodeRepository>();

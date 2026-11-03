@@ -10,6 +10,7 @@ public sealed class EventRegistration : AggregateRoot
     public Guid DistanceId { get; private set; }
     public Guid UserId { get; private set; }
     public RegistrationStatus Status { get; private set; } = RegistrationStatus.PendingPayment;
+    public RaceStatus RaceStatus { get; private set; } = RaceStatus.NotStarted;
     public string FullName { get; private set; } = string.Empty;
     public string Email { get; private set; } = string.Empty;
     public string Phone { get; private set; } = string.Empty;
@@ -305,6 +306,7 @@ public sealed class EventRegistration : AggregateRoot
     /// </summary>
     public bool Finish(DateTime finishedAtUtc, long resultSeconds)
     {
+        EnsureRaceNotStopped();
         if (Status == RegistrationStatus.Finished)
         {
             return false;
@@ -328,11 +330,13 @@ public sealed class EventRegistration : AggregateRoot
         FinishedAtUtc = finishedAtUtc;
         ResultSeconds = resultSeconds;
         Status = RegistrationStatus.Finished;
+        RaceStatus = RaceStatus.Finished;
         Touch();
         return true;
     }
     public bool Start(DateTime startedAtUtc)
     {
+        EnsureRaceNotStopped();
         if (Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
         {
             throw new DomainException("Chỉ VĐV confirmed mới có thể ghi nhận xuất phát.");
@@ -344,15 +348,56 @@ public sealed class EventRegistration : AggregateRoot
             return false;
         }
 
+        if (RaceStatus == RaceStatus.Finished)
+        {
+            throw new DomainException("Không thể ghi nhận xuất phát sau khi VĐV đã hoàn thành.");
+        }
+
         if (startedAtUtc.Kind != DateTimeKind.Utc)
         {
             startedAtUtc = DateTime.SpecifyKind(startedAtUtc, DateTimeKind.Utc);
         }
 
         StartedAtUtc = startedAtUtc;
+        RaceStatus = RaceStatus.Running;
         Touch();
         return true;
     }
+    public RaceStatusChange ChangeRaceStatus(RaceStatus target, string reason, Guid actorId,
+        DateTime nowUtc, DateTime? scheduledStartUtc)
+    {
+        if (Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
+            throw new DomainException("Chỉ đăng ký đã được duyệt mới được cập nhật trạng thái thi đấu.");
+        if (target is not (RaceStatus.DNS or RaceStatus.DNF or RaceStatus.DQ))
+            throw new DomainException("Trạng thái phải là dns, dnf hoặc dq.");
+        if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length > 1000)
+            throw new DomainException("Lý do bắt buộc và không được vượt quá 1000 ký tự.");
+        if (actorId == Guid.Empty || nowUtc.Kind != DateTimeKind.Utc)
+            throw new DomainException("Người cập nhật hoặc thời gian cập nhật không hợp lệ.");
+
+        EnsureRaceNotStopped();
+        if (target == RaceStatus.DNS && (RaceStatus != RaceStatus.NotStarted
+            || StartedAtUtc.HasValue || FinishedAtUtc.HasValue || ResultSeconds.HasValue
+            || Status != RegistrationStatus.Confirmed))
+            throw new DomainException("Chỉ VĐV chưa xuất phát và chưa có kết quả mới được đánh DNS.");
+        if (target == RaceStatus.DNS && (scheduledStartUtc is null || nowUtc < scheduledStartUtc))
+            throw new DomainException("Chỉ được đánh DNS khi đã đến giờ xuất phát của cự ly/giải.");
+        if (target == RaceStatus.DNF && (RaceStatus != RaceStatus.Running
+            || FinishedAtUtc.HasValue || Status != RegistrationStatus.Confirmed))
+            throw new DomainException("Chỉ VĐV đang chạy, chưa hoàn thành mới được đánh DNF.");
+
+        var change = RaceStatusChange.Create(Id, RaceStatus, target, reason.Trim(), actorId, nowUtc);
+        RaceStatus = target;
+        UpdatedAtUtc = nowUtc;
+        return change;
+    }
+
+    private void EnsureRaceNotStopped()
+    {
+        if (RaceStatus is RaceStatus.DNS or RaceStatus.DNF or RaceStatus.DQ)
+            throw new DomainException("VĐV đã có trạng thái DNS/DNF/DQ; không thể tiếp tục hoặc đổi quyết định.");
+    }
+
     private void Touch() => UpdatedAtUtc = DateTime.UtcNow;
 }
 
