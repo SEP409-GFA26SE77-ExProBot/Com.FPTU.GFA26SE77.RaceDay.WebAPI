@@ -7,6 +7,15 @@ public interface IEmergencyResourceRepository
 {
     Task<EmergencyResource?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
+    Task<EmergencyResource?> GetTrackedByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    Task<bool> ExistsByEventAndCodeAsync(
+        Guid eventId,
+        string resourceCode,
+        CancellationToken cancellationToken = default);
+
+    void Add(EmergencyResource resource);
+
     Task<(IReadOnlyList<EmergencyResource> Items, int Total)> ListByEventAsync(
         Guid eventId,
         EmergencyResourceStatus? status,

@@ -154,7 +154,7 @@ public class EmergencyResponseTests
             Utc(1));
         var resolvedAt = Utc(5);
 
-        response.Resolve("  Đã chuyển viện.  ", resolvedAt);
+        response.Resolve("  Đã chuyển viện.  ", resolvedAt, hasUnfinishedAssignment: false);
 
         Assert.Equal(sourceSosAlertId, response.SourceSosAlertId);
         Assert.Equal(EmergencyResponseStatus.Resolved, response.Status);
@@ -168,7 +168,7 @@ public class EmergencyResponseTests
     {
         var response = CreateWithStatus(EmergencyResponseStatus.InProgress);
 
-        response.Resolve("Ổn định tại chỗ.", Utc(6));
+        response.Resolve("Ổn định tại chỗ.", Utc(6), hasUnfinishedAssignment: false);
 
         Assert.Equal(EmergencyResponseStatus.Resolved, response.Status);
         Assert.Equal(Utc(6), response.ResolvedAtUtc);
@@ -183,7 +183,8 @@ public class EmergencyResponseTests
     {
         var response = CreateWithStatus(status);
 
-        var ex = Assert.Throws<DomainException>(() => response.Resolve("Đã xong.", Utc(7)));
+        var ex = Assert.Throws<DomainException>(() =>
+            response.Resolve("Đã xong.", Utc(7), hasUnfinishedAssignment: true));
 
         Assert.Equal("Phản hồi khẩn cấp không thể kết thúc ở trạng thái hiện tại.", ex.Message);
         Assert.Equal(status, response.Status);
@@ -194,11 +195,70 @@ public class EmergencyResponseTests
     {
         var response = CreateWithStatus(EmergencyResponseStatus.Assigned);
 
-        var ex = Assert.Throws<DomainException>(() => response.Resolve("   ", Utc(8)));
+        var ex = Assert.Throws<DomainException>(() =>
+            response.Resolve("   ", Utc(8), hasUnfinishedAssignment: true));
 
         Assert.Equal("Nội dung kết thúc phản hồi không được để trống.", ex.Message);
         Assert.Equal(EmergencyResponseStatus.Assigned, response.Status);
         Assert.Null(response.ResolvedAtUtc);
+        Assert.Null(response.ResolutionNotes);
+    }
+
+    [Fact]
+    public void Resolve_Rejects_Unfinished_Assignments_Without_Mutating()
+    {
+        var response = CreateWithStatus(EmergencyResponseStatus.Assigned);
+
+        var ex = Assert.Throws<DomainException>(() =>
+            response.Resolve("Đã xong.", Utc(8), hasUnfinishedAssignment: true));
+
+        Assert.Equal("Còn phân công chưa kết thúc nên không thể kết thúc hồ sơ.", ex.Message);
+        Assert.Equal(EmergencyResponseStatus.Assigned, response.Status);
+        Assert.Null(response.ResolvedAtUtc);
+        Assert.Null(response.ResolutionNotes);
+    }
+
+    [Theory]
+    [InlineData(EmergencyResponseStatus.Open)]
+    [InlineData(EmergencyResponseStatus.Assigned)]
+    [InlineData(EmergencyResponseStatus.InProgress)]
+    public void Receive_Assignment_Allows_Active_Response_Without_Changing_It(EmergencyResponseStatus status)
+    {
+        var response = CreateWithStatus(status);
+        var sourceSosAlertId = response.SourceSosAlertId;
+        var assignedAt = response.AssignedAtUtc;
+
+        response.EnsureCanReceiveAssignment();
+
+        Assert.Equal(status, response.Status);
+        Assert.Equal(assignedAt, response.AssignedAtUtc);
+        Assert.Equal(sourceSosAlertId, response.SourceSosAlertId);
+    }
+
+    [Theory]
+    [InlineData(EmergencyResponseStatus.Resolved)]
+    [InlineData(EmergencyResponseStatus.Cancelled)]
+    public void Receive_Assignment_Rejects_Terminal_Response(EmergencyResponseStatus status)
+    {
+        var response = CreateWithStatus(status);
+
+        var ex = Assert.Throws<DomainException>(() => response.EnsureCanReceiveAssignment());
+
+        Assert.Equal("Chỉ hồ sơ đang mở, đã xác nhận hoặc đang xử lý mới được phân công nguồn lực.", ex.Message);
+        Assert.Equal(status, response.Status);
+    }
+
+    [Fact]
+    public void Remove_Assignment_Allows_Only_Open_Response()
+    {
+        var open = Create(Guid.NewGuid());
+        open.EnsureCanRemoveAssignment();
+        Assert.Equal(EmergencyResponseStatus.Open, open.Status);
+
+        var assigned = CreateWithStatus(EmergencyResponseStatus.Assigned);
+        var ex = Assert.Throws<DomainException>(() => assigned.EnsureCanRemoveAssignment());
+        Assert.Equal("Chỉ hồ sơ đang mở mới gỡ được phân công.", ex.Message);
+        Assert.Equal(EmergencyResponseStatus.Assigned, assigned.Status);
     }
 
     [Theory]

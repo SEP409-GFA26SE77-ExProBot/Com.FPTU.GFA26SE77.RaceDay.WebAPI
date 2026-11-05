@@ -1,3 +1,4 @@
+using System.Reflection;
 using NSubstitute;
 using RaceDay.Modules.Device.Contracts.Sos;
 using RaceDay.Modules.Event.Contracts.Events;
@@ -17,6 +18,7 @@ public class EmergencyCoordinationHandlerTests
     private static readonly Guid UserId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
     private static readonly Guid EventId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     private static readonly Guid OtherEventId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
+    private static readonly Guid OtherOrganizerId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
     private const string SourceSosStatus = "Acknowledged";
 
     [Fact]
@@ -259,23 +261,54 @@ public class EmergencyCoordinationHandlerTests
         missingResource.Assignments.DidNotReceive().Add(Arg.Any<EmergencyAssignment>());
     }
 
-    [Fact]
-    public async Task Create_Rejects_Response_That_Is_Not_Open()
+    [Theory]
+    [InlineData(EmergencyResponseStatus.Assigned)]
+    [InlineData(EmergencyResponseStatus.InProgress)]
+    public async Task Create_Assigns_Resource_Without_Changing_Response_Resource_Or_Sos(
+        EmergencyResponseStatus status)
     {
-        var response = EmergencyResponse.Create(
-            Guid.NewGuid(),
-            EmergencyIncidentType.Medical,
-            EmergencyPriority.High,
-            EmergencyResponseStatus.Assigned,
-            DateTime.UtcNow);
+        var response = ResponseWithStatus(status);
+        var sourceSosAlertId = response.SourceSosAlertId;
+        var assignedAt = response.AssignedAtUtc;
+        var resource = Resource(EventId, EmergencyResourceStatus.Assigned);
+        var scope = Scope(response);
+        var ctx = AssignmentAccess(response, scope);
+        ctx.Resources.GetByIdAsync(resource.Id, Arg.Any<CancellationToken>()).Returns(resource);
+        ctx.Assignments.ExistsForResponseAsync(response.Id, resource.Id, Arg.Any<CancellationToken>()).Returns(false);
+
+        var result = await CreateHandler(ctx).Handle(
+            new CreateEmergencyAssignmentCommand(response.Id, new CreateEmergencyAssignmentRequest(resource.Id, null)),
+            CancellationToken.None);
+
+        Assert.Equal(EmergencyAssignmentStatus.Assigned.ToString(), result.Status);
+        Assert.Equal(status, response.Status);
+        Assert.Equal(assignedAt, response.AssignedAtUtc);
+        Assert.Equal(EmergencyResourceStatus.Assigned, resource.Status);
+        Assert.Equal(sourceSosAlertId, response.SourceSosAlertId);
+        Assert.Equal(SourceSosStatus, scope.Status);
+        ctx.Assignments.Received(1).Add(Arg.Is<EmergencyAssignment>(row =>
+            row.EmergencyResponseId == response.Id && row.Status == EmergencyAssignmentStatus.Assigned));
+        await ctx.UnitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+        await ctx.Scopes.Received(1).GetAsync(sourceSosAlertId, Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(EmergencyResponseStatus.Resolved)]
+    [InlineData(EmergencyResponseStatus.Cancelled)]
+    public async Task Create_Rejects_Terminal_Response(EmergencyResponseStatus status)
+    {
+        var response = ResponseWithStatus(status);
         var ctx = AssignmentAccess(response, Scope(response));
 
         var ex = await Assert.ThrowsAsync<DomainException>(() => CreateHandler(ctx).Handle(
             new CreateEmergencyAssignmentCommand(response.Id, new CreateEmergencyAssignmentRequest(Guid.NewGuid(), null)),
             CancellationToken.None));
 
-        Assert.Equal("Chỉ hồ sơ đang mở mới được phân công nguồn lực.", ex.Message);
+        Assert.Equal("Chỉ hồ sơ đang mở, đã xác nhận hoặc đang xử lý mới được phân công nguồn lực.", ex.Message);
+        Assert.Equal(status, response.Status);
         await ctx.Resources.DidNotReceive().GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        ctx.Assignments.DidNotReceive().Add(Arg.Any<EmergencyAssignment>());
+        await ctx.UnitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -401,23 +434,34 @@ public class EmergencyCoordinationHandlerTests
     }
 
     [Fact]
-    public async Task Cancel_Completes_Assignments_And_Leaves_Source_Sos_Untouched()
+    public async Task Cancel_Cancels_Unfinished_Assignments_And_Leaves_Finished_Rows_And_Source_Sos()
     {
         var response = OpenResponse();
         var sourceSosAlertId = response.SourceSosAlertId;
         var scope = Scope(response);
         var earlier = new DateTime(2026, 10, 27, 1, 0, 0, DateTimeKind.Utc);
-        var alreadyDone = EmergencyAssignment.Create(
+        var acceptedAt = earlier.AddMinutes(5);
+        var arrivedAt = earlier.AddMinutes(10);
+        var completedAt = earlier.AddMinutes(15);
+        var assigned = EmergencyAssignment.Create(
+            response.Id, Guid.NewGuid(), earlier, EmergencyAssignmentStatus.Assigned);
+        var accepted = EmergencyAssignment.Create(
+            response.Id, Guid.NewGuid(), earlier, EmergencyAssignmentStatus.Accepted, acceptedAt);
+        var arrived = EmergencyAssignment.Create(
+            response.Id, Guid.NewGuid(), earlier, EmergencyAssignmentStatus.Arrived, acceptedAt, arrivedAt);
+        var completed = EmergencyAssignment.Create(
             response.Id,
             Guid.NewGuid(),
             earlier,
             EmergencyAssignmentStatus.Completed,
-            completedAtUtc: earlier);
-        var active = EmergencyAssignment.Create(
-            response.Id, Guid.NewGuid(), earlier, EmergencyAssignmentStatus.Assigned);
+            acceptedAt,
+            arrivedAt,
+            completedAt);
+        var alreadyCancelled = EmergencyAssignment.Create(
+            response.Id, Guid.NewGuid(), earlier, EmergencyAssignmentStatus.Cancelled, acceptedAt);
         var ctx = AssignmentAccess(response, scope);
         ctx.Assignments.ListTrackedByResponseAsync(response.Id, Arg.Any<CancellationToken>())
-            .Returns(new List<EmergencyAssignment> { alreadyDone, active });
+            .Returns(new List<EmergencyAssignment> { assigned, accepted, arrived, completed, alreadyCancelled });
 
         var result = await new CancelEmergencyResponseCommandHandler(
                 ctx.Responses, ctx.Assignments, ctx.UnitOfWork, ctx.Scopes, ctx.Access, ctx.SosOps, ctx.Current)
@@ -430,11 +474,22 @@ public class EmergencyCoordinationHandlerTests
         Assert.Equal(sourceSosAlertId, result.SourceSosAlertId);
         Assert.Equal(SourceSosStatus, result.SourceSosStatus);
         Assert.Equal(SourceSosStatus, scope.Status);
-        Assert.Equal(EmergencyAssignmentStatus.Completed, active.Status);
-        Assert.Equal(response.CancelledAtUtc, active.CompletedAtUtc);
-        Assert.Equal(earlier, alreadyDone.CompletedAtUtc);
-        Assert.Equal(EmergencyAssignmentStatus.Completed, alreadyDone.Status);
+        Assert.Equal(EmergencyAssignmentStatus.Cancelled, assigned.Status);
+        Assert.Null(assigned.CompletedAtUtc);
+        Assert.Equal(EmergencyAssignmentStatus.Cancelled, accepted.Status);
+        Assert.Equal(acceptedAt, accepted.AcceptedAtUtc);
+        Assert.Null(accepted.CompletedAtUtc);
+        Assert.Equal(EmergencyAssignmentStatus.Cancelled, arrived.Status);
+        Assert.Equal(arrivedAt, arrived.ArrivedAtUtc);
+        Assert.Null(arrived.CompletedAtUtc);
+        Assert.Equal(EmergencyAssignmentStatus.Completed, completed.Status);
+        Assert.Equal(completedAt, completed.CompletedAtUtc);
+        Assert.Equal(acceptedAt, completed.AcceptedAtUtc);
+        Assert.Equal(EmergencyAssignmentStatus.Cancelled, alreadyCancelled.Status);
+        Assert.Equal(acceptedAt, alreadyCancelled.AcceptedAtUtc);
+        Assert.Null(alreadyCancelled.CompletedAtUtc);
         await ctx.Scopes.Received(1).GetAsync(sourceSosAlertId, Arg.Any<CancellationToken>());
+        await ctx.Scopes.DidNotReceive().ListByEventAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         await ctx.UnitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
@@ -449,7 +504,11 @@ public class EmergencyCoordinationHandlerTests
             DateTime.UtcNow,
             DateTime.UtcNow,
             "Đã xong.");
+        var assignment = EmergencyAssignment.Create(
+            response.Id, Guid.NewGuid(), DateTime.UtcNow, EmergencyAssignmentStatus.Assigned);
         var ctx = AssignmentAccess(response, Scope(response));
+        ctx.Assignments.ListTrackedByResponseAsync(response.Id, Arg.Any<CancellationToken>())
+            .Returns(new List<EmergencyAssignment> { assignment });
 
         var ex = await Assert.ThrowsAsync<DomainException>(() =>
             new CancelEmergencyResponseCommandHandler(
@@ -460,8 +519,376 @@ public class EmergencyCoordinationHandlerTests
 
         Assert.Equal("Phản hồi khẩn cấp không thể hủy ở trạng thái hiện tại.", ex.Message);
         Assert.Equal(EmergencyResponseStatus.Resolved, response.Status);
+        Assert.Equal(EmergencyAssignmentStatus.Assigned, assignment.Status);
+        Assert.Null(assignment.CompletedAtUtc);
         await ctx.Assignments.DidNotReceive().ListTrackedByResponseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         await ctx.UnitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(EmergencyResponseStatus.Resolved)]
+    [InlineData(EmergencyResponseStatus.Cancelled)]
+    public async Task Update_Rejects_Assignment_When_Response_Is_Terminal(EmergencyResponseStatus status)
+    {
+        var response = status == EmergencyResponseStatus.Cancelled
+            ? CancelledResponse()
+            : EmergencyResponse.Create(
+                Guid.NewGuid(),
+                EmergencyIncidentType.Medical,
+                EmergencyPriority.High,
+                EmergencyResponseStatus.Resolved,
+                DateTime.UtcNow,
+                DateTime.UtcNow,
+                "Đã xong.");
+        var assignment = EmergencyAssignment.Create(
+            response.Id, Guid.NewGuid(), DateTime.UtcNow, EmergencyAssignmentStatus.Arrived);
+        var ctx = AssignmentAccess(response, Scope(response));
+        ctx.Assignments.GetByIdAsync(assignment.Id, Arg.Any<CancellationToken>()).Returns(assignment);
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            new UpdateEmergencyAssignmentCommandHandler(
+                    ctx.Responses, ctx.Resources, ctx.Assignments, ctx.UnitOfWork, ctx.Scopes, ctx.Access, ctx.SosOps, ctx.Current)
+                .Handle(
+                    new UpdateEmergencyAssignmentCommand(assignment.Id, new UpdateEmergencyAssignmentRequest("Completed")),
+                    CancellationToken.None));
+
+        Assert.Equal("Không thể cập nhật phân công khi hồ sơ đã kết thúc.", ex.Message);
+        Assert.Equal(EmergencyAssignmentStatus.Arrived, assignment.Status);
+        await ctx.Resources.DidNotReceive().GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await ctx.UnitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(EmergencyResponseStatus.Assigned)]
+    [InlineData(EmergencyResponseStatus.InProgress)]
+    [InlineData(EmergencyResponseStatus.Resolved)]
+    [InlineData(EmergencyResponseStatus.Cancelled)]
+    public async Task Remove_Rejects_When_Response_Is_Not_Open(EmergencyResponseStatus status)
+    {
+        var response = ResponseWithStatus(status);
+        var assignment = EmergencyAssignment.Create(
+            response.Id, Guid.NewGuid(), DateTime.UtcNow, EmergencyAssignmentStatus.Assigned);
+        var scope = Scope(response);
+        var ctx = AssignmentAccess(response, scope);
+        ctx.Assignments.GetByIdAsync(assignment.Id, Arg.Any<CancellationToken>()).Returns(assignment);
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            new RemoveEmergencyAssignmentCommandHandler(
+                    ctx.Responses, ctx.Assignments, ctx.UnitOfWork, ctx.Scopes, ctx.Access, ctx.SosOps, ctx.Current)
+                .Handle(new RemoveEmergencyAssignmentCommand(response.Id, assignment.Id), CancellationToken.None));
+
+        Assert.Equal("Chỉ hồ sơ đang mở mới gỡ được phân công.", ex.Message);
+        Assert.Equal(status, response.Status);
+        Assert.Equal(SourceSosStatus, scope.Status);
+        ctx.Assignments.DidNotReceive().Remove(Arg.Any<EmergencyAssignment>());
+        await ctx.UnitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateResource_Stores_Trimmed_Code_When_Event_Contract_Allows_Non_Owner()
+    {
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter(ResourceWriterCase.AllowedCoordinator);
+        var eventAccess = await access.GetAsync(EventId, CancellationToken.None);
+        Assert.NotEqual(UserId, eventAccess!.OrganizerUserId);
+        Assert.False(current.IsInRole("Admin"));
+        resources.ExistsByEventAndCodeAsync(EventId, "MED-1", Arg.Any<CancellationToken>()).Returns(false);
+        EmergencyResource? added = null;
+        resources.When(x => x.Add(Arg.Any<EmergencyResource>()))
+            .Do(call => added = call.Arg<EmergencyResource>());
+
+        var result = await CreateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+            new CreateEmergencyResourceCommand(EventId, new CreateEmergencyResourceRequest(
+                "  MED-1  ", "ambulance", "  Xe 1  ", "Available", "  Ca ngày  ")),
+            CancellationToken.None);
+
+        Assert.NotNull(added);
+        Assert.Equal(EventId, added.EventId);
+        Assert.Equal("MED-1", added.ResourceCode);
+        Assert.Equal(EmergencyResourceType.Ambulance, added.ResourceType);
+        Assert.Equal("Xe 1", added.Name);
+        Assert.Equal(EmergencyResourceStatus.Available, added.Status);
+        Assert.Equal("Ca ngày", added.Notes);
+        Assert.Equal(added.Id, result.Id);
+        Assert.Equal("MED-1", result.ResourceCode);
+        await resources.Received(1).ExistsByEventAndCodeAsync(EventId, "MED-1", Arg.Any<CancellationToken>());
+        await sosOps.Received(1).CanManageSosAsync(EventId, UserId, Arg.Any<CancellationToken>());
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateResource_Allows_The_Same_Code_On_Another_Event()
+    {
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter();
+        access.GetAsync(OtherEventId, Arg.Any<CancellationToken>())
+            .Returns(new EventOrganizerAccessInfo(OtherEventId, UserId, "RegistrationOpen", "Khác"));
+        sosOps.CanManageSosAsync(OtherEventId, UserId, Arg.Any<CancellationToken>()).Returns(true);
+        resources.ExistsByEventAndCodeAsync(OtherEventId, "MED-1", Arg.Any<CancellationToken>()).Returns(false);
+
+        var result = await CreateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+            new CreateEmergencyResourceCommand(OtherEventId, new CreateEmergencyResourceRequest(
+                "MED-1", "MedicalTeam", "Đội y tế", "Assigned", null)),
+            CancellationToken.None);
+
+        Assert.Equal(OtherEventId, result.EventId);
+        Assert.Equal("MED-1", result.ResourceCode);
+        Assert.Equal("Assigned", result.Status);
+        await resources.Received(1).ExistsByEventAndCodeAsync(OtherEventId, "MED-1", Arg.Any<CancellationToken>());
+        await resources.DidNotReceive().ExistsByEventAndCodeAsync(EventId, Arg.Any<string>(), Arg.Any<CancellationToken>());
+        resources.Received(1).Add(Arg.Is<EmergencyResource>(row => row.EventId == OtherEventId && row.ResourceCode == "MED-1"));
+    }
+
+    [Fact]
+    public async Task CreateResource_Rejects_Duplicate_Code_In_The_Same_Event()
+    {
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter();
+        resources.ExistsByEventAndCodeAsync(EventId, "MED-1", Arg.Any<CancellationToken>()).Returns(true);
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            CreateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+                new CreateEmergencyResourceCommand(EventId, new CreateEmergencyResourceRequest(
+                    "MED-1", "MedicalTeam", "Đội y tế", "Available", null)),
+                CancellationToken.None));
+
+        Assert.Equal("Mã nguồn lực đã tồn tại trong giải.", ex.Message);
+        resources.DidNotReceive().Add(Arg.Any<EmergencyResource>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateResource_Propagates_Unique_Conflict_From_Save()
+    {
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter();
+        resources.ExistsByEventAndCodeAsync(EventId, "MED-1", Arg.Any<CancellationToken>()).Returns(false);
+        unitOfWork.SaveChangesAsync(Arg.Any<CancellationToken>())
+            .Returns<int>(_ => throw new DomainException("Mã nguồn lực đã tồn tại trong giải."));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            CreateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+                new CreateEmergencyResourceCommand(EventId, new CreateEmergencyResourceRequest(
+                    "MED-1", "MedicalTeam", "Đội y tế", "Available", null)),
+                CancellationToken.None));
+
+        Assert.Equal("Mã nguồn lực đã tồn tại trong giải.", ex.Message);
+        resources.Received(1).Add(Arg.Any<EmergencyResource>());
+    }
+
+    [Fact]
+    public async Task CreateResource_Allows_Event_Owner()
+    {
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter(ResourceWriterCase.Owner);
+        var eventAccess = await access.GetAsync(EventId, CancellationToken.None);
+        Assert.Equal(UserId, eventAccess!.OrganizerUserId);
+        Assert.False(current.IsInRole("Admin"));
+        resources.ExistsByEventAndCodeAsync(EventId, "MED-1", Arg.Any<CancellationToken>()).Returns(false);
+
+        var result = await CreateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+            new CreateEmergencyResourceCommand(EventId, new CreateEmergencyResourceRequest(
+                "MED-1", "MedicalTeam", "Đội y tế", "Available", null)),
+            CancellationToken.None);
+
+        Assert.Equal(EventId, result.EventId);
+        Assert.Equal("MED-1", result.ResourceCode);
+        await sosOps.Received(1).CanManageSosAsync(EventId, UserId, Arg.Any<CancellationToken>());
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateResource_Rejects_Caller_Outside_The_Event()
+    {
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter(ResourceWriterCase.Outsider);
+        var eventAccess = await access.GetAsync(EventId, CancellationToken.None);
+        Assert.NotEqual(UserId, eventAccess!.OrganizerUserId);
+        Assert.False(current.IsInRole("Admin"));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            CreateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+                new CreateEmergencyResourceCommand(EventId, new CreateEmergencyResourceRequest(
+                    "MED-1", "MedicalTeam", "Đội y tế", "Available", null)),
+                CancellationToken.None));
+
+        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        await resources.DidNotReceive().ExistsByEventAndCodeAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        resources.DidNotReceive().Add(Arg.Any<EmergencyResource>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateResource_Rejects_Admin_When_Event_Contract_Denies()
+    {
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter(ResourceWriterCase.Admin);
+        var eventAccess = await access.GetAsync(EventId, CancellationToken.None);
+        Assert.NotEqual(UserId, eventAccess!.OrganizerUserId);
+        Assert.True(current.IsInRole("Admin"));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            CreateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+                new CreateEmergencyResourceCommand(EventId, new CreateEmergencyResourceRequest(
+                    "MED-1", "MedicalTeam", "Đội y tế", "Available", null)),
+                CancellationToken.None));
+
+        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        await resources.DidNotReceive().ExistsByEventAndCodeAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+        resources.DidNotReceive().Add(Arg.Any<EmergencyResource>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void CreateResource_Validator_Rejects_Invalid_Input()
+    {
+        var validator = new CreateEmergencyResourceCommandValidator();
+        var missing = validator.Validate(new CreateEmergencyResourceCommand(EventId, new CreateEmergencyResourceRequest(
+            "  ", "Team", "", "Busy", null)));
+        var tooLong = validator.Validate(new CreateEmergencyResourceCommand(EventId, new CreateEmergencyResourceRequest(
+            new string('A', 51), "MedicalTeam", new string('B', 201), "Available", null)));
+
+        Assert.False(missing.IsValid);
+        Assert.Contains(missing.Errors, error => error.ErrorMessage == "Mã nguồn lực không được để trống.");
+        Assert.Contains(missing.Errors, error => error.ErrorMessage == "Tên nguồn lực không được để trống.");
+        Assert.Contains(missing.Errors, error => error.ErrorMessage == "Loại nguồn lực không hợp lệ.");
+        Assert.Contains(missing.Errors, error => error.ErrorMessage == "Trạng thái nguồn lực không hợp lệ.");
+        Assert.False(tooLong.IsValid);
+        Assert.Contains(tooLong.Errors, error => error.ErrorMessage == "Mã nguồn lực tối đa 50 ký tự.");
+        Assert.Contains(tooLong.Errors, error => error.ErrorMessage == "Tên nguồn lực tối đa 200 ký tự.");
+    }
+
+    [Fact]
+    public void UpdateResource_Request_Does_Not_Expose_Identity_Or_Status()
+    {
+        var names = typeof(UpdateEmergencyResourceRequest).GetProperties().Select(property => property.Name).ToArray();
+
+        Assert.Equal(["ResourceType", "Name", "Notes"], names);
+    }
+
+    [Fact]
+    public async Task UpdateResource_Changes_Description_And_Keeps_Identity()
+    {
+        var resource = Resource(EventId, EmergencyResourceStatus.Offline);
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter(ResourceWriterCase.Owner);
+        var eventAccess = await access.GetAsync(EventId, CancellationToken.None);
+        Assert.Equal(UserId, eventAccess!.OrganizerUserId);
+        Assert.False(current.IsInRole("Admin"));
+        resources.GetTrackedByIdAsync(resource.Id, Arg.Any<CancellationToken>()).Returns(resource);
+
+        var result = await UpdateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+            new UpdateEmergencyResourceCommand(EventId, resource.Id, new UpdateEmergencyResourceRequest(
+                "FirstAid", "  Đội sơ cứu  ", "   ")),
+            CancellationToken.None);
+
+        Assert.Equal(EventId, resource.EventId);
+        Assert.Equal("MED-1", resource.ResourceCode);
+        Assert.Equal(EmergencyResourceStatus.Offline, resource.Status);
+        Assert.Equal(EmergencyResourceType.FirstAid, resource.ResourceType);
+        Assert.Equal("Đội sơ cứu", resource.Name);
+        Assert.Null(resource.Notes);
+        Assert.Equal("Offline", result.Status);
+        Assert.Equal("MED-1", result.ResourceCode);
+        await resources.DidNotReceive().GetByIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateResource_Rejects_A_Different_Route_Event()
+    {
+        var resource = Resource(EventId, EmergencyResourceStatus.Available);
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter();
+        resources.GetTrackedByIdAsync(resource.Id, Arg.Any<CancellationToken>()).Returns(resource);
+        access.GetAsync(OtherEventId, Arg.Any<CancellationToken>())
+            .Returns(new EventOrganizerAccessInfo(OtherEventId, UserId, "RegistrationOpen", "Khác"));
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            UpdateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+                new UpdateEmergencyResourceCommand(OtherEventId, resource.Id, new UpdateEmergencyResourceRequest(
+                    "Ambulance", "Xe", null)),
+                CancellationToken.None));
+
+        Assert.Equal("Nguồn lực không thuộc giải này.", ex.Message);
+        Assert.Equal("MED-1", resource.ResourceCode);
+        Assert.Equal(EmergencyResourceType.MedicalTeam, resource.ResourceType);
+        await sosOps.Received(1).CanManageSosAsync(EventId, UserId, Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateResource_Rejects_Missing_Resource()
+    {
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter();
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            UpdateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+                new UpdateEmergencyResourceCommand(EventId, Guid.NewGuid(), new UpdateEmergencyResourceRequest(
+                    "Ambulance", "Xe", null)),
+                CancellationToken.None));
+
+        Assert.Equal("Không tìm thấy nguồn lực.", ex.Message);
+        await sosOps.DidNotReceive().CanManageSosAsync(Arg.Any<Guid>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateResource_Allows_Non_Owner_When_Event_Contract_Allows()
+    {
+        var resource = Resource(EventId, EmergencyResourceStatus.Offline);
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter(ResourceWriterCase.AllowedCoordinator);
+        var eventAccess = await access.GetAsync(EventId, CancellationToken.None);
+        Assert.NotEqual(UserId, eventAccess!.OrganizerUserId);
+        Assert.False(current.IsInRole("Admin"));
+        resources.GetTrackedByIdAsync(resource.Id, Arg.Any<CancellationToken>()).Returns(resource);
+
+        var result = await UpdateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+            new UpdateEmergencyResourceCommand(EventId, resource.Id, new UpdateEmergencyResourceRequest(
+                "Ambulance", "Xe cứu thương", null)),
+            CancellationToken.None);
+
+        Assert.Equal(EventId, resource.EventId);
+        Assert.Equal("MED-1", resource.ResourceCode);
+        Assert.Equal(EmergencyResourceStatus.Offline, resource.Status);
+        Assert.Equal(EmergencyResourceType.Ambulance, resource.ResourceType);
+        Assert.Equal("Ambulance", result.ResourceType);
+        await sosOps.Received(1).CanManageSosAsync(EventId, UserId, Arg.Any<CancellationToken>());
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateResource_Rejects_Caller_Outside_The_Event()
+    {
+        var resource = Resource(EventId, EmergencyResourceStatus.Available);
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter(ResourceWriterCase.Outsider);
+        var eventAccess = await access.GetAsync(EventId, CancellationToken.None);
+        Assert.NotEqual(UserId, eventAccess!.OrganizerUserId);
+        Assert.False(current.IsInRole("Admin"));
+        resources.GetTrackedByIdAsync(resource.Id, Arg.Any<CancellationToken>()).Returns(resource);
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            UpdateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+                new UpdateEmergencyResourceCommand(EventId, resource.Id, new UpdateEmergencyResourceRequest(
+                    "Ambulance", "Xe", null)),
+                CancellationToken.None));
+
+        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        Assert.Equal(EmergencyResourceType.MedicalTeam, resource.ResourceType);
+        Assert.Equal("MED-1", resource.ResourceCode);
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UpdateResource_Rejects_Admin_When_Event_Contract_Denies()
+    {
+        var resource = Resource(EventId, EmergencyResourceStatus.Available);
+        var (resources, access, sosOps, current, unitOfWork) = ResourceWriter(ResourceWriterCase.Admin);
+        var eventAccess = await access.GetAsync(EventId, CancellationToken.None);
+        Assert.NotEqual(UserId, eventAccess!.OrganizerUserId);
+        Assert.True(current.IsInRole("Admin"));
+        resources.GetTrackedByIdAsync(resource.Id, Arg.Any<CancellationToken>()).Returns(resource);
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            UpdateResourceHandler(resources, access, sosOps, current, unitOfWork).Handle(
+                new UpdateEmergencyResourceCommand(EventId, resource.Id, new UpdateEmergencyResourceRequest(
+                    "Ambulance", "Xe", null)),
+                CancellationToken.None));
+
+        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        Assert.Equal(EmergencyResourceType.MedicalTeam, resource.ResourceType);
+        Assert.Equal("MED-1", resource.ResourceCode);
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -487,11 +914,66 @@ public class EmergencyCoordinationHandlerTests
             ctx.Current);
 
     private static EmergencyResponse OpenResponse() =>
-        EmergencyResponse.Create(
+        ResponseWithStatus(EmergencyResponseStatus.Open);
+
+    private static EmergencyResponse ResponseWithStatus(EmergencyResponseStatus status)
+    {
+        var active = status is EmergencyResponseStatus.Assigned
+            or EmergencyResponseStatus.InProgress
+            or EmergencyResponseStatus.Resolved;
+        return EmergencyResponse.Create(
             Guid.NewGuid(),
             EmergencyIncidentType.Medical,
             EmergencyPriority.High,
-            EmergencyResponseStatus.Open);
+            status,
+            active ? new DateTime(2026, 10, 27, 1, 0, 0, DateTimeKind.Utc) : null,
+            status == EmergencyResponseStatus.Resolved
+                ? new DateTime(2026, 10, 27, 2, 0, 0, DateTimeKind.Utc)
+                : null,
+            status == EmergencyResponseStatus.Resolved ? "Đã xong." : null);
+    }
+
+    private static EmergencyResponse CancelledResponse()
+    {
+        var response = OpenResponse();
+        response.Cancel("Đã hủy.", DateTime.UtcNow);
+        return response;
+    }
+
+    private static CreateEmergencyResourceCommandHandler CreateResourceHandler(
+        IEmergencyResourceRepository resources,
+        IEventOrganizerAccessQuery access,
+        IEventSosOpsAccessQuery sosOps,
+        ICurrentUserAccessor current,
+        IRaceMonitoringUnitOfWork unitOfWork) =>
+        new(resources, unitOfWork, access, sosOps, current);
+
+    private static UpdateEmergencyResourceCommandHandler UpdateResourceHandler(
+        IEmergencyResourceRepository resources,
+        IEventOrganizerAccessQuery access,
+        IEventSosOpsAccessQuery sosOps,
+        ICurrentUserAccessor current,
+        IRaceMonitoringUnitOfWork unitOfWork) =>
+        new(resources, unitOfWork, access, sosOps, current);
+
+    private static (
+        IEmergencyResourceRepository Resources,
+        IEventOrganizerAccessQuery Access,
+        IEventSosOpsAccessQuery SosOps,
+        ICurrentUserAccessor Current,
+        IRaceMonitoringUnitOfWork UnitOfWork) ResourceWriter(ResourceWriterCase writerCase = ResourceWriterCase.Owner)
+    {
+        var allowed = writerCase is ResourceWriterCase.Owner or ResourceWriterCase.AllowedCoordinator;
+        var (resources, access, sosOps, current) = ResourceAccess(allowed, writerCase == ResourceWriterCase.Admin);
+        if (writerCase != ResourceWriterCase.Owner)
+        {
+            access.GetAsync(EventId, Arg.Any<CancellationToken>())
+                .Returns(new EventOrganizerAccessInfo(EventId, OtherOrganizerId, "RegistrationOpen", "Demo"));
+        }
+
+        var unitOfWork = Substitute.For<IRaceMonitoringUnitOfWork>();
+        return (resources, access, sosOps, current, unitOfWork);
+    }
 
     private static EmergencyResource Resource(Guid? eventId, EmergencyResourceStatus status) =>
         EmergencyResource.Create(eventId, "MED-1", EmergencyResourceType.MedicalTeam, "Đội y tế", status);
@@ -543,6 +1025,14 @@ public class EmergencyCoordinationHandlerTests
         IEventOrganizerAccessQuery Access,
         IEventSosOpsAccessQuery SosOps,
         ICurrentUserAccessor Current);
+
+    private enum ResourceWriterCase
+    {
+        Owner,
+        AllowedCoordinator,
+        Outsider,
+        Admin
+    }
 
     private sealed class TestUser(Guid? userId, bool admin) : ICurrentUserAccessor
     {

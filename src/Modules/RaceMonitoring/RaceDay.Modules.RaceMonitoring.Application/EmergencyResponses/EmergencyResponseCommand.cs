@@ -373,6 +373,7 @@ public sealed class ResolveEmergencyResponseCommandValidator : AbstractValidator
 
 public sealed class ResolveEmergencyResponseCommandHandler(
     IEmergencyResponseRepository responses,
+    IEmergencyAssignmentRepository assignments,
     IRaceMonitoringUnitOfWork unitOfWork,
     ISosAlertScopeQuery scopes,
     IEventOrganizerAccessQuery access,
@@ -387,7 +388,13 @@ public sealed class ResolveEmergencyResponseCommandHandler(
             ?? throw new DomainException("Không tìm thấy phản hồi khẩn cấp.");
         var scope = await EmergencyResponseAccess.EnsureCanAccessAsync(
             response, managing: true, scopes, access, sosOps, currentUser, cancellationToken);
-        response.Resolve(request.Body.ResolutionNotes, DateTime.UtcNow);
+        var resolvedAt = DateTime.UtcNow;
+        response.EnsureCanResolve(request.Body.ResolutionNotes, resolvedAt);
+        var rows = await assignments.ListTrackedByResponseAsync(response.Id, cancellationToken);
+        response.Resolve(
+            request.Body.ResolutionNotes,
+            resolvedAt,
+            rows.Any(row => !row.IsFinished));
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return EmergencyResponseMapper.ToDto(response, scope);
     }
