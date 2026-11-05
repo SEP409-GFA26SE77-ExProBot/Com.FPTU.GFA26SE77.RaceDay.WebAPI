@@ -60,17 +60,16 @@ internal static class EventStaffMapper
 
     public static EventStaffRole ParseRole(string? role) => (role ?? string.Empty).Trim().ToLowerInvariant() switch
     {
-        "coordinator" => EventStaffRole.Coordinator,
+        "race-staff" or "racestaff" or "race_staff"
+            or "coordinator" or "volunteer" => EventStaffRole.RaceStaff,
         "photographer" => EventStaffRole.Photographer,
-        "volunteer" => EventStaffRole.Volunteer,
-        _ => throw new DomainException("Role nhân sự không hợp lệ (coordinator|photographer|volunteer).")
+        _ => throw new DomainException("Role nhân sự không hợp lệ (race-staff|photographer).")
     };
 
     public static string ToRoleApi(EventStaffRole role) => role switch
     {
-        EventStaffRole.Coordinator => "coordinator",
+        EventStaffRole.RaceStaff => "race-staff",
         EventStaffRole.Photographer => "photographer",
-        EventStaffRole.Volunteer => "volunteer",
         _ => role.ToString().ToLowerInvariant()
     };
 
@@ -159,9 +158,8 @@ public sealed class InviteEventStaffCommandHandler(
 
         var iamRole = role switch
         {
-            EventStaffRole.Coordinator => "Coordinator",
+            EventStaffRole.RaceStaff => "Race-staff",
             EventStaffRole.Photographer => "Photographer",
-            EventStaffRole.Volunteer => "Volunteer",
             _ => throw new DomainException("Role nhân sự không hợp lệ.")
         };
 

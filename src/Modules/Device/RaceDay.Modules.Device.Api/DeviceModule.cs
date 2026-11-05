@@ -105,26 +105,26 @@ public static class DeviceModule
         })
             .WithSummary("Cập nhật vị trí SOS (batch)");
 
-        // —— Organizer / Coordinator (IAM role + event-scoped check trong handler) ——
-        var org = api.MapGroup("").RequireAuthorization(AuthPolicies.OrganizerOrCoordinator);
+        // —— Organizer / Race-staff (IAM role + event-scoped check trong handler) ——
+        var org = api.MapGroup("").RequireAuthorization(AuthPolicies.OrganizerOrRaceStaff);
 
         org.MapGet("/events/{eventId:guid}/sos", async (
             Guid eventId, string? status, int? take, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListEventSosQuery(eventId, status, take ?? 100), ct)))
             .WithSummary("Danh sách SOS theo giải")
             .WithDescription(
-                "JWT role Admin | Organizer | Coordinator (không wear). "
-                + "Handler: chủ giải hoặc staff Coordinator Active trên giải.");
+                "JWT role Admin | Organizer | Race-staff (không wear). "
+                + "Handler: chủ giải hoặc staff Race-staff Active trên giải.");
 
         org.MapPost("/sos/{id:guid}/ack", async (Guid id, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new AckSosCommand(id), ct)))
             .WithSummary("Ack SOS")
-            .WithDescription("Role Admin|Organizer|Coordinator + quyền trên giải của SOS.");
+            .WithDescription("Role Admin|Organizer|Race-staff + quyền trên giải của SOS.");
 
         org.MapPost("/sos/{id:guid}/resolve", async (Guid id, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ResolveSosCommand(id), ct)))
             .WithSummary("Đóng SOS")
-            .WithDescription("Role Admin|Organizer|Coordinator + quyền trên giải của SOS.");
+            .WithDescription("Role Admin|Organizer|Race-staff + quyền trên giải của SOS.");
 
         return app;
     }

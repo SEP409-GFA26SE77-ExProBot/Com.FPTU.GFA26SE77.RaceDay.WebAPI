@@ -395,7 +395,7 @@ public static class EventModule
             .RequireAuthorization(AuthPolicies.HumanUser)
             .WithSummary("Ghi nhận DNS / DNF / DQ cho VĐV")
             .WithDescription("Body: { status: dns|dnf|dq, reason: 1–1000 ký tự }. "
-                + "Admin, chủ giải hoặc Volunteer/Coordinator Active đã liên kết tài khoản của đúng giải. "
+                + "Admin, chủ giải hoặc Race-staff Active đã liên kết tài khoản của đúng giải. "
                 + "DNS: chưa xuất phát, đã đến giờ xuất phát (UTC); DNF: đang chạy; DQ: chưa chạy/đang chạy/đã finish. "
                 + "Không đảo quyết định. Gửi lại cùng status/reason trả quyết định ban đầu. "
                 + "409: trạng thái đã bị cập nhật đồng thời, cần tải lại dữ liệu.")
@@ -497,42 +497,41 @@ public static class EventModule
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status401Unauthorized);
 
-        var adminApi = app.MapGroup("/api/v1/event/admin")
+        // Manager: duyệt/từ chối giải + catalog gói (promo / duration / capacity). Admin giữ IAM + hệ thống.
+        var managerApi = app.MapGroup("/api/v1/event/admin")
             .WithTags(ApiTags.EventAdmin)
-            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
-        adminApi.MapGet("/pending", async (IMediator mediator, CancellationToken ct) =>
+        managerApi.MapGet("/pending", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListPendingEventsQuery(), ct)))
-            .WithSummary("Danh sách giải chờ duyệt");
+            .WithSummary("Danh sách giải chờ duyệt (Manager)");
 
-        adminApi.MapGet("/{eventId:guid}", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+        managerApi.MapGet("/{eventId:guid}", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetRaceEventByIdQuery(eventId), ct)))
-            .WithSummary("Chi tiết giải (kể cả chưa public)");
+            .WithSummary("Chi tiết giải kể cả chưa public (Manager)");
 
-        adminApi.MapPost("/{eventId:guid}/approve", async (
+        managerApi.MapPost("/{eventId:guid}/approve", async (
             Guid eventId, ApproveEventRequest? body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ApproveRaceEventCommand(eventId, body?.OpenRegistration ?? false), ct)))
-            .WithSummary("Duyệt giải (mặc định KHÔNG mở ĐK)")
+            .WithSummary("Duyệt giải (Manager; mặc định KHÔNG mở ĐK)")
             .WithDescription(
                 "Chỉ chuyển PendingApproval → Approved. Muốn mở ĐK ngay: body { \"openRegistration\": true }. "
-                + "Không thì organizer/admin gọi POST .../open-registration sau.");
+                + "Không thì organizer gọi POST .../open-registration sau.");
 
-        adminApi.MapPost("/{eventId:guid}/reject", async (
+        managerApi.MapPost("/{eventId:guid}/reject", async (
             Guid eventId, RejectRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new RejectRaceEventCommand(eventId, body.Reason), ct)))
-            .WithSummary("Từ chối giải (cần reason)");
-
-        // ── Admin promo-code management ───────────────────────────────
+            .WithSummary("Từ chối giải (Manager; cần reason)");
 
         var promoApi = app.MapGroup("/api/v1/event/admin/promos")
             .WithTags(ApiTags.EventAdmin)
-            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
         promoApi.MapGet("/", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListPromoCodesQuery(), ct)))
-            .WithSummary("Danh sách tất cả promo codes (Admin)");
+            .WithSummary("Danh sách tất cả promo codes (Manager)");
 
         promoApi.MapPost("/", async (CreatePromoCodeRequest body, IMediator mediator, CancellationToken ct) =>
         {
@@ -540,7 +539,7 @@ public static class EventModule
                 new CreatePromoCodeCommand(body.Code, body.PercentOff, body.ExpiresAtUtc, body.MaxRedemptions), ct);
             return Results.Created($"/api/v1/event/admin/promos/{result.Id}", result);
         })
-        .WithSummary("Tạo promo code mới (Admin)")
+        .WithSummary("Tạo promo code mới (Manager)")
         .Produces<PromoCodeDto>(StatusCodes.Status201Created);
 
         promoApi.MapPatch("/{promoId:guid}", async (Guid promoId, UpdatePromoCodeRequest body, IMediator mediator, CancellationToken ct) =>
@@ -554,18 +553,16 @@ public static class EventModule
                 body.ClearMaxRedemptions ?? false), ct);
             return Results.Ok(result);
         })
-        .WithSummary("Cập nhật promo code (activate/deactivate/expiry/max) (Admin)");
-
-        // ── Admin package duration / capacity catalog ─────────────────
+        .WithSummary("Cập nhật promo code (Manager)");
 
         var durationApi = app.MapGroup("/api/v1/event/admin/package-durations")
             .WithTags(ApiTags.EventAdmin)
-            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
         durationApi.MapGet("/", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListPackageDurationsQuery(), ct)))
-            .WithSummary("Danh sách thời hạn gói (Admin)");
+            .WithSummary("Danh sách thời hạn gói (Manager)");
 
         durationApi.MapPost("/", async (CreatePackageDurationRequest body, IMediator mediator, CancellationToken ct) =>
         {
@@ -573,22 +570,22 @@ public static class EventModule
                 new CreatePackageDurationCommand(body.Name, body.Months, body.Price, body.SortOrder), ct);
             return Results.Created($"/api/v1/event/admin/package-durations/{result.Id}", result);
         })
-        .WithSummary("Tạo thời hạn gói (name, months, price)")
+        .WithSummary("Tạo thời hạn gói (Manager)")
         .Produces<PackageDurationOptionDto>(StatusCodes.Status201Created);
 
         durationApi.MapPatch("/{id:guid}", async (Guid id, UpdatePackageDurationRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new UpdatePackageDurationCommand(
                 id, body.Name, body.Price, body.SortOrder, body.Active), ct)))
-            .WithSummary("Cập nhật thời hạn gói (Admin)");
+            .WithSummary("Cập nhật thời hạn gói (Manager)");
 
         var capacityApi = app.MapGroup("/api/v1/event/admin/package-capacities")
             .WithTags(ApiTags.EventAdmin)
-            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
         capacityApi.MapGet("/", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListPackageCapacitiesQuery(), ct)))
-            .WithSummary("Danh sách quy mô VĐV gói (Admin)");
+            .WithSummary("Danh sách quy mô VĐV gói (Manager)");
 
         capacityApi.MapPost("/", async (CreatePackageCapacityRequest body, IMediator mediator, CancellationToken ct) =>
         {
@@ -596,13 +593,13 @@ public static class EventModule
                 new CreatePackageCapacityCommand(body.Name, body.MaxParticipants, body.AddOnFee, body.SortOrder), ct);
             return Results.Created($"/api/v1/event/admin/package-capacities/{result.Id}", result);
         })
-        .WithSummary("Tạo quy mô VĐV gói (name, maxParticipants, addOnFee)")
+        .WithSummary("Tạo quy mô VĐV gói (Manager)")
         .Produces<PackageCapacityOptionDto>(StatusCodes.Status201Created);
 
         capacityApi.MapPatch("/{id:guid}", async (Guid id, UpdatePackageCapacityRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new UpdatePackageCapacityCommand(
                 id, body.Name, body.AddOnFee, body.SortOrder, body.Active), ct)))
-            .WithSummary("Cập nhật quy mô VĐV gói (Admin)");
+            .WithSummary("Cập nhật quy mô VĐV gói (Manager)");
 
         return app;
     }

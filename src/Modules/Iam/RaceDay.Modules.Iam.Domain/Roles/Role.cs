@@ -29,4 +29,13 @@ public sealed class Role : AggregateRoot
             Description = description
         };
     }
+
+    public void Rename(string roleName, string? description = null)
+    {
+        RoleName = roleName.Trim();
+        if (description is not null)
+        {
+            Description = description;
+        }
+    }
 }

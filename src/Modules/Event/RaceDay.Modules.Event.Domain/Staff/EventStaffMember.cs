@@ -5,9 +5,9 @@ namespace RaceDay.Modules.Event.Domain.Staff;
 
 public enum EventStaffRole
 {
-    Coordinator = 0,
-    Photographer = 1,
-    Volunteer = 2
+    /// <summary>Gộp Coordinator + Volunteer (DB value 0). Legacy Volunteer=2 được migrate về 0.</summary>
+    RaceStaff = 0,
+    Photographer = 1
 }
 
 public enum EventStaffStatus

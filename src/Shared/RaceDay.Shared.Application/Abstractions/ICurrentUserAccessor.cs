@@ -7,4 +7,6 @@ public interface ICurrentUserAccessor
     bool IsInRole(string role);
 
     bool IsAdmin => IsInRole("Admin");
+
+    bool IsManager => IsInRole("Manager");
 }

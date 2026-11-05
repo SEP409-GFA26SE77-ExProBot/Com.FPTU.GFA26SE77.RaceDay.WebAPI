@@ -22,7 +22,7 @@ public sealed class EventSosOpsAccessQuery(EventDbContext db) : IEventSosOpsAcce
         return await db.StaffMembers.AsNoTracking().AnyAsync(
             x => x.EventId == eventId
                  && x.UserId == userId
-                 && x.Role == EventStaffRole.Coordinator
+                 && x.Role == EventStaffRole.RaceStaff
                  && x.Status == EventStaffStatus.Active,
             cancellationToken);
     }
