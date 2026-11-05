@@ -1001,54 +1001,40 @@ ON CONFLICT ("Id") DO NOTHING;
 -- -----------------------------------------------------------------------------
 INSERT INTO event.event_distances (
     "Id", "EventId", "Type", "Name", "DistanceKm",
-    "ElevationGainM", "MaxElevationM", "MinElevationM",
     "Capacity", "RegisteredCount", "Price", "Currency", "Color",
-    start_name, start_lat, start_lng, finish_name, finish_lat, finish_lng,
     "RouteGeometryJson"
 ) VALUES
 -- HCMC Night
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
- '5K', '5K Night Fun', 5, 15, 10, 0, 2000, 1, 350000, 'VND', '#22C55E',
- 'Start NH', 10.7731, 106.7031, 'Finish NH', 10.7731, 106.7031, '{}'::jsonb),
+ '5K', '5K Night Fun', 5, 2000, 1, 350000, 'VND', '#22C55E', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc2', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
- '10K', '10K City Lights', 10, 30, 18, 0, 1800, 0, 550000, 'VND', '#0EA5E9',
- 'Start NH', 10.7731, 106.7031, 'Finish NH', 10.7760, 106.7010, '{}'::jsonb),
+ '10K', '10K City Lights', 10, 1800, 0, 550000, 'VND', '#0EA5E9', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc3', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
- '21K', '21K Half Night', 21, 60, 25, 0, 1200, 0, 950000, 'VND', '#F59E0B',
- 'Start NH', 10.7731, 106.7031, 'Finish NH', 10.7800, 106.7000, '{}'::jsonb),
+ '21K', '21K Half Night', 21, 1200, 0, 950000, 'VND', '#F59E0B', '{}'::jsonb),
 -- Hanoi
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbd1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa4',
- '21K', 'Lakeside Half', 21.1, 80, 20, 5, 1500, 0, 790000, 'VND', '#8B5CF6',
- 'Hồ Tây Start', 21.0583, 105.8229, 'Hồ Tây Finish', 21.0583, 105.8229, '{}'::jsonb),
+ '21K', 'Lakeside Half', 21.1, 1500, 0, 790000, 'VND', '#8B5CF6', '{}'::jsonb),
 -- Nha Trang
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbe1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa5',
- '10K', 'Ocean 10K', 10, 120, 80, 0, 1000, 0, 420000, 'VND', '#06B6D4',
- 'Start NT', 12.2388, 109.1967, 'Finish NT', 12.2450, 109.1900, '{}'::jsonb),
+ '10K', 'Ocean 10K', 10, 1000, 0, 420000, 'VND', '#06B6D4', '{}'::jsonb),
 -- Quy Nhơn (EventDataSeeder IDs — 5K/10K/21K/42K)
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '5K', 'Fun Run 5K', 5, 15, 12, 0, 4000, 0, 450000, 'VND', '#22c55e',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
+ '5K', 'Fun Run 5K', 5, 4000, 0, 450000, 'VND', '#22c55e', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '10K', 'City 10K', 10, 30, 18, 0, 3500, 0, 650000, 'VND', '#0ea5e9',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.7855, 109.221, '{}'::jsonb),
+ '10K', 'City 10K', 10, 3500, 0, 650000, 'VND', '#0ea5e9', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb4', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '21K', 'Half Marathon', 21.1, 80, 35, 0, 2500, 0, 990000, 'VND', '#F59E0B',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
+ '21K', 'Half Marathon', 21.1, 2500, 0, 990000, 'VND', '#F59E0B', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb5', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '42K', 'Full Marathon', 42.195, 150, 40, 0, 2000, 0, 1450000, 'VND', '#EF4444',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
+ '42K', 'Full Marathon', 42.195, 2000, 0, 1450000, 'VND', '#EF4444', '{}'::jsonb),
 -- Sa Pa
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb3', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
- '21K', 'Cloud Valley', 21, 980, 2150, 1450, 800, 0, 900000, 'VND', '#F59E0B',
- 'Sa Pa Square', 22.3364, 103.8438, 'Sa Pa Square', 22.3364, 103.8438, '{}'::jsonb),
+ '21K', 'Cloud Valley', 21, 800, 0, 900000, 'VND', '#F59E0B', '{}'::jsonb),
 -- Mekong
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbf1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa6',
- '10K', 'Delta 10K', 10, 10, 5, 0, 800, 0, 299000, 'VND', '#84CC16',
- 'Start CT', 10.0452, 105.7469, 'Finish CT', 10.0500, 105.7500, '{}'::jsonb),
+ '10K', 'Delta 10K', 10, 800, 0, 299000, 'VND', '#84CC16', '{}'::jsonb),
 -- Highlands draft
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbf2', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa7',
- '42K', 'Ultra Highland', 42, 1800, 1600, 900, 400, 0, 1200000, 'VND', '#EF4444',
- 'Start Đà Lạt', 11.9404, 108.4583, 'Finish Đà Lạt', 11.9404, 108.4583, '{}'::jsonb)
+ '42K', 'Ultra Highland', 42, 400, 0, 1200000, 'VND', '#EF4444', '{}'::jsonb)
 ON CONFLICT ("Id") DO NOTHING;
 
 -- -----------------------------------------------------------------------------
@@ -1263,17 +1249,13 @@ WHERE "Id" = '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
 
 INSERT INTO event.event_distances (
     "Id", "EventId", "Type", "Name", "DistanceKm",
-    "ElevationGainM", "MaxElevationM", "MinElevationM",
     "Capacity", "RegisteredCount", "Price", "Currency", "Color",
-    start_name, start_lat, start_lng, finish_name, finish_lat, finish_lng,
     "RouteGeometryJson"
 ) VALUES
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb4', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '21K', 'Half Marathon', 21.1, 80, 35, 0, 2500, 0, 990000, 'VND', '#F59E0B',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
+ '21K', 'Half Marathon', 21.1, 2500, 0, 990000, 'VND', '#F59E0B', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb5', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '42K', 'Full Marathon', 42.195, 150, 40, 0, 2000, 0, 1450000, 'VND', '#EF4444',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb)
+ '42K', 'Full Marathon', 42.195, 2000, 0, 1450000, 'VND', '#EF4444', '{}'::jsonb)
 ON CONFLICT ("Id") DO NOTHING;
 
 UPDATE event.event_distances SET
@@ -1284,9 +1266,7 @@ UPDATE event.event_distances SET
     "Price" = CASE "Id"
         WHEN '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1' THEN 450000
         WHEN '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2' THEN 650000
-        ELSE "Price" END,
-    start_name = 'Start Quy Nhơn', start_lat = 13.782967, start_lng = 109.219663,
-    finish_name = 'Finish Quy Nhơn', finish_lat = 13.782967, finish_lng = 109.219663
+        ELSE "Price" END
 WHERE "EventId" = '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1'
   AND "Id" IN (
     '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
