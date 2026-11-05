@@ -1,4 +1,4 @@
-﻿using FluentValidation;
+using FluentValidation;
 using MediatR;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Application.Registrations;
@@ -77,7 +77,6 @@ public sealed class GetRunnerCertificateQueryHandler(
             FinishedAtUtc: reg.FinishedAtUtc.Value,
             StartedAtUtc: reg.StartedAtUtc,
             DistanceKm: distance.DistanceKm,
-            Pace: pace
-        );
+            Pace: pace);
     }
 }

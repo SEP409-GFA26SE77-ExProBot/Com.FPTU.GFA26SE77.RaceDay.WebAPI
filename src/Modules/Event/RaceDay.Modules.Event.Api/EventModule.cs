@@ -8,14 +8,15 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using RaceDay.Modules.Event.Application.Certificates;
 using RaceDay.Modules.Event.Application.Complaints;
-using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Application.Disputes;
+using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Application.Events.Update;
 using RaceDay.Modules.Event.Application.Packages;
 using RaceDay.Modules.Event.Application.Registrations;
 using RaceDay.Modules.Event.Application.Staff;
 using RaceDay.Modules.Event.Application.Supplies;
 using RaceDay.Modules.Event.Infrastructure;
+using RaceDay.Modules.Event.Infrastructure.Events;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Web.Auth;
 using RaceDay.Shared.Web.OpenApi;
@@ -422,13 +423,27 @@ public static class EventModule
             .Produces<FinishResultDto>(StatusCodes.Status200OK);
 
         userApi.MapGet("/registrations/{registrationId:guid}/certificate", async (
-            Guid registrationId, IMediator mediator, CancellationToken ct) =>
+            Guid registrationId,
+            IMediator mediator,
+            ICertificatePdfService pdfService,
+            CancellationToken ct) =>
         {
-            var certificate = await mediator.Send(new GetRunnerCertificateQuery(registrationId), ct);
-            return certificate is null ? Results.Ok(false) : Results.Ok(certificate);
+            var certData = await mediator.Send(new GetRunnerCertificateQuery(registrationId), ct);
+            if (certData is null)
+            {
+                return Results.Ok(false);
+            }
+
+            var pdfBytes = pdfService.GenerateCertificatePdf(certData);
+            var safeName = certData.RunnerName.Replace(" ", "_");
+            var fileName = $"Certificate_{safeName}_{certData.BibNumber}.pdf";
+            return Results.File(pdfBytes, "application/pdf", fileName);
         })
-            .WithSummary("Thông tin chứng nhận tham gia của đăng ký")
-            .WithDescription("Chỉ chủ đăng ký được xem. Trả về JSON gồm registrationId, runnerName, eventName, bib, distance, distanceKm, raceDate (yyyy-MM-dd), status, finishTime (HH:mm:ss), resultSeconds, startedAtUtc, finishedAtUtc và pace (mm:ss/km). Thời gian = finishedAtUtc - startedAtUtc; nếu chưa quét start riêng, dùng resultSeconds đã ghi nhận. Pace = thời gian / distanceKm, làm tròn đến giây gần nhất. Chỉ cấp khi trạng thái là finished và có kết quả hợp lệ; nếu chưa hoàn thành hoặc thiếu dữ liệu kết quả, trả về false (HTTP 200). Giao diện tự tạo PDF từ dữ liệu này.")
+            .WithSummary("Tải giấy chứng nhận hoàn thành giải chạy (PDF)")
+            .WithDescription(
+                "Chỉ chủ đăng ký. Finished + kết quả hợp lệ → application/pdf. "
+                + "Chưa đủ điều kiện → HTTP 200 body false (JSON).")
+            .Produces(StatusCodes.Status200OK, contentType: "application/pdf")
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized);

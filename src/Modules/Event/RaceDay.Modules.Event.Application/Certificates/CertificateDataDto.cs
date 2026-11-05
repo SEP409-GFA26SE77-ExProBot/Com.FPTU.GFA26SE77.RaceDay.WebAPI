@@ -1,5 +1,9 @@
 ﻿namespace RaceDay.Modules.Event.Application.Certificates;
 
+/// <summary>
+/// Dữ liệu chứng nhận cho FE JSON và QuestPDF.
+/// Alias properties phục vụ <c>ICertificatePdfService</c> (RaceName/BibNumber/…).
+/// </summary>
 public sealed record CertificateDataDto(
     Guid RegistrationId,
     string RunnerName,
@@ -13,5 +17,11 @@ public sealed record CertificateDataDto(
     DateTime FinishedAtUtc,
     DateTime? StartedAtUtc,
     double DistanceKm,
-    string Pace
-);
+    string Pace,
+    int? Rank = null)
+{
+    public string RaceName => EventName;
+    public string BibNumber => string.IsNullOrWhiteSpace(Bib) ? "N/A" : Bib;
+    public string DistanceName => Distance;
+    public DateTime CompletedAtUtc => FinishedAtUtc;
+}
