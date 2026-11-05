@@ -20,7 +20,7 @@ internal static class RaceTimelineAccess
             access,
             sosOps,
             currentUser,
-            "Chỉ chủ giải hoặc Coordinator Active mới xem timeline.",
+            "Chỉ chủ giải hoặc Race-staff Active mới xem timeline.",
             cancellationToken);
 
     public static Task EnsureCanRecordAsync(
@@ -34,7 +34,7 @@ internal static class RaceTimelineAccess
             access,
             sosOps,
             currentUser,
-            "Chỉ chủ giải hoặc Coordinator Active mới ghi nhận checkpoint.",
+            "Chỉ chủ giải hoặc Race-staff Active mới ghi nhận checkpoint.",
             cancellationToken);
 
     private static async Task EnsureAsync(

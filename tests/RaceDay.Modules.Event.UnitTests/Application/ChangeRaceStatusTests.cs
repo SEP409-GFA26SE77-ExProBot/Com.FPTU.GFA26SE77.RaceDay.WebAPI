@@ -52,8 +52,7 @@ public class ChangeRaceStatusTests
     }
 
     [Theory]
-    [InlineData(EventStaffRole.Volunteer)]
-    [InlineData(EventStaffRole.Coordinator)]
+    [InlineData(EventStaffRole.RaceStaff)]
     public async Task ActiveStaff_CanDecide_WithServerAudit(EventStaffRole role)
     {
         Assign(role);
@@ -87,7 +86,7 @@ public class ChangeRaceStatusTests
     {
         if (scenario != "unassigned")
         {
-            var member = Assign(scenario == "photographer" ? EventStaffRole.Photographer : EventStaffRole.Volunteer,
+            var member = Assign(scenario == "photographer" ? EventStaffRole.Photographer : EventStaffRole.RaceStaff,
                 scenario == "other_event" ? Guid.NewGuid() : null, scenario == "other_user" ? Guid.NewGuid() : null);
             if (scenario == "revoked") member.Revoke();
             if (scenario == "invited") typeof(EventStaffMember).GetProperty(nameof(EventStaffMember.Status))!.SetValue(member, EventStaffStatus.Invited);
@@ -107,7 +106,7 @@ public class ChangeRaceStatusTests
     [Fact]
     public async Task Retry_ReturnsOriginalAudit_WithoutAnotherWrite()
     {
-        Assign(EventStaffRole.Volunteer);
+        Assign(EventStaffRole.RaceStaff);
         var change = _reg.ChangeRaceStatus(RaceStatus.DQ, "Rule violation", Guid.NewGuid(), Now.AddMinutes(-1), null);
         _changes.GetLatestAsync(_reg.Id, Arg.Any<CancellationToken>()).Returns(change);
         var dto = await Handler().Handle(Command(), default);
@@ -120,14 +119,14 @@ public class ChangeRaceStatusTests
     [Fact]
     public async Task Dns_AtScheduledStart_IsAllowed()
     {
-        Assign(EventStaffRole.Volunteer);
+        Assign(EventStaffRole.RaceStaff);
         Assert.Equal("dns", (await Handler().Handle(Command("dns", "Absent"), default)).RaceStatus);
     }
 
     [Fact]
     public async Task DqAfterFinish_RemovesCertificateAndBothLeaderboards()
     {
-        Assign(EventStaffRole.Volunteer);
+        Assign(EventStaffRole.RaceStaff);
         _reg.Start(Now.AddHours(-1));
         _reg.Finish(Now, 3600);
         _registrations.ListByEventAsync(_race.Id, Arg.Any<CancellationToken>()).Returns(new[] { _reg });

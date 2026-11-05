@@ -12,10 +12,11 @@ public static class RolePrivilege
         return r switch
         {
             "admin" or "administrator" => 100,
+            "manager" => 80,
             "organizer" => 60,
-            "coordinator" => 50,
+            "race-staff" or "racestaff" or "race_staff"
+                or "coordinator" or "volunteer" => 50,
             "photographer" => 40,
-            "volunteer" => 30,
             "user" or "runner" => 10,
             _ => 0
         };
