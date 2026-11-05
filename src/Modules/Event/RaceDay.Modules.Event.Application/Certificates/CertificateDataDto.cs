@@ -1,8 +1,10 @@
-﻿namespace RaceDay.Modules.Event.Application.Certificates;
+﻿using System.Text.Json.Serialization;
+
+namespace RaceDay.Modules.Event.Application.Certificates;
 
 /// <summary>
 /// Dữ liệu chứng nhận cho FE JSON và QuestPDF.
-/// Alias properties phục vụ <c>ICertificatePdfService</c> (RaceName/BibNumber/…).
+/// Alias properties phục vụ <c>ICertificatePdfService</c> (RaceName/BibNumber/…) — không serialize ra JSON.
 /// </summary>
 public sealed record CertificateDataDto(
     Guid RegistrationId,
@@ -18,10 +20,10 @@ public sealed record CertificateDataDto(
     DateTime? StartedAtUtc,
     double DistanceKm,
     string Pace,
-    int? Rank = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Rank = null)
 {
-    public string RaceName => EventName;
-    public string BibNumber => string.IsNullOrWhiteSpace(Bib) ? "N/A" : Bib;
-    public string DistanceName => Distance;
-    public DateTime CompletedAtUtc => FinishedAtUtc;
+    [JsonIgnore] public string RaceName => EventName;
+    [JsonIgnore] public string BibNumber => string.IsNullOrWhiteSpace(Bib) ? "N/A" : Bib;
+    [JsonIgnore] public string DistanceName => Distance;
+    [JsonIgnore] public DateTime CompletedAtUtc => FinishedAtUtc;
 }
