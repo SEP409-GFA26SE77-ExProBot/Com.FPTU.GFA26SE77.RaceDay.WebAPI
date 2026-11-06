@@ -639,7 +639,8 @@ ON CONFLICT ("MigrationId") DO NOTHING;
 INSERT INTO race_monitoring."__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES
     ('20261014013255_InitialRaceMonitoring', '10.0.12'),
     ('20261026052256_AddCoordinatorEntities', '10.0.12'),
-    ('20261026094939_DropRaceMonitoringSosAlerts', '10.0.12')
+    ('20261026094939_DropRaceMonitoringSosAlerts', '10.0.12'),
+    ('20261027044213_AddEmergencyResponseCancellationAndAssignmentUniqueness', '10.0.12')
 ON CONFLICT ("MigrationId") DO NOTHING;
 
 
@@ -831,6 +832,7 @@ INSERT INTO iam.profiles (
     'f7777777-7777-4777-8777-777777777777',
     'Manager seed — duyệt giải / catalog gói', 'manager@raceday.vn', '0907000007',
     2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'
+    )
 ,
 (
     'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
