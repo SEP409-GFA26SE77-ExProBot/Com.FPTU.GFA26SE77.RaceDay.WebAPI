@@ -87,7 +87,7 @@ public sealed class FinishRegistrationCommandHandler(
             throw new DomainException("Finish time không hợp lệ.");
         }
 
-        var resultSeconds = (long)Math.Round((passedAtUtc - startAtUtc).TotalSeconds, MidpointRounding.AwayFromZero);
+        var resultSeconds = ResultTime.RoundBetween(startAtUtc, passedAtUtc);
         bool alreadyFinished = !reg.Finish(passedAtUtc, resultSeconds);
 
         registrations.Update(reg);

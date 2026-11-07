@@ -21,6 +21,8 @@ public static class DependencyInjection
                 npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "map")));
 
         services.AddScoped<IRaceCourseRepository, RaceCourseRepository>();
+        services.AddScoped<RaceDay.Modules.Map.Contracts.Courses.IRaceCourseReadQuery,
+            RaceDay.Modules.Map.Infrastructure.Courses.RaceCourseReadQuery>();
         services.AddScoped<IMapUnitOfWork, MapUnitOfWork>();
         services.AddHttpClient(NominatimGeocodeService.HttpClientName, client =>
         {
