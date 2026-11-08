@@ -134,6 +134,38 @@ public class RaceSimulationEngineTests
     }
 
     [Fact]
+    public void Default_chips_keep_the_full_registration_id_and_both_pass_the_same_checkpoint()
+    {
+        var first = Guid.Parse("00000000-0000-4000-8000-0000000000a1");
+        var second = Guid.Parse("00000000-0000-4000-8000-0000000000a2");
+        var engine = new RaceSimulationEngine(
+            1,
+            5,
+            [new SimulationCoursePoint(0, 0), new SimulationCoursePoint(1, 1)],
+            [
+                new SimulationCourseCheckpoint("start", "Start", 0, 0, 0, "start"),
+                new SimulationCourseCheckpoint("mid", "Mid", 2.5, 0, 0, "cp"),
+                new SimulationCourseCheckpoint("finish", "Finish", 5, 1, 1, "finish")
+            ],
+            [
+                new SimulationAthleteSeed(first, "A001", "An", RaceSimulationEngine.ChipFor(first)),
+                new SimulationAthleteSeed(second, "A002", "Ba", RaceSimulationEngine.ChipFor(second))
+            ]);
+
+        var athletes = engine.Capture().Athletes;
+        Assert.Equal("sim-000000000000400080000000000000a1", athletes[0].ChipId);
+        Assert.Equal("sim-000000000000400080000000000000a2", athletes[1].ChipId);
+        Assert.Contains(first.ToString("N"), athletes[0].ChipId);
+        Assert.Contains(second.ToString("N"), athletes[1].ChipId);
+        Assert.NotEqual(athletes[0].ChipId, athletes[1].ChipId);
+
+        engine.Start();
+        var started = engine.Capture().Athletes;
+        Assert.Contains(started[0].Splits, split => split.CheckpointId == "start");
+        Assert.Contains(started[1].Splits, split => split.CheckpointId == "start");
+    }
+
+    [Fact]
     public void Shared_chip_rejects_passage()
     {
         var engine = Create();

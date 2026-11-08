@@ -81,7 +81,7 @@ public sealed class RaceSimulationEngine
         => 8 + Unit(seed, registrationId, -1) * 6;
 
     public static string ChipFor(Guid registrationId)
-        => "sim-" + registrationId.ToString("N")[..12];
+        => $"sim-{registrationId:N}";
 
     public void Start()
     {
