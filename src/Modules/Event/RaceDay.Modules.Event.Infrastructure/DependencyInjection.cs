@@ -46,6 +46,7 @@ public static class DependencyInjection
         services.AddHostedService<RegistrationWindowHostedService>();
         services.AddScoped<IEventComplaintRepository, EventComplaintRepository>();
         services.AddScoped<ICertificatePdfService, QuestPdfCertificateQuery>();
+        services.AddScoped<ILeaderboardPdfService, QuestPdfLeaderboardService>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Registrations.IRegistrationCheckoutInfoQuery,
             RaceDay.Modules.Event.Infrastructure.Registrations.RegistrationCheckoutInfoQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Packages.IPackageCheckoutInfoQuery,

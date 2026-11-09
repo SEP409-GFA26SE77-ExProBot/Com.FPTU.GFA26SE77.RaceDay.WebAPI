@@ -1,4 +1,5 @@
 ﻿using MediatR;
+using FluentValidation;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
@@ -18,6 +19,7 @@ public sealed record LeaderboardItemDto(
     string TotalTime,
     string Pace);
 
+/// <summary>Paginated leaderboard results for one race distance.</summary>
 public sealed record PaginatedLeaderboardDto(
     IReadOnlyList<LeaderboardItemDto> Items,
     int TotalCount,
@@ -25,12 +27,24 @@ public sealed record PaginatedLeaderboardDto(
     int CurrentPage,
     int PageSize);
 
+/// <summary>Query for finished runners in one race distance.</summary>
 public sealed record GetDistanceLeaderboardQuery(
     Guid EventId,
     Guid DistanceId,
     string? Gender = null, // Thêm tham số lọc giới tính
     int Page = 1,
     int PageSize = 50) : IRequest<PaginatedLeaderboardDto>;
+
+public sealed class GetDistanceLeaderboardQueryValidator : AbstractValidator<GetDistanceLeaderboardQuery>
+{
+    public GetDistanceLeaderboardQueryValidator()
+    {
+        RuleFor(x => x.EventId).NotEmpty();
+        RuleFor(x => x.DistanceId).NotEmpty();
+        RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000);
+        RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
+    }
+}
 
 public sealed class GetDistanceLeaderboardQueryHandler(
     IRaceEventRepository events,

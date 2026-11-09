@@ -334,6 +334,46 @@ public sealed class EventRegistration : AggregateRoot
         Touch();
         return true;
     }
+
+    public void SetLeaderboardResult(DateTime startedAtUtc, DateTime finishedAtUtc, long resultSeconds)
+    {
+        if (Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
+        {
+            throw new DomainException("Chỉ VĐV đã được duyệt mới có thể có kết quả.");
+        }
+
+        if (resultSeconds < 0)
+        {
+            throw new DomainException("Kết quả finish không hợp lệ.");
+        }
+
+        if (finishedAtUtc.Kind != DateTimeKind.Utc)
+        {
+            finishedAtUtc = DateTime.SpecifyKind(finishedAtUtc, DateTimeKind.Utc);
+        }
+
+        StartedAtUtc = DateTime.SpecifyKind(startedAtUtc, DateTimeKind.Utc);
+        FinishedAtUtc = finishedAtUtc;
+        ResultSeconds = resultSeconds;
+        Status = RegistrationStatus.Finished;
+        RaceStatus = RaceStatus.Finished;
+        Touch();
+    }
+
+    public void RemoveLeaderboardResult()
+    {
+        if (Status != RegistrationStatus.Finished || !ResultSeconds.HasValue)
+        {
+            throw new DomainException("VĐV chưa có kết quả trên bảng xếp hạng.");
+        }
+
+        FinishedAtUtc = null;
+        ResultSeconds = null;
+        Status = RegistrationStatus.Confirmed;
+        RaceStatus = StartedAtUtc.HasValue ? RaceStatus.Running : RaceStatus.NotStarted;
+        Touch();
+    }
+
     public bool Start(DateTime startedAtUtc)
     {
         EnsureRaceNotStopped();
