@@ -133,11 +133,28 @@ public interface ISimulationFinishWriter
         CancellationToken cancellationToken = default);
 }
 
+public interface ISimulationPassageWriter
+{
+    /// <summary>
+    /// Persists checkpoint splits after a successful finish write.
+    /// Resolves EventCheckpoint by ExternalId when possible; otherwise uses a stable Guid from distance+externalId.
+    /// Idempotent per (registration, checkpoint).
+    /// </summary>
+    Task WriteAsync(
+        Guid registrationId,
+        Guid eventId,
+        Guid distanceId,
+        DateTime startUtc,
+        IReadOnlyList<SimulationSplitDraft> splits,
+        CancellationToken cancellationToken = default);
+}
+
 public sealed class SimulationResultCommitter(
     ISimulationDemoGate gate,
     ISimulationOfficialStartSource starts,
     ISimulationCandidateQuery candidates,
     ISimulationFinishWriter writer,
+    ISimulationPassageWriter passages,
     ICurrentUserAccessor currentUser,
     IEventSosOpsAccessQuery access,
     ILogger<SimulationResultCommitter> logger) : ISimulationResultCommitPort
@@ -263,6 +280,27 @@ public sealed class SimulationResultCommitter(
                 cancellationToken);
             if (written == 1)
             {
+                if (draft.Splits is { Count: > 0 })
+                {
+                    try
+                    {
+                        await passages.WriteAsync(
+                            draft.RegistrationId,
+                            command.EventId,
+                            command.DistanceId,
+                            startUtc,
+                            draft.Splits,
+                            cancellationToken);
+                    }
+                    catch (Exception ex) when (ex is not DomainException)
+                    {
+                        logger.LogError(
+                            ex,
+                            "Simulation finish committed but checkpoint passages failed for registration {RegistrationId}",
+                            draft.RegistrationId);
+                    }
+                }
+
                 return new SimulationCommitItemResult(
                     draft.RegistrationId, SimulationCommitOutcomes.CommittedThisRun, null, stored);
             }

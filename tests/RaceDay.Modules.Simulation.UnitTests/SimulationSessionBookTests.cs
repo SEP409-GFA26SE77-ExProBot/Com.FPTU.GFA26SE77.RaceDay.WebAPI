@@ -88,12 +88,11 @@ public class SimulationSessionBookTests
     }
 
     [Fact]
-    public async Task Requested_count_above_eligible_is_rejected()
+    public async Task Requested_count_above_eligible_is_capped()
     {
         var (book, _, _) = NewBook();
-        var error = await Assert.ThrowsAsync<DomainException>(() => book.CreateAsync(_eventId, _distanceId, 9, 1));
-        Assert.Contains("9", error.Message);
-        Assert.Contains("2", error.Message);
+        var created = await book.CreateAsync(_eventId, _distanceId, 9, 1);
+        Assert.Equal(2, created.Athletes.Count);
     }
 
     [Fact]

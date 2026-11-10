@@ -71,11 +71,12 @@ public static class EventModule
             IMediator mediator,
             CancellationToken ct) =>
         {
-            // Truyền biến gender vào GetDistanceLeaderboardQuery
-            var query = new GetDistanceLeaderboardQuery(eventId, distanceId, gender, page ?? 1, pageSize ?? 50);
+            // Chỉ hiện khi organizer đã Publish kết quả cự ly.
+            var query = new GetDistanceLeaderboardQuery(
+                eventId, distanceId, gender, page ?? 1, pageSize ?? 50, RequirePublished: true);
             return Results.Ok(await mediator.Send(query, ct));
         })
-        .WithSummary("Bảng xếp hạng cự ly (Phân trang, Lọc Giới tính)");
+        .WithSummary("Bảng xếp hạng cự ly đã công bố (Phân trang, Lọc Giới tính)");
 
         // không bắt role ORGANIZER riêng (không cần duyệt tài khoản organizer).
         var organizerApi = app.MapGroup("/api/v1/event/organizer")
@@ -171,14 +172,36 @@ public static class EventModule
         organizerApi.MapGet("/{eventId:guid}/distances/{distanceId:guid}/leaderboard", async (
             Guid eventId,
             Guid distanceId,
+            string? gender,
             int? page,
             int? pageSize,
             IMediator mediator,
             CancellationToken ct) =>
             Results.Ok(await mediator.Send(
-                new GetDistanceLeaderboardQuery(eventId, distanceId, null, page ?? 1, pageSize ?? 50), ct)))
+                new GetDistanceLeaderboardQuery(
+                    eventId, distanceId, gender, page ?? 1, pageSize ?? 50, RequirePublished: false), ct)))
             .WithSummary("CRUD bảng xếp hạng: đọc bảng xếp hạng theo cự ly")
-            .WithDescription("Chủ giải hoặc Admin có thể xem bảng xếp hạng đầy đủ theo từng cự ly.");
+            .WithDescription("Chủ giải hoặc Admin xem bản nháp/đã ghi finish kể cả khi chưa Publish.");
+
+        organizerApi.MapGet("/{eventId:guid}/distances/{distanceId:guid}/results-publish", async (
+            Guid eventId,
+            Guid distanceId,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetDistanceResultsPublishStatusQuery(eventId, distanceId), ct)))
+            .WithSummary("Trạng thái công bố kết quả cự ly")
+            .Produces<DistanceResultsPublishStatusDto>();
+
+        organizerApi.MapPost("/{eventId:guid}/distances/{distanceId:guid}/results-publish", async (
+            Guid eventId,
+            Guid distanceId,
+            SetDistanceResultsPublishedRequest body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new SetDistanceResultsPublishedCommand(eventId, distanceId, body.Published), ct)))
+            .WithSummary("Publish / Unpublish kết quả cự ly ra BXH public")
+            .Produces<DistanceResultsPublishStatusDto>();
 
         organizerApi.MapPost("/{eventId:guid}/distances/{distanceId:guid}/leaderboard", async (
             Guid eventId,
@@ -469,7 +492,7 @@ public static class EventModule
         userApi.MapPut("/registrations/{registrationId:guid}/resubmit", async (
             Guid registrationId, ResubmitRegistrationRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(body.ToCommand(registrationId), ct)))
-            .WithSummary("VĐV đã paid bị từ chối → sửa hồ sơ & nộp lại pending_approval (không TT lại)");
+            .WithSummary("Legacy: sửa & nộp lại đơn Rejected cũ (policy mới: reject → hủy + hoàn; ưu tiên đăng ký mới)");
 
         userApi.MapGet("/staff/me", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyStaffAssignmentsQuery(), ct)))
@@ -558,7 +581,7 @@ public static class EventModule
         .WithSummary("VĐV tạo đăng ký → pending_payment")
         .WithDescription(
             "Giải phải registration-open. Tiếp: POST /api/v1/payment/checkout. "
-            + "PayOS PAID → pending_approval. Organizer approve → confirmed + bib + qrPayload.");
+            + "PayOS PAID → auto confirmed+BIB nếu không bệnh lý đặc biệt; có bệnh lý → pending_approval chờ BTC duyệt.");
 
         // ── Endpoint Khiếu Nại cho VĐV ──
         userApi.MapPost("/complaints", async (
@@ -836,4 +859,5 @@ public static class EventModule
     // ĐÃ CHUYỂN VÀO TRONG CLASS EventModule
     private sealed record CreateComplaintRequest(Guid EventId, Guid DistanceId, string Title, string Content, IReadOnlyList<string>? EvidenceLinks);
     private sealed record ReplyComplaintRequest(string ResponseContent, string Decision);
+    private sealed record SetDistanceResultsPublishedRequest(bool Published);
 }

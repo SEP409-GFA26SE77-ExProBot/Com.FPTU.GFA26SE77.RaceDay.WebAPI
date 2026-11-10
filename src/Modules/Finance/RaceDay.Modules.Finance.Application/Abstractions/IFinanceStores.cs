@@ -34,6 +34,9 @@ public interface IRefundRequestRepository
     Task<RefundRequest?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<bool> HasOpenForPaymentAsync(Guid paymentId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<RefundRequest>> ListByUserAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<RefundRequest>> ListSystemErrorClaimsAsync(
+        bool pendingOnly,
+        CancellationToken cancellationToken = default);
     Task AddAsync(RefundRequest request, CancellationToken cancellationToken = default);
     void Update(RefundRequest request);
 }

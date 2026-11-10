@@ -30,12 +30,7 @@ public sealed class RegistrationCapacityPort(EventDbContext db) : IRegistrationC
         var reg = await db.Registrations.FirstOrDefaultAsync(x => x.Id == registrationId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy đăng ký.");
 
-        if (reg.Status == RegistrationStatus.Rejected)
-        {
-            // Organizer reject keeps Rejected; slot already released separately.
-            return;
-        }
-
+        // Reject + refund (hoặc 0% vẫn hủy): Rejected → Cancelled, xóa BIB.
         reg.MarkCancelledAfterRefund();
         await db.SaveChangesAsync(cancellationToken);
     }

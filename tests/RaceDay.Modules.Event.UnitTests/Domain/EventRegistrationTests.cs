@@ -46,6 +46,35 @@ public class EventRegistrationTests
         Assert.Equal(RegistrationStatus.Rejected, reg.Status);
     }
 
+    [Theory]
+    [InlineData("[]", false)]
+    [InlineData("""["none"]""", false)]
+    [InlineData("""["None"]""", false)]
+    [InlineData("""["none","cardiovascular"]""", true)]
+    [InlineData("""["injury"]""", true)]
+    public void HasSpecialMedicalConditions_Matches_None_Policy(string json, bool expected)
+    {
+        var reg = EventRegistration.Create(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            "M", "m@raceday.vn", "0905555666", null, null, null, null, null, null,
+            null, null, null, null, null, json, null, null, true);
+        Assert.Equal(expected, reg.HasSpecialMedicalConditions());
+    }
+
+    [Fact]
+    public void Refund_Cancel_Clears_Bib_And_Status()
+    {
+        var reg = EventRegistration.Create(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            "R", "r@raceday.vn", "0906666777", null, null, null, null, null, null,
+            null, null, null, null, null, """["none"]""", null, null, true);
+        reg.MarkPaidPendingApproval();
+        reg.Confirm("50099");
+        reg.MarkCancelledAfterRefund();
+        Assert.Equal(RegistrationStatus.Cancelled, reg.Status);
+        Assert.Null(reg.BibNumber);
+    }
+
     [Fact]
     public void Finish_Sets_Time_Status_And_Is_Idempotent()
     {

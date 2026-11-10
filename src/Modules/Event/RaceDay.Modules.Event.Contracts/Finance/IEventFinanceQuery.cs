@@ -35,4 +35,7 @@ public sealed record RegistrationFinanceInfo(
     Guid OrganizerUserId,
     string EventStatus,
     DateOnly EventDate,
-    TimeOnly? StartTime);
+    TimeOnly? StartTime,
+    string? FullName = null,
+    string? Email = null,
+    string? BibNumber = null);

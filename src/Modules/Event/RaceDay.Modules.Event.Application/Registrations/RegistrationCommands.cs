@@ -188,12 +188,13 @@ public sealed class CreateRegistrationCommandHandler(
         }
 
         var mine = await registrations.ListByUserAsync(userId, cancellationToken);
+        // Rejected cũ (chưa kịp cancel) vẫn chặn tạo đơn mới — ưu tiên hết Rejected → Cancelled qua auto-refund.
         var rejectedPaid = mine.FirstOrDefault(x =>
             x.EventId == request.EventId && x.Status == RegistrationStatus.Rejected);
         if (rejectedPaid is not null)
         {
             throw new DomainException(
-                "Bạn có đơn đã thanh toán bị BTC từ chối. Hãy sửa hồ sơ và nộp lại (không tạo đơn mới).");
+                "Đơn bị BTC từ chối đang được hủy/hoàn. Vui lòng đợi vài phút rồi đăng ký lại, hoặc liên hệ hỗ trợ nếu trạng thái không đổi.");
         }
 
         var active = await registrations.ListActiveByUserEventAsync(request.EventId, userId, cancellationToken);
@@ -548,7 +549,11 @@ public sealed class ResubmitRejectedRegistrationCommandHandler(
     IRaceEventRepository events,
     IEventRegistrationRepository registrations,
     ICurrentUserAccessor currentUser,
-    IEventUnitOfWork unitOfWork) : IRequestHandler<ResubmitRejectedRegistrationCommand, RegistrationDto>
+    IEventUnitOfWork unitOfWork,
+    IEventBus eventBus,
+    IEmailSender emailSender,
+    ILogger<ResubmitRejectedRegistrationCommandHandler> logger)
+    : IRequestHandler<ResubmitRejectedRegistrationCommand, RegistrationDto>
 {
     public async Task<RegistrationDto> Handle(
         ResubmitRejectedRegistrationCommand request,
@@ -590,10 +595,17 @@ public sealed class ResubmitRejectedRegistrationCommandHandler(
             request.LiabilityAccepted);
 
         registrations.Update(reg);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
 
         EventDistance? distance = null;
         try { distance = race.GetDistance(reg.DistanceId); } catch { /* ignore */ }
+
+        if (distance is not null)
+        {
+            await RegistrationAutoApproval.TryConfirmAsync(
+                reg, race, distance, registrations, eventBus, emailSender, logger, cancellationToken);
+        }
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return RegistrationDtoMapper.ToDto(reg, race, distance);
     }
 }

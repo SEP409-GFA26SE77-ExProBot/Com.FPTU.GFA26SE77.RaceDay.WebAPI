@@ -112,9 +112,10 @@ builder.Services.AddSwaggerGen(options =>
 
             ### F. Ví / giải ngân / hoàn tiền
             1. Paid → escrow ledger theo giải (`/api/v1/finance/organizer/...`)
-            2. Organizer xin rút → Admin `.../finance/admin/payouts/{id}/approve`
-            3. Runner hoàn: `POST /api/v1/finance/runner/refunds` (số tiền = payment.Amount × % policy)
+            2. Organizer xin rút → Manager (hoặc Admin) `.../finance/manager/payouts/{id}/approve`
+            3. Runner: `GET .../refunds/quote` rồi `POST .../runner/refunds` (% theo ≥90d/≥60d/<60d)
             4. Organizer reject đăng ký đã trả → hoàn 100% tự động
+            5. AdminOnly: `/finance/admin/settings` + `/overview` (phí 30/70 + refund policy)
 
             ### G. Device (Wear Device Flow + SOS)
             1. Watch: `POST /api/v1/device/auth/code` → QR

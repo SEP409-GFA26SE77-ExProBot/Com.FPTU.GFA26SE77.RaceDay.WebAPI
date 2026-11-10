@@ -53,7 +53,10 @@ public sealed class EventFinanceQuery(EventDbContext db) : IEventFinanceQuery
             race.OrganizerUserId,
             race.Status.ToString(),
             race.EventDate,
-            race.StartTime);
+            race.StartTime,
+            reg.FullName,
+            reg.Email,
+            reg.BibNumber);
     }
 
     public async Task<IReadOnlyList<Guid>> ListPaidEligibleRegistrationIdsAsync(

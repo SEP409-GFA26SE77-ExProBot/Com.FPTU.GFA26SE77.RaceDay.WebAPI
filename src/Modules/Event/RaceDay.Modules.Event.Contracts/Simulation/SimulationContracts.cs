@@ -56,8 +56,15 @@ public static class SimulationCommitOutcomes
     public const string Unknown = "Unknown";
 }
 
+/// <summary>Checkpoint external id from the map course; elapsed from official start.</summary>
+public sealed record SimulationSplitDraft(string CheckpointExternalId, double ElapsedSeconds);
+
 /// <summary>Bib is the value captured on the simulation run, not a later registration bib.</summary>
-public sealed record SimulationFinishDraft(Guid RegistrationId, double ElapsedSeconds, string Bib);
+public sealed record SimulationFinishDraft(
+    Guid RegistrationId,
+    double ElapsedSeconds,
+    string Bib,
+    IReadOnlyList<SimulationSplitDraft>? Splits = null);
 
 /// <summary>Actor id is taken from the server user, never from this command.</summary>
 public sealed record SimulationCommitCommand(

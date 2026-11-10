@@ -75,6 +75,19 @@ public sealed class RefundRequestRepository(FinanceDbContext db) : IRefundReques
         => await db.RefundRequests.Where(x => x.UserId == userId)
             .OrderByDescending(x => x.CreatedAtUtc).ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<RefundRequest>> ListSystemErrorClaimsAsync(
+        bool pendingOnly,
+        CancellationToken cancellationToken = default)
+    {
+        var q = db.RefundRequests.AsQueryable().Where(x => x.IsSystemErrorClaim);
+        if (pendingOnly)
+        {
+            q = q.Where(x => x.Status == RefundRequestStatus.Requested);
+        }
+
+        return await q.OrderByDescending(x => x.CreatedAtUtc).ToListAsync(cancellationToken);
+    }
+
     public async Task AddAsync(RefundRequest request, CancellationToken cancellationToken = default)
         => await db.RefundRequests.AddAsync(request, cancellationToken);
 
@@ -100,6 +113,26 @@ public sealed class PlatformFinanceSettingsRepository(FinanceDbContext db) : IPl
             x => x.Id == PlatformFinanceSettings.SingletonId, cancellationToken);
         if (s is not null)
         {
+            // One-shot align legacy seed (50/50 + hoàn 50%) → doc (30/70 + hoàn 85%).
+            if (s.PreEventWithdrawPercent == 50m
+                && s.PostEventWithdrawPercent == 50m
+                && s.PartialRefundPercent == 50m)
+            {
+                s.Update(
+                    s.PlatformFeePercent,
+                    preEventWithdrawPercent: 30m,
+                    postEventWithdrawPercent: 70m,
+                    s.MinPayoutAmount,
+                    fullRefundPercent: 100m,
+                    partialRefundPercent: 85m,
+                    s.AllowRefundAfterEventStart,
+                    notes:
+                        "Phí 5%. Giải ngân: tạm ứng 30% từ T-4 tuần; 70% còn lại sau giải. " +
+                        "Hoàn VĐV: 100% nếu ≥90 ngày trước giải; 85% nếu ≥60 ngày; 0% khi <60 ngày hoặc đã xuất phát.");
+                db.PlatformSettings.Update(s);
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
             return s;
         }
 

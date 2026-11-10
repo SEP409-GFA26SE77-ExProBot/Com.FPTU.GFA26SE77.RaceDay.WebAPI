@@ -101,10 +101,18 @@ public sealed class CreatePayoutCommandHandler(
         var ledger = await ledgers.GetByEventIdAsync(body.EventId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy túi tiền của giải (chưa có vé paid).");
         var dto = LedgerCalculator.ToDto(ledger, settings, ev);
+        if (dto.AvailableToWithdraw <= 0)
+        {
+            throw new DomainException(
+                dto.WithdrawPhase == LedgerCalculator.PhaseTooEarly
+                    ? "Chưa tới đợt tạm ứng T-4 tuần — chưa thể xin giải ngân."
+                    : "Không còn số dư khả dụng để giải ngân trên túi giải này.");
+        }
+
         if (body.Amount > dto.AvailableToWithdraw)
         {
             throw new DomainException(
-                $"Vượt khả dụng của giải này ({dto.AvailableToWithdraw:N0}₫). Không lấy tiền từ giải khác.");
+                $"Vượt khả dụng của giải này ({dto.AvailableToWithdraw:N0}₫, phase={dto.WithdrawPhase}). Không lấy tiền từ giải khác.");
         }
 
         ledger.ReservePayout(body.Amount);

@@ -245,6 +245,8 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
             entity.Property(x => x.BibPrefix).HasMaxLength(12);
             entity.Property(x => x.BibRangeStart);
             entity.Property(x => x.BibRangeEnd);
+            entity.Property(x => x.ResultsPublished);
+            entity.Property(x => x.ResultsPublishedAtUtc);
 
             entity.Property(x => x.Price)
                 .HasPrecision(18, 2);
