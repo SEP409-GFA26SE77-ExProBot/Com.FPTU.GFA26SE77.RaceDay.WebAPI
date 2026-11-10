@@ -47,7 +47,7 @@ public sealed class ChangeRaceStatusCommandHandler(
             var assignments = await staff.ListActiveByUserIdAsync(userId, cancellationToken);
             if (!assignments.Any(x => x.EventId == request.EventId && x.UserId == userId
                 && x.Status == EventStaffStatus.Active
-                && x.Role is EventStaffRole.Volunteer or EventStaffRole.Coordinator))
+                && x.Role == EventStaffRole.RaceStaff))
                 throw new DomainException("Bạn không có quyền cập nhật trạng thái thi đấu của giải này.");
         }
 

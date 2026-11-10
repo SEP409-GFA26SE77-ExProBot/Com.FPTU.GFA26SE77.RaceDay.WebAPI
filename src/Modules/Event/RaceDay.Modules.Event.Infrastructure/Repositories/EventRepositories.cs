@@ -205,6 +205,15 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
             .OrderByDescending(x => x.CreatedAtUtc)
             .ToListAsync(cancellationToken);
 
+    public Task<EventRegistration?> GetByEventDistanceAndUserAsync(
+        Guid eventId,
+        Guid distanceId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => db.Registrations.FirstOrDefaultAsync(
+            x => x.EventId == eventId && x.DistanceId == distanceId && x.UserId == userId,
+            cancellationToken);
+
     public Task<bool> ExistsForUserDistanceAsync(Guid eventId, Guid distanceId, Guid userId, CancellationToken cancellationToken = default)
         => db.Registrations.AnyAsync(
             x => x.EventId == eventId && x.DistanceId == distanceId && x.UserId == userId

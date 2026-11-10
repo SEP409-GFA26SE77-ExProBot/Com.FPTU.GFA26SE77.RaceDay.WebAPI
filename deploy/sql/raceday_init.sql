@@ -9,10 +9,10 @@
 -- Seed password (tất cả user Active): MatKhau@123
 --   admin@raceday.vn | an.nguyen@raceday.vn | binh.tran@raceday.vn
 --   cuong.le@raceday.vn (Organizer) | dung.pham@raceday.vn (Pending)
---   Staff ops (4/role):
---     coord1..4@raceday.vn (Coordinator)
+--   manager@raceday.vn (Manager — duyệt giải / gói)
+--   Staff ops:
+--     coord1..4 / vol1..4@raceday.vn (Race-staff)
 --     photo1..4@raceday.vn (Photographer)
---     vol1..4@raceday.vn (Volunteer)
 --
 -- Lịch giải seed (mỗi ngày 1, không trùng):
 --   2026-03-15 HCMC Night | 2026-06-07 Hanoi | 2026-06-21 VnExpress Marathon Quy Nhon (flagship R2)
@@ -639,7 +639,8 @@ ON CONFLICT ("MigrationId") DO NOTHING;
 INSERT INTO race_monitoring."__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES
     ('20261014013255_InitialRaceMonitoring', '10.0.12'),
     ('20261026052256_AddCoordinatorEntities', '10.0.12'),
-    ('20261026094939_DropRaceMonitoringSosAlerts', '10.0.12')
+    ('20261026094939_DropRaceMonitoringSosAlerts', '10.0.12'),
+    ('20261027044213_AddEmergencyResponseCancellationAndAssignmentUniqueness', '10.0.12')
 ON CONFLICT ("MigrationId") DO NOTHING;
 
 
@@ -651,12 +652,12 @@ BEGIN;
 -- Roles (fixed GUIDs = IamDataSeeder)
 -- -----------------------------------------------------------------------------
 INSERT INTO iam.roles (role_id, role_name, description) VALUES
-    ('11111111-1111-1111-1111-111111111111', 'Admin', 'Quản trị hệ thống RaceDay'),
+    ('11111111-1111-1111-1111-111111111111', 'Admin', 'Quản trị hệ thống / tài khoản RaceDay'),
     ('22222222-2222-2222-2222-222222222222', 'User', 'Người dùng / vận động viên'),
     ('33333333-3333-3333-3333-333333333333', 'Organizer', 'Ban tổ chức sự kiện'),
-    ('44444444-4444-4444-4444-444444444444', 'Coordinator', 'Điều phối viên giải'),
+    ('44444444-4444-4444-4444-444444444444', 'Race-staff', 'Nhân sự hiện trường (gộp Coordinator + Volunteer)'),
     ('55555555-5555-5555-5555-555555555555', 'Photographer', 'Nhiếp ảnh giải'),
-    ('66666666-6666-6666-6666-666666666666', 'Volunteer', 'Tình nguyện viên giải')
+    ('77777777-7777-7777-7777-777777777777', 'Manager', 'Duyệt giải + cấu hình gói / promo')
 ON CONFLICT (role_id) DO NOTHING;
 
 -- -----------------------------------------------------------------------------
@@ -709,7 +710,15 @@ INSERT INTO iam.users (
     'Phạm Minh Dũng', '0905000005', '2000-11-25', 1, 2, false,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
 ),
--- Coordinator ×4
+(
+    'f7777777-7777-4777-8777-777777777777',
+    'manager@raceday.vn', 'manager',
+    '77777777-7777-7777-7777-777777777777',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Trần Quản Lý Gói', '0907000007', '1992-04-12', 2, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+-- Race-staff (legacy coord emails) ×4
 (
     'a1444444-0001-4000-8000-000000000001',
     'coord1@raceday.vn', 'coord1',
@@ -775,11 +784,11 @@ INSERT INTO iam.users (
     'Bùi Ảnh Tư', '0912000004', '1998-10-03', 2, 1, true,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
 ),
--- Volunteer ×4
+-- Race-staff (legacy vol emails) ×4
 (
     'a1666666-0001-4000-8000-000000000001',
     'vol1@raceday.vn', 'vol1',
-    '66666666-6666-6666-6666-666666666666',
+    '44444444-4444-4444-4444-444444444444',
     'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
     'Ngô Tình Nguyện Một', '0913000001', '2001-03-12', 1, 1, true,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
@@ -787,7 +796,7 @@ INSERT INTO iam.users (
 (
     'a1666666-0002-4000-8000-000000000002',
     'vol2@raceday.vn', 'vol2',
-    '66666666-6666-6666-6666-666666666666',
+    '44444444-4444-4444-4444-444444444444',
     'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
     'Đỗ Tình Nguyện Hai', '0913000002', '2000-05-21', 2, 1, true,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
@@ -795,7 +804,7 @@ INSERT INTO iam.users (
 (
     'a1666666-0003-4000-8000-000000000003',
     'vol3@raceday.vn', 'vol3',
-    '66666666-6666-6666-6666-666666666666',
+    '44444444-4444-4444-4444-444444444444',
     'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
     'Mai Tình Nguyện Ba', '0913000003', '1999-08-09', 1, 1, true,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
@@ -803,7 +812,7 @@ INSERT INTO iam.users (
 (
     'a1666666-0004-4000-8000-000000000004',
     'vol4@raceday.vn', 'vol4',
-    '66666666-6666-6666-6666-666666666666',
+    '44444444-4444-4444-4444-444444444444',
     'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
     'Lý Tình Nguyện Tư', '0913000004', '2002-11-17', 2, 1, true,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
@@ -819,6 +828,12 @@ INSERT INTO iam.profiles (
     'Tài khoản quản trị RaceDay', 'admin@raceday.vn', '0901000001',
     2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'
 ),
+(
+    'f7777777-7777-4777-8777-777777777777',
+    'Manager seed — duyệt giải / catalog gói', 'manager@raceday.vn', '0907000007',
+    2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'
+    )
+,
 (
     'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
     'Vận động viên phong trào TP.HCM', 'an.nguyen@raceday.vn', '0902000002',
@@ -839,18 +854,18 @@ INSERT INTO iam.profiles (
     'Hồ sơ chờ xác minh email', 'dung.pham@raceday.vn', '0905000005',
     0, NULL, NULL
 ),
-('a1444444-0001-4000-8000-000000000001', 'Coordinator seed #1', 'coord1@raceday.vn', '0911000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1444444-0002-4000-8000-000000000002', 'Coordinator seed #2', 'coord2@raceday.vn', '0911000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1444444-0003-4000-8000-000000000003', 'Coordinator seed #3', 'coord3@raceday.vn', '0911000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1444444-0004-4000-8000-000000000004', 'Coordinator seed #4', 'coord4@raceday.vn', '0911000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0001-4000-8000-000000000001', 'Race-staff seed #1', 'coord1@raceday.vn', '0911000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0002-4000-8000-000000000002', 'Race-staff seed #2', 'coord2@raceday.vn', '0911000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0003-4000-8000-000000000003', 'Race-staff seed #3', 'coord3@raceday.vn', '0911000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0004-4000-8000-000000000004', 'Race-staff seed #4', 'coord4@raceday.vn', '0911000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
 ('a1555555-0001-4000-8000-000000000001', 'Photographer seed #1', 'photo1@raceday.vn', '0912000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
 ('a1555555-0002-4000-8000-000000000002', 'Photographer seed #2', 'photo2@raceday.vn', '0912000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
 ('a1555555-0003-4000-8000-000000000003', 'Photographer seed #3', 'photo3@raceday.vn', '0912000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
 ('a1555555-0004-4000-8000-000000000004', 'Photographer seed #4', 'photo4@raceday.vn', '0912000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1666666-0001-4000-8000-000000000001', 'Volunteer seed #1', 'vol1@raceday.vn', '0913000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1666666-0002-4000-8000-000000000002', 'Volunteer seed #2', 'vol2@raceday.vn', '0913000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1666666-0003-4000-8000-000000000003', 'Volunteer seed #3', 'vol3@raceday.vn', '0913000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1666666-0004-4000-8000-000000000004', 'Volunteer seed #4', 'vol4@raceday.vn', '0913000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system')
+('a1666666-0001-4000-8000-000000000001', 'Race-staff seed #1', 'vol1@raceday.vn', '0913000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1666666-0002-4000-8000-000000000002', 'Race-staff seed #2', 'vol2@raceday.vn', '0913000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1666666-0003-4000-8000-000000000003', 'Race-staff seed #3', 'vol3@raceday.vn', '0913000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1666666-0004-4000-8000-000000000004', 'Race-staff seed #4', 'vol4@raceday.vn', '0913000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system')
 ON CONFLICT (user_id) DO NOTHING;
 
 -- -----------------------------------------------------------------------------

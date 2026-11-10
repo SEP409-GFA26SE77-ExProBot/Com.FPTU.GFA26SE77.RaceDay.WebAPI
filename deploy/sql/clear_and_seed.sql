@@ -33,12 +33,12 @@ BEGIN;
 
 -- Roles
 INSERT INTO iam.roles (role_id, role_name, description) VALUES
-('11111111-1111-1111-1111-111111111111', 'Admin', 'Quản trị hệ thống RaceDay'),
+('11111111-1111-1111-1111-111111111111', 'Admin', 'Quản trị hệ thống / tài khoản RaceDay'),
 ('22222222-2222-2222-2222-222222222222', 'User', 'Người dùng / vận động viên'),
 ('33333333-3333-3333-3333-333333333333', 'Organizer', 'Ban tổ chức sự kiện'),
-('44444444-4444-4444-4444-444444444444', 'Coordinator', 'Điều phối viên giải'),
+('44444444-4444-4444-4444-444444444444', 'Race-staff', 'Nhân sự hiện trường (gộp Coordinator + Volunteer)'),
 ('55555555-5555-5555-5555-555555555555', 'Photographer', 'Nhiếp ảnh giải'),
-('66666666-6666-6666-6666-666666666666', 'Volunteer', 'Tình nguyện viên giải')
+('77777777-7777-7777-7777-777777777777', 'Manager', 'Duyệt giải + cấu hình gói / promo')
 ON CONFLICT (role_id) DO NOTHING;
 
 -- Admin + Organizer + 13 runners (Active=1, email_verified=true)

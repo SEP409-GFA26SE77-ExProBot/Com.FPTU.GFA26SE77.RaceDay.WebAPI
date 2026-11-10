@@ -114,7 +114,7 @@ internal static class EmergencyResponseAccess
         if (!currentUser.IsAdmin
             && !await sosOps.CanManageSosAsync(eventId, userId, cancellationToken))
         {
-            throw new DomainException("Chỉ organizer của giải hoặc Coordinator Active mới xem phản hồi khẩn cấp.");
+            throw new DomainException("Chỉ organizer của giải hoặc Race-staff Active mới xem phản hồi khẩn cấp.");
         }
     }
 
@@ -149,14 +149,14 @@ internal static class EmergencyResponseAccess
             && !await sosOps.CanManageSosAsync(scope.EventId.Value, userId, cancellationToken))
         {
             var action = managing ? "xử lý" : "xem";
-            throw new DomainException($"Chỉ organizer của giải hoặc Coordinator Active mới {action} phản hồi khẩn cấp.");
+            throw new DomainException($"Chỉ organizer của giải hoặc Race-staff Active mới {action} phản hồi khẩn cấp.");
         }
 
         return scope;
     }
 
     /// <summary>
-    /// Chủ giải hoặc Coordinator Active trên giải. Admin không được đi tắt quyền này.
+    /// Chủ giải hoặc Race-staff Active trên giải. Admin không được đi tắt quyền này.
     /// </summary>
     public static async Task EnsureCanCoordinateEventAsync(
         Guid eventId,
@@ -169,7 +169,7 @@ internal static class EmergencyResponseAccess
         _ = await access.GetAsync(eventId, cancellationToken) ?? throw new DomainException("Không tìm thấy giải.");
         if (!await sosOps.CanManageSosAsync(eventId, userId, cancellationToken))
         {
-            throw new DomainException("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.");
+            throw new DomainException("Chỉ organizer của giải hoặc Race-staff Active mới điều phối nguồn lực.");
         }
     }
 

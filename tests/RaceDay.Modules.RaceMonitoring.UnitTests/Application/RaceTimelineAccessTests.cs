@@ -31,7 +31,7 @@ public class RaceTimelineAccessTests
         var ex = await Assert.ThrowsAsync<DomainException>(() =>
             handler.Handle(new ListRaceEventLogsQuery(EventId, null, null, null, null, null, null), CancellationToken.None));
 
-        Assert.Equal("Chỉ chủ giải hoặc Coordinator Active mới xem timeline.", ex.Message);
+        Assert.Equal("Chỉ chủ giải hoặc Race-staff Active mới xem timeline.", ex.Message);
         await logs.DidNotReceive().ListAsync(Arg.Any<RaceEventLogFilter>(), Arg.Any<CancellationToken>());
     }
 
@@ -71,7 +71,7 @@ public class RaceTimelineAccessTests
                 new RecordCheckpointScanRequest(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Manual", DateTime.UtcNow)),
             CancellationToken.None));
 
-        Assert.Equal("Chỉ chủ giải hoặc Coordinator Active mới ghi nhận checkpoint.", ex.Message);
+        Assert.Equal("Chỉ chủ giải hoặc Race-staff Active mới ghi nhận checkpoint.", ex.Message);
         await recorder.DidNotReceive().RecordAsync(Arg.Any<CheckpointScanRecord>(), Arg.Any<CancellationToken>());
     }
 

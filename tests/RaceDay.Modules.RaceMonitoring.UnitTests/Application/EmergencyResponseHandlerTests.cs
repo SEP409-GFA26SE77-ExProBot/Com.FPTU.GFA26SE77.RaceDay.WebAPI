@@ -55,7 +55,7 @@ public class EmergencyResponseHandlerTests
             new ListEmergencyResponsesQueryHandler(responses, scopes, access, sosOps, current)
                 .Handle(new ListEmergencyResponsesQuery(EventId, null, null, null), CancellationToken.None));
 
-        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới xem phản hồi khẩn cấp.", ex.Message);
+        Assert.Equal("Chỉ organizer của giải hoặc Race-staff Active mới xem phản hồi khẩn cấp.", ex.Message);
         await responses.DidNotReceive().ListBySourceSosIdsAsync(
             Arg.Any<IReadOnlyCollection<Guid>>(),
             Arg.Any<EmergencyResponseStatus?>(),
@@ -132,7 +132,7 @@ public class EmergencyResponseHandlerTests
             new GetEmergencyResponseQueryHandler(responses, scopes, access, sosOps, current)
                 .Handle(new GetEmergencyResponseQuery(response.Id), CancellationToken.None));
 
-        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới xem phản hồi khẩn cấp.", ex.Message);
+        Assert.Equal("Chỉ organizer của giải hoặc Race-staff Active mới xem phản hồi khẩn cấp.", ex.Message);
     }
 
     [Fact]

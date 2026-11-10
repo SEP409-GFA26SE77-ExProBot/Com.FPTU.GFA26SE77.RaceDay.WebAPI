@@ -189,7 +189,7 @@ public sealed class ListEventSosQueryHandler(
         if (!currentUser.IsAdmin
             && !await sosOps.CanManageSosAsync(request.EventId, userId, cancellationToken))
         {
-            throw new DomainException("Chỉ organizer của giải hoặc Coordinator Active mới xem SOS.");
+            throw new DomainException("Chỉ organizer của giải hoặc Race-staff Active mới xem SOS.");
         }
 
         SosStatus? status = null;
@@ -258,7 +258,7 @@ public sealed class AckSosCommandHandler(
         if (!currentUser.IsAdmin
             && !await sosOps.CanManageSosAsync(alert.EventId.Value, userId, cancellationToken))
         {
-            throw new DomainException("Chỉ organizer của giải hoặc Coordinator Active mới xử lý SOS.");
+            throw new DomainException("Chỉ organizer của giải hoặc Race-staff Active mới xử lý SOS.");
         }
 
         return alert;

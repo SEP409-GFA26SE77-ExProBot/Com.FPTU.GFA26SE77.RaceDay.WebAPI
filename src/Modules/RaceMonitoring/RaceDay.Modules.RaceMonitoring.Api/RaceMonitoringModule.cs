@@ -39,7 +39,7 @@ public static class RaceMonitoringModule
             .WithSummary("RaceMonitoring module health");
 
         var ops = api.MapGroup("")
-            .RequireAuthorization(AuthPolicies.OrganizerOrCoordinator)
+            .RequireAuthorization(AuthPolicies.OrganizerOrRaceStaff)
             .RequireRateLimiting("authenticated");
 
         ops.MapGet("/events/{eventId:guid}/emergency-responses", async (
@@ -56,8 +56,8 @@ public static class RaceMonitoringModule
                 ct)))
             .WithSummary("Danh sách phản hồi khẩn cấp theo giải")
             .WithDescription(
-                "JWT role Admin | Organizer | Coordinator (không wear). "
-                + "Handler: chủ giải hoặc staff Coordinator Active trên giải. "
+                "JWT role Admin | Organizer | Race-staff (không wear). "
+                + "Handler: chủ giải hoặc staff Race-staff Active trên giải. "
                 + "Lọc status, priority, incidentType. Phân trang page/pageSize.");
 
         ops.MapGet("/emergency-responses/{id:guid}", async (Guid id, IMediator mediator, CancellationToken ct) =>
@@ -119,7 +119,7 @@ public static class RaceMonitoringModule
             .WithSummary("Danh sách nguồn lực của giải")
             .WithDescription(
                 "Chỉ nguồn lực có EventId trùng giải. "
-                + "Chủ giải hoặc Coordinator Active. Admin không đi tắt. "
+                + "Chủ giải hoặc Race-staff Active. Admin không đi tắt. "
                 + "Lọc status, resourceType. Phân trang page/pageSize.");
 
         ops.MapGet("/emergency-resources/{id:guid}", async (Guid id, IMediator mediator, CancellationToken ct) =>
@@ -127,7 +127,7 @@ public static class RaceMonitoringModule
             .WithSummary("Chi tiết nguồn lực")
             .WithDescription(
                 "Nguồn lực phải thuộc một giải. "
-                + "Chủ giải hoặc Coordinator Active. Admin không đi tắt.");
+                + "Chủ giải hoặc Race-staff Active. Admin không đi tắt.");
 
         ops.MapPost("/events/{eventId:guid}/emergency-resources", async (
             Guid eventId,
@@ -228,7 +228,7 @@ public static class RaceMonitoringModule
             Results.Ok(await mediator.Send(new RecordCheckpointScanCommand(eventId, body), ct)))
             .WithSummary("Ghi nhận một lượt qua checkpoint")
             .WithDescription(
-                "Chủ giải hoặc Coordinator Active. Body không phụ thuộc thiết bị: "
+                "Chủ giải hoặc Race-staff Active. Body không phụ thuộc thiết bị: "
                 + "{ scanId, registrationId, checkpointId, scanMethod: RFID|Manual, scannedAtUtc }. "
                 + "Cùng scanId trả outcome Duplicate, không phát SSE lần hai. "
                 + "Log chỉ tạo khi registration confirmed/finished, có BIB, và checkpoint thuộc đúng cự ly. "
@@ -274,7 +274,7 @@ public static class RaceMonitoringModule
                 ct)))
             .WithSummary("Danh sách timeline của giải")
             .WithDescription(
-                "Chủ giải hoặc Coordinator Active. Admin không đi tắt. "
+                "Chủ giải hoặc Race-staff Active. Admin không đi tắt. "
                 + "Lọc eventDistanceId, eventType, bibNumber, fromUtc, toUtc, afterSequence. "
                 + "Thứ tự OccurredAtUtc rồi sequence. Phân trang page/pageSize.");
 
@@ -310,7 +310,7 @@ public static class RaceMonitoringModule
             CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetRaceEventLogQuery(eventId, logId), ct)))
             .WithSummary("Chi tiết một dòng timeline")
-            .WithDescription("Log phải thuộc đúng eventId. Chủ giải hoặc Coordinator Active.");
+            .WithDescription("Log phải thuộc đúng eventId. Chủ giải hoặc Race-staff Active.");
 
         return app;
     }

@@ -54,7 +54,7 @@ public class EmergencyCoordinationHandlerTests
             new ListEmergencyResourcesQueryHandler(resources, access, sosOps, current)
                 .Handle(new ListEmergencyResourcesQuery(EventId, null, null), CancellationToken.None));
 
-        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        Assert.Equal("Chỉ organizer của giải hoặc Race-staff Active mới điều phối nguồn lực.", ex.Message);
         await resources.DidNotReceive().ListByEventAsync(
             Arg.Any<Guid>(),
             Arg.Any<EmergencyResourceStatus?>(),
@@ -76,7 +76,7 @@ public class EmergencyCoordinationHandlerTests
             new ListEmergencyResourcesQueryHandler(resources, access, sosOps, current)
                 .Handle(new ListEmergencyResourcesQuery(OtherEventId, null, null), CancellationToken.None));
 
-        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        Assert.Equal("Chỉ organizer của giải hoặc Race-staff Active mới điều phối nguồn lực.", ex.Message);
         await resources.DidNotReceive().ListByEventAsync(
             OtherEventId,
             Arg.Any<EmergencyResourceStatus?>(),
@@ -117,7 +117,7 @@ public class EmergencyCoordinationHandlerTests
             new GetEmergencyResourceQueryHandler(resources, access, sosOps, current)
                 .Handle(new GetEmergencyResourceQuery(resource.Id), CancellationToken.None));
 
-        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        Assert.Equal("Chỉ organizer của giải hoặc Race-staff Active mới điều phối nguồn lực.", ex.Message);
     }
 
     [Fact]
