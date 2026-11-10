@@ -67,6 +67,16 @@ public static class DependencyInjection
             RaceDay.Modules.Event.Infrastructure.Events.EventRegistrationRaceQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventCheckpointQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventCheckpointQuery>();
+        services.AddSingleton<RaceDay.Modules.Event.Contracts.Simulation.ISimulationDemoGate,
+            RaceDay.Modules.Event.Infrastructure.Simulation.ConfigurationSimulationDemoGate>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Simulation.ISimulationCandidateQuery,
+            RaceDay.Modules.Event.Infrastructure.Simulation.SimulationCandidateQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Simulation.ISimulationOfficialStartSource,
+            RaceDay.Modules.Event.Infrastructure.Simulation.SimulationOfficialStartSource>();
+        services.AddScoped<RaceDay.Modules.Event.Application.Simulation.ISimulationFinishWriter,
+            RaceDay.Modules.Event.Infrastructure.Simulation.EfSimulationFinishWriter>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Simulation.ISimulationResultCommitPort,
+            RaceDay.Modules.Event.Application.Simulation.SimulationResultCommitter>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IEventFinanceQuery,
             RaceDay.Modules.Event.Infrastructure.Finance.EventFinanceQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IRegistrationCapacityPort,

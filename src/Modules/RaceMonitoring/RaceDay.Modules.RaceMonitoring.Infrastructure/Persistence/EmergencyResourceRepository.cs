@@ -10,6 +10,19 @@ public sealed class EmergencyResourceRepository(RaceMonitoringDbContext db) : IE
     public Task<EmergencyResource?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         => db.EmergencyResources.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
 
+    public Task<EmergencyResource?> GetTrackedByIdAsync(Guid id, CancellationToken cancellationToken = default)
+        => db.EmergencyResources.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+
+    public Task<bool> ExistsByEventAndCodeAsync(
+        Guid eventId,
+        string resourceCode,
+        CancellationToken cancellationToken = default)
+        => db.EmergencyResources.AsNoTracking().AnyAsync(
+            x => x.EventId == eventId && x.ResourceCode == resourceCode,
+            cancellationToken);
+
+    public void Add(EmergencyResource resource) => db.EmergencyResources.Add(resource);
+
     public async Task<(IReadOnlyList<EmergencyResource> Items, int Total)> ListByEventAsync(
         Guid eventId,
         EmergencyResourceStatus? status,

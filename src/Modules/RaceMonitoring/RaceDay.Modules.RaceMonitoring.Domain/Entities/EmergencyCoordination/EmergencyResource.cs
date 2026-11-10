@@ -48,4 +48,21 @@ public sealed class EmergencyResource : AggregateRoot
             Notes = CoordinatorInvariants.OptionalLongText(notes)
         };
     }
+
+    /// <summary>
+    /// Cập nhật loại, tên và ghi chú. Không đổi Id, EventId, ResourceCode hay Status.
+    /// </summary>
+    public void UpdateDetails(EmergencyResourceType resourceType, string? name, string? notes)
+    {
+        var nextType = CoordinatorInvariants.RequiredEnum(resourceType, "Loại nguồn lực không hợp lệ.");
+        var nextName = CoordinatorInvariants.RequiredText(
+            name,
+            CoordinatorFieldLengths.Name,
+            "Tên nguồn lực không được để trống.",
+            "Tên nguồn lực tối đa 200 ký tự.");
+        var nextNotes = CoordinatorInvariants.OptionalLongText(notes);
+        ResourceType = nextType;
+        Name = nextName;
+        Notes = nextNotes;
+    }
 }

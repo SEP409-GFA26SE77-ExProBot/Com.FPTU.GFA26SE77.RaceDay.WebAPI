@@ -88,6 +88,8 @@ public static class RaceMonitoringModule
             .WithSummary("Kết thúc phản hồi khẩn cấp")
             .WithDescription(
                 "Chỉ từ Assigned hoặc InProgress. Body: { resolutionNotes }. "
+                + "Bị từ chối nếu còn phân công chưa kết thúc (khác Completed và Cancelled). "
+                + "Không tự hoàn thành hay hủy phân công. "
                 + "Không gọi resolve của SOS thiết bị.");
 
         ops.MapPost("/emergency-responses/{id:guid}/cancel", async (
@@ -99,8 +101,9 @@ public static class RaceMonitoringModule
             .WithSummary("Hủy phản hồi khẩn cấp")
             .WithDescription(
                 "Từ Open, Assigned hoặc InProgress. Body: { reason }. "
-                + "Các phân công chuyển sang Completed. Không đổi SOS thiết bị. "
-                + "Chỉ chủ giải hoặc Race-staff Active.");
+                + "Phân công Assigned, Accepted hoặc Arrived chuyển sang Cancelled và không ghi CompletedAtUtc. "
+                + "Phân công Completed hoặc Cancelled giữ nguyên. Không đổi SOS thiết bị. "
+                + "Chỉ chủ giải hoặc Coordinator Active.");
 
         ops.MapGet("/events/{eventId:guid}/emergency-resources", async (
             Guid eventId,
@@ -126,6 +129,35 @@ public static class RaceMonitoringModule
                 "Nguồn lực phải thuộc một giải. "
                 + "Chủ giải hoặc Race-staff Active. Admin không đi tắt.");
 
+        ops.MapPost("/events/{eventId:guid}/emergency-resources", async (
+            Guid eventId,
+            CreateEmergencyResourceRequest body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new CreateEmergencyResourceCommand(eventId, body), ct)))
+            .WithSummary("Tạo nguồn lực của giải")
+            .WithDescription(
+                "Body: { resourceCode, resourceType, name, status, notes? }. "
+                + "resourceType: MedicalTeam | Ambulance | FirstAid | Other. "
+                + "status: Available | Assigned | Unavailable | Offline. "
+                + "Chủ giải hoặc Coordinator Active. Admin không đi tắt. "
+                + "Mã trùng trong cùng giải bị từ chối. Cùng mã ở giải khác vẫn hợp lệ.");
+
+        ops.MapPatch("/events/{eventId:guid}/emergency-resources/{id:guid}", async (
+            Guid eventId,
+            Guid id,
+            UpdateEmergencyResourceRequest body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new UpdateEmergencyResourceCommand(eventId, id, body), ct)))
+            .WithSummary("Cập nhật thông tin nguồn lực")
+            .WithDescription(
+                "Body: { resourceType, name, notes? }. "
+                + "Không đổi EventId, ResourceCode hay Status. "
+                + "notes rỗng sẽ xóa ghi chú. "
+                + "Nguồn lực phải thuộc eventId trên route. "
+                + "Chủ giải hoặc Coordinator Active của giải đó. Admin không đi tắt.");
+
         ops.MapGet("/emergency-responses/{responseId:guid}/assignments", async (
             Guid responseId,
             int? page,
@@ -136,7 +168,9 @@ public static class RaceMonitoringModule
                 new ListEmergencyAssignmentsQuery(responseId, page ?? 1, pageSize ?? 20),
                 ct)))
             .WithSummary("Danh sách phân công của hồ sơ ứng cứu")
-            .WithDescription("Chỉ hồ sơ thuộc giải mà chủ giải hoặc Race-staff Active được điều phối.");
+            .WithDescription(
+                "Chỉ hồ sơ thuộc giải mà chủ giải hoặc Coordinator Active được điều phối. "
+                + "status: Assigned | Accepted | Arrived | Completed | Cancelled.");
 
         ops.MapPost("/emergency-responses/{responseId:guid}/assignments", async (
             Guid responseId,
@@ -144,11 +178,14 @@ public static class RaceMonitoringModule
             IMediator mediator,
             CancellationToken ct) =>
             Results.Ok(await mediator.Send(new CreateEmergencyAssignmentCommand(responseId, body), ct)))
-            .WithSummary("Phân công nguồn lực cho hồ sơ đang mở")
+            .WithSummary("Phân công nguồn lực cho hồ sơ")
             .WithDescription(
-                "Body: { emergencyResourceId, notes? }. Hồ sơ phải Open. "
+                "Body: { emergencyResourceId, notes? }. "
+                + "Hồ sơ phải Open, Assigned hoặc InProgress. "
+                + "Không tự xác nhận hồ sơ và không đổi trạng thái hồ sơ. "
                 + "Nguồn lực phải cùng giải và không Unavailable/Offline. "
-                + "Không đổi trạng thái nguồn lực hay SOS thiết bị.");
+                + "Không đổi trạng thái nguồn lực hay SOS thiết bị. "
+                + "Một nguồn lực có thể nằm trên nhiều hồ sơ.");
 
         ops.MapDelete("/emergency-responses/{responseId:guid}/assignments/{assignmentId:guid}", async (
             Guid responseId,
@@ -168,7 +205,9 @@ public static class RaceMonitoringModule
             CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetEmergencyAssignmentQuery(assignmentId), ct)))
             .WithSummary("Chi tiết một phân công")
-            .WithDescription("Quyền trên giải của hồ sơ cha. Không đổi SOS thiết bị.");
+            .WithDescription(
+                "Quyền trên giải của hồ sơ cha. Không đổi SOS thiết bị. "
+                + "status có thể là Cancelled khi hồ sơ cha bị hủy.");
 
         ops.MapPatch("/emergency-assignments/{assignmentId:guid}", async (
             Guid assignmentId,

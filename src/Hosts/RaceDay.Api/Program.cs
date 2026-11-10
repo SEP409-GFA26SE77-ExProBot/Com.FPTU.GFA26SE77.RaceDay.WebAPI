@@ -18,6 +18,7 @@ using RaceDay.Modules.Payment.Api;
 using RaceDay.Modules.Payment.Application;
 using RaceDay.Modules.RaceMonitoring.Api;
 using RaceDay.Modules.RaceMonitoring.Application;
+using RaceDay.Modules.Simulation.Api;
 using RaceDay.Shared.Infrastructure;
 using RaceDay.Shared.Web;
 using RaceDay.Shared.Web.OpenApi;
@@ -66,6 +67,11 @@ builder.Services.AddFinanceModule(builder.Configuration);
 builder.Services.AddDeviceModule(builder.Configuration);
 builder.Services.AddPhotoModule(builder.Configuration);
 builder.Services.AddRaceMonitoringModule(builder.Configuration);
+var simulationEnabled = bool.TryParse(builder.Configuration["Simulation:Enabled"], out var simulationOn) && simulationOn;
+if (simulationEnabled)
+{
+    builder.Services.AddSimulationModule(builder.Configuration);
+}
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -203,6 +209,10 @@ app.MapFinanceEndpoints();
 app.MapDeviceEndpoints();
 app.MapPhotoEndpoints();
 app.MapRaceMonitoringEndpoints();
+if (simulationEnabled)
+{
+    app.MapSimulationEndpoints();
+}
 
 app.Run();
 

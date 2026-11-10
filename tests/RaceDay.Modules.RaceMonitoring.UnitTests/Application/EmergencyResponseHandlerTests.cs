@@ -236,14 +236,18 @@ public class EmergencyResponseHandlerTests
         await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task Resolve_From_Assigned_Sets_Metadata_And_Leaves_Source_Sos_Status()
+    [Theory]
+    [InlineData(EmergencyResponseStatus.Assigned)]
+    [InlineData(EmergencyResponseStatus.InProgress)]
+    public async Task Resolve_With_No_Assignments_Sets_Metadata_And_Leaves_Source_Sos_Status(
+        EmergencyResponseStatus status)
     {
-        var response = AssignedResponse();
+        var response = ResponseWithStatus(status);
+        var sourceSosAlertId = response.SourceSosAlertId;
         var (responses, scopes, access, sosOps, current, unitOfWork) = MutableAccess(response, "Open");
+        var assignments = AssignmentsReturning();
 
-        var dto = await new ResolveEmergencyResponseCommandHandler(
-                responses, unitOfWork, scopes, access, sosOps, current)
+        var dto = await ResolveHandler(responses, assignments, unitOfWork, scopes, access, sosOps, current)
             .Handle(
                 new ResolveEmergencyResponseCommand(
                     response.Id,
@@ -254,8 +258,87 @@ public class EmergencyResponseHandlerTests
         Assert.Equal("Đã hỗ trợ tại chỗ.", dto.ResolutionNotes);
         Assert.NotNull(dto.ResolvedAtUtc);
         Assert.Equal("Open", dto.SourceSosStatus);
+        Assert.Equal(sourceSosAlertId, dto.SourceSosAlertId);
         Assert.Equal(EmergencyResponseStatus.Resolved, response.Status);
+        await assignments.Received(1).ListTrackedByResponseAsync(response.Id, Arg.Any<CancellationToken>());
+        await scopes.Received(1).GetAsync(sourceSosAlertId, Arg.Any<CancellationToken>());
+        await scopes.DidNotReceive().ListByEventAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(EmergencyResponseStatus.Assigned)]
+    [InlineData(EmergencyResponseStatus.InProgress)]
+    public async Task Resolve_Allows_Only_Finished_Assignments(EmergencyResponseStatus status)
+    {
+        var response = ResponseWithStatus(status);
+        var completedAt = AssignedAt.AddMinutes(30);
+        var completed = EmergencyAssignment.Create(
+            response.Id,
+            Guid.NewGuid(),
+            AssignedAt,
+            EmergencyAssignmentStatus.Completed,
+            completedAtUtc: completedAt);
+        var cancelled = EmergencyAssignment.Create(
+            response.Id,
+            Guid.NewGuid(),
+            AssignedAt,
+            EmergencyAssignmentStatus.Cancelled,
+            acceptedAtUtc: AssignedAt);
+        var (responses, scopes, access, sosOps, current, unitOfWork) = MutableAccess(response, "Acknowledged");
+        var assignments = AssignmentsReturning(completed, cancelled);
+
+        var dto = await ResolveHandler(responses, assignments, unitOfWork, scopes, access, sosOps, current)
+            .Handle(
+                new ResolveEmergencyResponseCommand(response.Id, new ResolveEmergencyResponseRequest("Đã xong.")),
+                CancellationToken.None);
+
+        Assert.Equal("Resolved", dto.Status);
+        Assert.Equal("Acknowledged", dto.SourceSosStatus);
+        Assert.Equal(EmergencyAssignmentStatus.Completed, completed.Status);
+        Assert.Equal(completedAt, completed.CompletedAtUtc);
+        Assert.Equal(EmergencyAssignmentStatus.Cancelled, cancelled.Status);
+        Assert.Null(cancelled.CompletedAtUtc);
+        Assert.Equal(AssignedAt, cancelled.AcceptedAtUtc);
+        await unitOfWork.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(EmergencyResponseStatus.Assigned, EmergencyAssignmentStatus.Assigned)]
+    [InlineData(EmergencyResponseStatus.Assigned, EmergencyAssignmentStatus.Accepted)]
+    [InlineData(EmergencyResponseStatus.Assigned, EmergencyAssignmentStatus.Arrived)]
+    [InlineData(EmergencyResponseStatus.InProgress, EmergencyAssignmentStatus.Assigned)]
+    [InlineData(EmergencyResponseStatus.InProgress, EmergencyAssignmentStatus.Accepted)]
+    [InlineData(EmergencyResponseStatus.InProgress, EmergencyAssignmentStatus.Arrived)]
+    public async Task Resolve_Is_Blocked_When_An_Assignment_Is_Unfinished(
+        EmergencyResponseStatus responseStatus,
+        EmergencyAssignmentStatus assignmentStatus)
+    {
+        var response = ResponseWithStatus(responseStatus);
+        var assignment = EmergencyAssignment.Create(
+            response.Id,
+            Guid.NewGuid(),
+            AssignedAt,
+            assignmentStatus,
+            assignmentStatus == EmergencyAssignmentStatus.Assigned ? null : AssignedAt,
+            assignmentStatus == EmergencyAssignmentStatus.Arrived ? AssignedAt : null);
+        var (responses, scopes, access, sosOps, current, unitOfWork) = MutableAccess(response, "Open");
+        var assignments = AssignmentsReturning(assignment);
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            ResolveHandler(responses, assignments, unitOfWork, scopes, access, sosOps, current)
+                .Handle(
+                    new ResolveEmergencyResponseCommand(response.Id, new ResolveEmergencyResponseRequest("Đã xong.")),
+                    CancellationToken.None));
+
+        Assert.Equal("Còn phân công chưa kết thúc nên không thể kết thúc hồ sơ.", ex.Message);
+        Assert.Equal(responseStatus, response.Status);
+        Assert.Null(response.ResolvedAtUtc);
+        Assert.Null(response.ResolutionNotes);
+        Assert.Equal(assignmentStatus, assignment.Status);
+        var scope = await scopes.GetAsync(response.SourceSosAlertId, CancellationToken.None);
+        Assert.Equal("Open", scope!.Status);
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -263,9 +346,10 @@ public class EmergencyResponseHandlerTests
     {
         var response = OpenResponse(Guid.NewGuid());
         var (responses, scopes, access, sosOps, current, unitOfWork) = MutableAccess(response, "Open");
+        var assignments = AssignmentsReturning();
 
         var ex = await Assert.ThrowsAsync<DomainException>(() =>
-            new ResolveEmergencyResponseCommandHandler(responses, unitOfWork, scopes, access, sosOps, current)
+            ResolveHandler(responses, assignments, unitOfWork, scopes, access, sosOps, current)
                 .Handle(
                     new ResolveEmergencyResponseCommand(response.Id, new ResolveEmergencyResponseRequest("Xong.")),
                     CancellationToken.None));
@@ -273,6 +357,48 @@ public class EmergencyResponseHandlerTests
         Assert.Equal("Phản hồi khẩn cấp không thể kết thúc ở trạng thái hiện tại.", ex.Message);
         Assert.Equal(EmergencyResponseStatus.Open, response.Status);
         Assert.Null(response.ResolvedAtUtc);
+        Assert.Null(response.ResolutionNotes);
+        await assignments.DidNotReceive().ListTrackedByResponseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Resolve_Rejects_Blank_Notes_Without_Loading_Assignments_Or_Saving()
+    {
+        var response = AssignedResponse();
+        var (responses, scopes, access, sosOps, current, unitOfWork) = MutableAccess(response, "Open");
+        var assignments = AssignmentsReturning();
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            ResolveHandler(responses, assignments, unitOfWork, scopes, access, sosOps, current)
+                .Handle(
+                    new ResolveEmergencyResponseCommand(response.Id, new ResolveEmergencyResponseRequest("   ")),
+                    CancellationToken.None));
+
+        Assert.Equal("Nội dung kết thúc phản hồi không được để trống.", ex.Message);
+        Assert.Equal(EmergencyResponseStatus.Assigned, response.Status);
+        Assert.Null(response.ResolutionNotes);
+        await assignments.DidNotReceive().ListTrackedByResponseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Resolve_Rejects_Caller_Without_Access_Before_Loading_Assignments()
+    {
+        var response = AssignedResponse();
+        var (responses, scopes, access, sosOps, current, unitOfWork) = MutableAccess(response, "Open", allowed: false);
+        var assignments = AssignmentsReturning();
+
+        var ex = await Assert.ThrowsAsync<DomainException>(() =>
+            ResolveHandler(responses, assignments, unitOfWork, scopes, access, sosOps, current)
+                .Handle(
+                    new ResolveEmergencyResponseCommand(response.Id, new ResolveEmergencyResponseRequest("Đã xong.")),
+                    CancellationToken.None));
+
+        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới xử lý phản hồi khẩn cấp.", ex.Message);
+        Assert.Equal(EmergencyResponseStatus.Assigned, response.Status);
+        Assert.Null(response.ResolutionNotes);
+        await assignments.DidNotReceive().ListTrackedByResponseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
@@ -307,12 +433,33 @@ public class EmergencyResponseHandlerTests
             EmergencyResponseStatus.Open);
 
     private static EmergencyResponse AssignedResponse() =>
+        ResponseWithStatus(EmergencyResponseStatus.Assigned);
+
+    private static EmergencyResponse ResponseWithStatus(EmergencyResponseStatus status) =>
         EmergencyResponse.Create(
             Guid.NewGuid(),
             EmergencyIncidentType.Medical,
             EmergencyPriority.High,
-            EmergencyResponseStatus.Assigned,
+            status,
             AssignedAt);
+
+    private static IEmergencyAssignmentRepository AssignmentsReturning(params EmergencyAssignment[] rows)
+    {
+        var assignments = Substitute.For<IEmergencyAssignmentRepository>();
+        assignments.ListTrackedByResponseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(rows.ToList());
+        return assignments;
+    }
+
+    private static ResolveEmergencyResponseCommandHandler ResolveHandler(
+        IEmergencyResponseRepository responses,
+        IEmergencyAssignmentRepository assignments,
+        IRaceMonitoringUnitOfWork unitOfWork,
+        ISosAlertScopeQuery scopes,
+        IEventOrganizerAccessQuery access,
+        IEventSosOpsAccessQuery sosOps,
+        ICurrentUserAccessor current) =>
+        new(responses, assignments, unitOfWork, scopes, access, sosOps, current);
 
     private static (
         IEmergencyResponseRepository Responses,
