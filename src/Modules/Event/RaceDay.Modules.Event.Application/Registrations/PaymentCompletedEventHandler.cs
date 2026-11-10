@@ -13,6 +13,7 @@ public sealed class PaymentCompletedEventHandler(
     IRaceEventRepository events,
     IEventRegistrationRepository registrations,
     IEventUnitOfWork unitOfWork,
+    IEventBus eventBus,
     IEmailSender emailSender,
     ILogger<PaymentCompletedEventHandler> logger) : INotificationHandler<IntegrationEventOccurred>
 {
@@ -53,8 +54,16 @@ public sealed class PaymentCompletedEventHandler(
             registrations.Update(unpaid);
         }
 
+        var autoApproved = await RegistrationAutoApproval.TryConfirmAsync(
+            reg, race, distance, registrations, eventBus, emailSender, logger, cancellationToken);
+
         events.Update(race);
         await unitOfWork.SaveChangesAsync(cancellationToken);
+
+        if (autoApproved)
+        {
+            return;
+        }
 
         try
         {

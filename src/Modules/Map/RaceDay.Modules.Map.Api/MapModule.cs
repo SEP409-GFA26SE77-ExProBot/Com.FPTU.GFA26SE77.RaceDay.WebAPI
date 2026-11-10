@@ -43,9 +43,9 @@ public static class MapModule
             return Results.Ok(result);
         })
             .RequireAuthorization(AuthPolicies.PublicUser)
-            .WithSummary("Geocode VN (Nominatim proxy) — setup map organizer")
+            .WithSummary("Geocode VN (Photon proxy) — setup map organizer")
             .WithDescription(
-                "Thay proxy Next /api/geocode. Query `q` ≥ 2 ký tự, countrycodes=vn, limit 8. "
+                "Proxy Photon (Komoot), bias bbox VN, limit 8. Query `q` ≥ 2 ký tự. "
                 + "Cần Bearer user đăng nhập.");
 
         // Organizer / admin / public (approved+) course

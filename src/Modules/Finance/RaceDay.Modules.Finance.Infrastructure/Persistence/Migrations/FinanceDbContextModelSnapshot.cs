@@ -171,6 +171,9 @@ namespace RaceDay.Modules.Finance.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("EventId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsSystemErrorClaim")
+                        .HasColumnType("boolean");
+
                     b.Property<decimal>("PaidAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
@@ -216,6 +219,8 @@ namespace RaceDay.Modules.Finance.Infrastructure.Persistence.Migrations
                     b.HasIndex("PaymentId");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("IsSystemErrorClaim", "Status");
 
                     b.ToTable("refund_requests", "finance");
                 });

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using RaceDay.Modules.Event.Application.Simulation;
@@ -177,5 +179,98 @@ public sealed class EfSimulationFinishWriter(EventDbContext db, ISimulationDemoG
                 .SetProperty(registration => registration.Status, RegistrationStatus.Finished)
                 .SetProperty(registration => registration.RaceStatus, RaceStatus.Finished)
                 .SetProperty(registration => registration.UpdatedAtUtc, DateTime.UtcNow), cancellationToken);
+    }
+}
+
+public sealed class EfSimulationPassageWriter(EventDbContext db, ISimulationDemoGate gate) : ISimulationPassageWriter
+{
+    public async Task WriteAsync(
+        Guid registrationId,
+        Guid eventId,
+        Guid distanceId,
+        DateTime startUtc,
+        IReadOnlyList<SimulationSplitDraft> splits,
+        CancellationToken cancellationToken = default)
+    {
+        if (!gate.Enabled || splits.Count == 0)
+        {
+            return;
+        }
+
+        var start = DateTime.SpecifyKind(startUtc, DateTimeKind.Utc);
+        var externalIds = splits
+            .Select(split => split.CheckpointExternalId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var byExternal = await db.Checkpoints.AsNoTracking()
+            .Where(checkpoint => checkpoint.DistanceId == distanceId && externalIds.Contains(checkpoint.ExternalId))
+            .Select(checkpoint => new { checkpoint.Id, checkpoint.ExternalId })
+            .ToListAsync(cancellationToken);
+
+        var map = byExternal
+            .GroupBy(row => row.ExternalId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First().Id, StringComparer.Ordinal);
+
+        var added = false;
+        foreach (var split in splits)
+        {
+            if (string.IsNullOrWhiteSpace(split.CheckpointExternalId))
+            {
+                continue;
+            }
+
+            var checkpointId = map.TryGetValue(split.CheckpointExternalId, out var known)
+                ? known
+                : StableCheckpointId(distanceId, split.CheckpointExternalId);
+
+            var existing = await db.RegistrationCheckpointPassages
+                .AsNoTracking()
+                .AnyAsync(
+                    passage => passage.RegistrationId == registrationId && passage.CheckpointId == checkpointId,
+                    cancellationToken);
+            if (existing)
+            {
+                continue;
+            }
+
+            double elapsed;
+            try
+            {
+                elapsed = split.ElapsedSeconds;
+                if (double.IsNaN(elapsed) || double.IsInfinity(elapsed) || elapsed < 0)
+                {
+                    continue;
+                }
+            }
+            catch
+            {
+                continue;
+            }
+
+            var passedAt = DateTime.SpecifyKind(start.AddSeconds(elapsed), DateTimeKind.Utc);
+            await db.RegistrationCheckpointPassages.AddAsync(
+                RegistrationCheckpointPassage.Create(
+                    registrationId,
+                    eventId,
+                    distanceId,
+                    checkpointId,
+                    passedAt),
+                cancellationToken);
+            added = true;
+        }
+
+        if (added)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>Stable Guid when EventCheckpoint.ExternalId is missing for a map-course id.</summary>
+    internal static Guid StableCheckpointId(Guid distanceId, string externalId)
+    {
+        var bytes = MD5.HashData(Encoding.UTF8.GetBytes($"{distanceId:N}:{externalId}"));
+        return new Guid(bytes);
     }
 }

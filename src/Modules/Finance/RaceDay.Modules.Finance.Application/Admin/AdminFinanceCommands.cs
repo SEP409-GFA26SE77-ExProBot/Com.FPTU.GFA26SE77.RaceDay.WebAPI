@@ -19,7 +19,7 @@ public sealed class ListAdminPayoutsQueryHandler(
 {
     public async Task<IReadOnlyList<AdminPayoutRequestDto>> Handle(ListAdminPayoutsQuery request, CancellationToken cancellationToken)
     {
-        EnsureAdmin(currentUser);
+        EnsureManagerOrAdmin(currentUser);
         var list = await payouts.ListAllAsync(cancellationToken);
         var result = new List<AdminPayoutRequestDto>();
         foreach (var p in list.OrderByDescending(x => x.CreatedAtUtc))
@@ -50,6 +50,14 @@ public sealed class ListAdminPayoutsQueryHandler(
             throw new DomainException("Chỉ Admin.");
         }
     }
+
+    internal static void EnsureManagerOrAdmin(ICurrentUserAccessor currentUser)
+    {
+        if (!currentUser.IsAdmin && !currentUser.IsManager)
+        {
+            throw new DomainException("Chỉ Manager hoặc Admin được duyệt giải ngân.");
+        }
+    }
 }
 
 public sealed record ApproveAdminPayoutCommand(Guid PayoutId, string? ReceiptUrl) : IRequest<AdminPayoutRequestDto>;
@@ -63,7 +71,7 @@ public sealed class ApproveAdminPayoutCommandHandler(
 {
     public async Task<AdminPayoutRequestDto> Handle(ApproveAdminPayoutCommand request, CancellationToken cancellationToken)
     {
-        ListAdminPayoutsQueryHandler.EnsureAdmin(currentUser);
+        ListAdminPayoutsQueryHandler.EnsureManagerOrAdmin(currentUser);
         var p = await payouts.GetByIdAsync(request.PayoutId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy yêu cầu.");
         p.MarkTransferred(request.ReceiptUrl);
@@ -103,7 +111,7 @@ public sealed class RejectAdminPayoutCommandHandler(
 {
     public async Task<AdminPayoutRequestDto> Handle(RejectAdminPayoutCommand request, CancellationToken cancellationToken)
     {
-        ListAdminPayoutsQueryHandler.EnsureAdmin(currentUser);
+        ListAdminPayoutsQueryHandler.EnsureManagerOrAdmin(currentUser);
         var p = await payouts.GetByIdAsync(request.PayoutId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy yêu cầu.");
         p.Reject(request.Reason);

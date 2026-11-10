@@ -96,6 +96,7 @@
     <Project Path="tests/RaceDay.Modules.Event.UnitTests/RaceDay.Modules.Event.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Iam.UnitTests/RaceDay.Modules.Iam.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Photo.UnitTests/RaceDay.Modules.Photo.UnitTests.csproj" />
+    <Project Path="tests/RaceDay.Modules.Finance.UnitTests/RaceDay.Modules.Finance.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.RaceMonitoring.UnitTests/RaceDay.Modules.RaceMonitoring.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Shared.UnitTests/RaceDay.Shared.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Simulation.UnitTests/RaceDay.Modules.Simulation.UnitTests.csproj" />

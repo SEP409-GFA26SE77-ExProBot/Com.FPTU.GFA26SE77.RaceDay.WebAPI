@@ -161,17 +161,20 @@ internal static class RegistrationEmailTemplates
         RaceEvent race,
         string reason)
     {
-        var subject = $"[RaceDay] Hồ sơ cần chỉnh sửa · {race.Name}";
+        var subject = $"[RaceDay] Hồ sơ bị từ chối · {race.Name}";
         var plain =
             $"""
             RaceDay — Thông báo duyệt hồ sơ
 
             Xin chào {reg.FullName},
-            Hồ sơ đăng ký {race.Name} chưa được duyệt lần này.
+            Hồ sơ đăng ký {race.Name} đã bị BTC từ chối.
             Lý do: {reason}
 
-            Bạn đã thanh toán — không cần trả lại tiền. Hãy vào «Vé của tôi» trên RaceDay,
-            chỉnh sửa thông tin / giấy tờ theo lý do trên rồi nộp lại để BTC duyệt tiếp.
+            Đăng ký sẽ được hủy và nhả slot. Nếu đủ điều kiện theo chính sách hoàn tiền
+            (≥90 ngày trước giải: 100%; ≥60 ngày: 85%; dưới 60 ngày hoặc đã xuất phát: 0%),
+            số tiền đủ điều kiện sẽ được hoàn về tài khoản thanh toán.
+
+            Muốn tham gia lại, hãy đăng ký mới khi giải còn mở.
 
             Liên hệ BTC: {race.Organizer.Email} / {race.Organizer.Phone}
             — Đội ngũ RaceDay
@@ -179,14 +182,15 @@ internal static class RegistrationEmailTemplates
 
         var html = Wrap(
             eyebrow: "THÔNG BÁO DUYỆT",
-            headline: "Hồ sơ cần chỉnh sửa & nộp lại",
-            lead: $"Xin chào <strong style=\"color:#0f172a;\">{Esc(reg.FullName)}</strong>, đăng ký <strong style=\"color:#0f172a;\">{Esc(race.Name)}</strong> chưa được chấp nhận. Vui lòng sửa hồ sơ theo lý do bên dưới rồi nộp lại.",
+            headline: "Hồ sơ bị từ chối — hủy slot & hoàn theo chính sách",
+            lead: $"Xin chào <strong style=\"color:#0f172a;\">{Esc(reg.FullName)}</strong>, đăng ký <strong style=\"color:#0f172a;\">{Esc(race.Name)}</strong> đã bị từ chối. Đơn sẽ hủy; tiền hoàn (nếu đủ điều kiện) theo chính sách ngày còn lại đến giải.",
             bodyHtml:
             $"""
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:16px 0;border:1px solid #fed7aa;border-radius:12px;overflow:hidden;background:#fff7ed;">
               {Row("Lý do", reason)}
-              {Row("Thanh toán", "Đã giữ — không cần thanh toán lại khi nộp lại hồ sơ")}
-              {Row("Việc cần làm", "Vào Vé của tôi → Chỉnh sửa & nộp lại")}
+              {Row("Slot", "Đã hủy đăng ký · nhả chỗ")}
+              {Row("Hoàn tiền", "≥90 ngày: 100% · ≥60 ngày: 85% · &lt;60 ngày / đã xuất phát: 0%")}
+              {Row("Việc cần làm", "Đăng ký mới nếu muốn tham gia lại khi giải còn mở")}
               {Row("BTC", $"{race.Organizer.Name} · {race.Organizer.Email}")}
             </table>
             """);

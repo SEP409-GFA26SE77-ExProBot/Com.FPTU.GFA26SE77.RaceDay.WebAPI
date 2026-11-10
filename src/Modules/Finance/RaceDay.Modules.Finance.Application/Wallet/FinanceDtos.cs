@@ -23,7 +23,23 @@ public sealed record EventLedgerDto(
     decimal PayoutPending,
     decimal AvailableToWithdraw,
     string WithdrawPolicyNote,
-    string Currency);
+    string Currency,
+    /// <summary>too_early | advance | final</summary>
+    string WithdrawPhase = "too_early",
+    decimal AdvanceCapAmount = 0,
+    decimal FinalCapAmount = 0,
+    int? DaysUntilEvent = null);
+
+public sealed record RefundQuoteDto(
+    Guid PaymentId,
+    Guid RegistrationId,
+    Guid EventId,
+    decimal PaidAmount,
+    decimal RefundPercent,
+    decimal RefundAmount,
+    decimal NonRefundableFee,
+    string PolicyNote,
+    int? DaysUntilEvent);
 
 public sealed record OrganizerWalletDto(
     decimal TotalRevenue,
@@ -60,9 +76,42 @@ public sealed record RefundRequestDto(
     string Status,
     DateTime CreatedAt,
     DateTime? UpdatedAt,
-    string? RejectReason);
+    string? RejectReason,
+    bool IsSystemErrorClaim = false,
+    decimal PaidAmount = 0,
+    decimal RefundPercent = 0,
+    Guid? UserId = null);
 
-public sealed record CreateRefundRequestDto(Guid PaymentId, string Reason, Guid? EventId = null, decimal? Amount = null);
+public sealed record ManagerSystemErrorRefundDto(
+    Guid Id,
+    Guid PaymentId,
+    Guid RegistrationId,
+    Guid EventId,
+    Guid UserId,
+    decimal PaidAmount,
+    decimal RefundAmount,
+    decimal RefundPercent,
+    string Reason,
+    string Status,
+    DateTime CreatedAt,
+    DateTime? UpdatedAt,
+    string? RejectReason,
+    string? EventName = null,
+    string? RegistrationStatus = null,
+    string? RunnerName = null,
+    string? RunnerEmail = null,
+    string? BibNumber = null,
+    /// <summary>Lý do đã bỏ prefix / khối đính kèm.</summary>
+    string? ReasonText = null,
+    IReadOnlyList<string>? EvidenceUrls = null);
+
+public sealed record CreateRefundRequestDto(
+    Guid PaymentId,
+    string Reason,
+    Guid? EventId = null,
+    decimal? Amount = null,
+    /// <summary>Khiếu nại lỗi hệ thống → hoàn 100% (bỏ qua mốc ngày).</summary>
+    bool SystemErrorClaim = false);
 
 public sealed record AdminPayoutRequestDto(
     Guid Id,
@@ -92,5 +141,5 @@ public sealed record PlatformFeeSettingsDto(
     decimal MinPayoutAmount,
     string? Notes = null,
     decimal FullRefundPercent = 100,
-    decimal PartialRefundPercent = 50,
+    decimal PartialRefundPercent = 85,
     bool AllowRefundAfterEventStart = false);

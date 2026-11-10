@@ -4,23 +4,31 @@ using RaceDay.Shared.Domain.Exceptions;
 namespace RaceDay.Modules.Finance.Domain.Settings;
 
 /// <summary>
-/// Platform-wide finance rules (Admin). Refund schedule defaults:
-/// RegistrationOpen → FullRefundPercent; after close → PartialRefundPercent; at/after gun → 0%.
-/// Organizer may store a per-event override that is not more generous than these ceilings.
+/// Platform finance rules.
+/// Refund (theo ngày còn lại đến EventDate): ≥90 ngày → FullRefundPercent;
+/// ≥60 ngày → PartialRefundPercent; &lt;60 ngày (gồm khóa ĐK T-4 tuần) → 0%.
+/// Payout: tạm ứng PreEventWithdrawPercent khi còn ≤28 ngày trước giải;
+/// phần còn lại (PostEventWithdrawPercent) sau khi giải đã qua giờ xuất phát / Completed.
 /// </summary>
 public sealed class PlatformFinanceSettings : AggregateRoot
 {
     public static readonly Guid SingletonId = Guid.Parse("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
 
+    public const int FullRefundMinDaysBeforeEvent = 90;
+    public const int PartialRefundMinDaysBeforeEvent = 60;
+    public const int AdvancePayoutMaxDaysBeforeEvent = 28;
+
     public decimal PlatformFeePercent { get; private set; } = 5m;
-    public decimal PreEventWithdrawPercent { get; private set; } = 50m;
-    public decimal PostEventWithdrawPercent { get; private set; } = 50m;
+    /// <summary>Đợt 1 — tạm ứng trước giải (mặc định 30% net).</summary>
+    public decimal PreEventWithdrawPercent { get; private set; } = 30m;
+    /// <summary>Đợt 2 — phần còn lại sau giải (mặc định 70% net).</summary>
+    public decimal PostEventWithdrawPercent { get; private set; } = 70m;
     public decimal MinPayoutAmount { get; private set; } = 500_000m;
-    /// <summary>Refund % while event still RegistrationOpen.</summary>
+    /// <summary>Hoàn khi còn ≥ 90 ngày trước EventDate.</summary>
     public decimal FullRefundPercent { get; private set; } = 100m;
-    /// <summary>Refund % after registration closed until event start.</summary>
-    public decimal PartialRefundPercent { get; private set; } = 50m;
-    /// <summary>If false, no runner-initiated refund on/after event start.</summary>
+    /// <summary>Hoàn khi còn ≥ 60 và &lt; 90 ngày trước EventDate.</summary>
+    public decimal PartialRefundPercent { get; private set; } = 85m;
+    /// <summary>Nếu false, không hoàn runner khi đã tới/qua giờ xuất phát.</summary>
     public bool AllowRefundAfterEventStart { get; private set; }
     public string? Notes { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
@@ -31,20 +39,22 @@ public sealed class PlatformFinanceSettings : AggregateRoot
 
     public static PlatformFinanceSettings CreateDefault()
     {
-        var s = new PlatformFinanceSettings
+        return new PlatformFinanceSettings
         {
             Id = SingletonId,
             PlatformFeePercent = 5m,
-            PreEventWithdrawPercent = 50m,
-            PostEventWithdrawPercent = 50m,
+            PreEventWithdrawPercent = 30m,
+            PostEventWithdrawPercent = 70m,
             MinPayoutAmount = 500_000m,
             FullRefundPercent = 100m,
-            PartialRefundPercent = 50m,
+            PartialRefundPercent = 85m,
             AllowRefundAfterEventStart = false,
-            Notes = "Phí 5%. Rút tối đa 50% trước race day, phần còn lại sau giải. Hoàn 100% khi còn mở ĐK; 50% sau đóng ĐK; 0% từ giờ xuất phát.",
+            Notes =
+                "Phí 5%. Giải ngân: tạm ứng 30% từ T-4 tuần; 70% còn lại sau giải. " +
+                "Yêu cầu hoàn VĐV: không hoàn lý do cá nhân; chỉ khiếu nại lỗi hệ thống (Manager/Admin duyệt → 100%). " +
+                "BTC từ chối hồ sơ vẫn có thể hoàn theo mốc ngày (≥90/≥60).",
             UpdatedAtUtc = DateTime.UtcNow
         };
-        return s;
     }
 
     public void Update(
@@ -65,6 +75,11 @@ public sealed class PlatformFinanceSettings : AggregateRoot
         if (minPayoutAmount < 0)
         {
             throw new DomainException("minPayoutAmount không hợp lệ.");
+        }
+
+        if (preEventWithdrawPercent + postEventWithdrawPercent > 100.0001m)
+        {
+            throw new DomainException("Tổng % tạm ứng + sau giải không được vượt 100.");
         }
 
         PlatformFeePercent = platformFeePercent;

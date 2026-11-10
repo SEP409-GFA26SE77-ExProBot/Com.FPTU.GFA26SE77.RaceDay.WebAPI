@@ -337,7 +337,12 @@ public sealed class SimulationSessionBook
                     .Select(athlete => new SimulationFinishDraft(
                         athlete.RegistrationId,
                         athlete.FinishSimSeconds!.Value,
-                        athlete.Bib))
+                        athlete.Bib,
+                        athlete.Splits
+                            .Select(split => new SimulationSplitDraft(
+                                split.CheckpointId,
+                                SimulationClockMath.MicrosToSeconds(split.SimMicros)))
+                            .ToList()))
                     .ToList();
                 if (drafts.Count == 0)
                 {
@@ -580,10 +585,8 @@ public sealed class SimulationSessionBook
             throw new DomainException($"Tối đa {MaxAthletes} VĐV mỗi lượt.");
         }
 
-        if (count > eligible.Count)
-        {
-            throw new DomainException($"Số VĐV yêu cầu ({count}) lớn hơn số đăng ký hợp lệ ({eligible.Count}).");
-        }
+        // Cap to current eligible pool (Confirmed + BIB + chưa finish). Capacity cự ly ≠ eligible.
+        count = Math.Min(count, eligible.Count);
 
         return eligible.Take(count).ToList();
     }

@@ -24,6 +24,8 @@ public sealed class RefundRequest : AggregateRoot
     public RefundRequestStatus Status { get; private set; } = RefundRequestStatus.Requested;
     public string? RejectReason { get; private set; }
     public bool AutoFromOrganizerReject { get; private set; }
+    /// <summary>Khiếu nại lỗi hệ thống — chờ Manager/Admin duyệt rồi mới hoàn 100%.</summary>
+    public bool IsSystemErrorClaim { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -40,7 +42,8 @@ public sealed class RefundRequest : AggregateRoot
         decimal refundAmount,
         decimal refundPercent,
         string reason,
-        bool autoFromOrganizerReject = false)
+        bool autoFromOrganizerReject = false,
+        bool isSystemErrorClaim = false)
     {
         if (paymentId == Guid.Empty || registrationId == Guid.Empty)
         {
@@ -70,6 +73,7 @@ public sealed class RefundRequest : AggregateRoot
             Reason = reason.Trim(),
             Status = RefundRequestStatus.Requested,
             AutoFromOrganizerReject = autoFromOrganizerReject,
+            IsSystemErrorClaim = isSystemErrorClaim,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
         };
@@ -77,6 +81,11 @@ public sealed class RefundRequest : AggregateRoot
 
     public void MarkProcessing()
     {
+        if (Status is not (RefundRequestStatus.Requested or RefundRequestStatus.Processing))
+        {
+            throw new DomainException("Chỉ xử lý được yêu cầu hoàn đang chờ / đang xử lý.");
+        }
+
         Status = RefundRequestStatus.Processing;
         UpdatedAtUtc = DateTime.UtcNow;
     }
@@ -87,11 +96,29 @@ public sealed class RefundRequest : AggregateRoot
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    public void EnsureSystemErrorClaimPending()
+    {
+        if (!IsSystemErrorClaim)
+        {
+            throw new DomainException("Đây không phải khiếu nại lỗi hệ thống.");
+        }
+
+        if (Status != RefundRequestStatus.Requested)
+        {
+            throw new DomainException("Khiếu nại này không còn ở trạng thái chờ duyệt.");
+        }
+    }
+
     public void Reject(string reason)
     {
         if (string.IsNullOrWhiteSpace(reason))
         {
             throw new DomainException("Cần lý do từ chối hoàn.");
+        }
+
+        if (Status is RefundRequestStatus.Refunded or RefundRequestStatus.Processing)
+        {
+            throw new DomainException("Không thể từ chối yêu cầu đã/ đang hoàn tiền.");
         }
 
         Status = RefundRequestStatus.Rejected;

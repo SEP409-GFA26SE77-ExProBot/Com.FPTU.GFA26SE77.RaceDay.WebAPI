@@ -377,6 +377,7 @@ public class SimulationCommitTests
             new FakeStart(_start),
             query ?? new FakeQuery(Row()),
             writer,
+            new FakePassageWriter(),
             new FakeUser(Guid.NewGuid(), admin),
             new FakeAccess(allow),
             logger ?? new CapturingLogger());
@@ -451,6 +452,25 @@ public class SimulationCommitTests
 
             Rows.TryGetValue(registrationId, out var row);
             return Task.FromResult(row);
+        }
+    }
+
+    private sealed class FakePassageWriter : ISimulationPassageWriter
+    {
+        public int Calls { get; private set; }
+        public List<IReadOnlyList<SimulationSplitDraft>> Splits { get; } = [];
+
+        public Task WriteAsync(
+            Guid registrationId,
+            Guid eventId,
+            Guid distanceId,
+            DateTime startUtc,
+            IReadOnlyList<SimulationSplitDraft> splits,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            Splits.Add(splits);
+            return Task.CompletedTask;
         }
     }
 
