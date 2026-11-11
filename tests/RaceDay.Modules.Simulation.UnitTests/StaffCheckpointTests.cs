@@ -133,6 +133,27 @@ public class StaffCheckpointTests
         Assert.All(cp.Athletes, a => Assert.NotNull(a.PassedAtSeconds));
     }
 
+    [Fact]
+    public async Task Checkpoint_export_requires_finished_run_and_captures_all_runner_passages()
+    {
+        var (book, _) = CreateBook();
+        var run = await book.CreateAsync(_eventId, _distanceId, null, 4);
+        Assert.Throws<DomainException>(() => book.BuildCheckpointExport(run.RunId, "cp", _staff));
+        await book.StartAsync(run.RunId);
+        await book.AdvanceRunningAsync(200);
+
+        var export = book.BuildCheckpointExport(run.RunId, "cp", _staff);
+        Assert.Equal(run.RunId, export.RunId);
+        Assert.Equal(_staff, export.StaffUserId);
+        Assert.Equal("cp", export.CheckpointId);
+        Assert.Equal(2, export.Rows.Count);
+        Assert.All(export.Rows, row => Assert.NotNull(row.PassedAtSeconds));
+
+        var reset = await book.ResetAsync(run.RunId, true);
+        Assert.NotEqual(run.RunId, reset.RunId);
+        Assert.Throws<DomainException>(() => book.BuildCheckpointExport(run.RunId, "cp", _staff));
+    }
+
     private (SimulationSessionBook, Gateway) CreateBook()
     {
         var gateway = new Gateway();

@@ -269,6 +269,9 @@ public class SimulationHubTests
             "/api/v1/simulation/runs/{runId:guid}/athletes/{registrationId:guid}/speed",
             "/api/v1/simulation/runs/{runId:guid}/athletes/{registrationId:guid}/sos",
             "/api/v1/simulation/runs/{runId:guid}/athletes/{registrationId:guid}/dnf",
+            "/api/v1/simulation/staff/events/{eventId:guid}/checkpoint/export",
+            "/api/v1/simulation/staff/events/{eventId:guid}/runs/{runId:guid}/checkpoint/export",
+            "/api/v1/simulation/events/{eventId:guid}/distances/{distanceId:guid}/checkpoint-exports",
             "/api/v1/simulation/runs/{runId:guid}/athletes/{registrationId:guid}/fraud/chip",
             "/api/v1/simulation/runs/{runId:guid}/athletes/{registrationId:guid}/fraud/passage",
             "/api/v1/simulation/hub"

@@ -23,11 +23,12 @@ Script chỉ thêm những bản ghi chưa có. Nó không xóa đăng ký, pass
 Mở `/organizer/events/5aff0000-0000-4000-8000-000000000100/race-simulation` bằng `cuong.le`, chọn cự ly 5K và tạo lượt **Ready**. Staff đăng nhập UserWeb sẽ thấy giải trong `/staff`; chọn checkpoint được giao. Runner có thể xem đăng ký ở `/my-registrations`. Lượt simulation nằm trong bộ nhớ API, nên sau khi restart cần tạo lượt Ready lại. Bộ seed không đặt lại trạng thái VĐV đã commit; khi thử commit toàn bộ 12 người thì lượt sau không còn đủ 12 runner hợp lệ.
 
 1. Bật `Simulation__Enabled=true`, giữ cấu hình giờ xuất phát/time zone theo simulation hiện có.
-2. Chạy lại API. Event startup tự chạy migration `20261111030201_AddSimulationDecisionSource`, thêm hai cột nullable vào lịch sử trạng thái: `SimulationRunId`, `CheckpointExternalId`.
+2. Chạy lại API. Event startup tự chạy migration `20261111030201_AddSimulationDecisionSource` cho lịch sử trạng thái và `20261111050000_AddSimulationCheckpointExports` cho bản kết quả staff gửi.
 3. Organizer mời tài khoản staff, gán **checkpoint trên bản đồ** của cự ly. Mã vị trí có dạng `map:{distanceId}:{checkpointId}`; API kiểm tra checkpoint thực sự thuộc giải/cự ly. Bản ghi thêm trực tiếp chưa liên kết tài khoản không đủ điều kiện đăng nhập workspace.
 4. Staff đăng nhập UserWeb → `/staff` → chọn phân công → mở checkpoint. Nhiệm vụ `duty:*` chưa có màn hình checkpoint.
 5. Organizer tạo/chạy lượt. Staff nhận dữ liệu realtime, tra BIB/tên, xem lượt qua mốc, bản đồ và ghi nhận tình trạng.
-6. Khi lượt kết thúc, organizer xử lý hết báo cáo DQ rồi **bấm ghi kết quả**. Đã bỏ auto-commit để có thời gian duyệt báo cáo.
+6. Khi lượt kết thúc, staff bấm **Gửi cho organizer** tại checkpoint. Bản gửi gồm giờ qua mốc, trạng thái từng VĐV và các ghi nhận tại mốc; mỗi mốc gửi một lần cho mỗi lượt. Organizer xem bản gửi ở trang **Kết quả giải** theo cự ly.
+7. Organizer xử lý hết báo cáo DQ rồi **bấm ghi kết quả** ở simulation, đối chiếu bản gửi của staff và công bố bảng xếp hạng khi đã có kết quả được ghi. Bản gửi checkpoint không tự ghi bảng xếp hạng.
 
 Nếu đang chạy API local, chỉ cần chạy lại `dotnet run --project src/Hosts/RaceDay.Api --launch-profile http`; hạ tầng Docker đang chạy không cần tạo lại. Nếu chạy API trong Docker, dùng `docker compose -f deploy/docker-compose.yml --profile api up -d --build`. Không cần `down -v`.
 
@@ -56,6 +57,9 @@ Các đường dẫn dưới đây có prefix `/api/v1/simulation`, yêu cầu t
 | --- | --- | --- |
 | GET | `/staff/events/{eventId}/checkpoint` | — |
 | POST | `/staff/events/{eventId}/runs/{runId}/athletes/{registrationId}/decisions` | `{ "status": "DNF\|DNS\|DQ", "reason": "...", "evidence": "..." }` |
+| GET | `/staff/events/{eventId}/checkpoint/export` | Xem bản đã gửi của mốc trong lượt hiện tại |
+| POST | `/staff/events/{eventId}/runs/{runId}/checkpoint/export` | Gửi bản kết quả mốc khi lượt Finished; gọi lại trả bản đã gửi |
+| GET | `/events/{eventId}/distances/{distanceId}/checkpoint-exports` | Organizer xem các bản staff đã gửi, kể cả lượt cũ |
 | POST | `/runs/{runId}/athletes/{registrationId}/decisions` | Organizer: status/reason/evidence |
 | POST | `/runs/{runId}/decisions/{decisionId}/review` | Organizer: `{ "approve": true, "reason": "..." }` |
 | POST | `/runs/{runId}/athletes/{registrationId}/dnf` | Legacy organizer endpoint: nay bắt buộc `{ "reason": "..." }` |
@@ -66,7 +70,7 @@ Snapshot staff chứa checkpoint, trạng thái lượt, danh sách VĐV của c
 
 ## Lưu trữ và giới hạn
 
-Lượt simulation, báo cáo Pending/Rejected, bằng chứng và lịch sử nháp hiện nằm trong bộ nhớ theo kiến trúc simulation hiện có; restart API/Reset sẽ mất chúng. Khi commit, trạng thái DNF/DNS/DQ và audit quyết định cuối (người áp dụng/duyệt, lý do, trạng thái trước/sau, thời điểm, checkpoint, run) được lưu database. Bằng chứng và toàn bộ vòng đời báo cáo chưa được lưu bền vững. Không dùng phần này làm hệ thống trọng tài chính thức.
+Lượt simulation, báo cáo Pending/Rejected, bằng chứng và lịch sử nháp hiện nằm trong bộ nhớ theo kiến trúc simulation hiện có; restart API/Reset sẽ mất chúng. Bản kết quả checkpoint đã gửi được lưu trong PostgreSQL theo run ID và checkpoint ID, giữ nguyên sau restart/Reset và không ghi trùng khi gửi lại. Đây là ảnh chụp tại lúc staff gửi; các quyết định thay đổi sau đó cần organizer đối chiếu với lượt hiện tại. Khi commit, trạng thái DNF/DNS/DQ và audit quyết định cuối (người áp dụng/duyệt, lý do, trạng thái trước/sau, thời điểm, checkpoint, run) được lưu database. Bằng chứng và toàn bộ vòng đời báo cáo chưa được lưu bền vững. Không dùng phần này làm hệ thống trọng tài chính thức.
 
 Mỗi staff cần một phân công RaceStaff Active duy nhất trong giải; nhiều phân công trùng bị từ chối để tránh chọn nhầm checkpoint. Nếu course thay đổi/xóa mốc, organizer cần sửa phân công và tạo lượt phù hợp.
 

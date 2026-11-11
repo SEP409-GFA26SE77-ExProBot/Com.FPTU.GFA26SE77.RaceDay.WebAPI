@@ -83,6 +83,8 @@ public static class DependencyInjection
             RaceDay.Modules.Event.Infrastructure.Simulation.EfSimulationPassageWriter>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Simulation.ISimulationResultCommitPort,
             RaceDay.Modules.Event.Application.Simulation.SimulationResultCommitter>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Simulation.ICheckpointResultExportStore,
+            RaceDay.Modules.Event.Infrastructure.Simulation.EfCheckpointResultExportStore>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IEventFinanceQuery,
             RaceDay.Modules.Event.Infrastructure.Finance.EventFinanceQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IRegistrationCapacityPort,

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using RaceDay.Modules.Simulation.Application;
+using RaceDay.Modules.Event.Contracts.Simulation;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
 
@@ -31,6 +32,35 @@ public static class StaffSimulationEndpoints
         api.MapGet("/staff/events/{eventId:guid}/checkpoint", async (Guid eventId,
             [FromServices] IStaffCheckpointWorkspace workspace, [FromServices] ICurrentUserAccessor user, CancellationToken ct) =>
             Results.Ok(await workspace.ReadAsync(eventId, UserId(user), ct)));
+
+        api.MapGet("/staff/events/{eventId:guid}/checkpoint/export", async (Guid eventId,
+            [FromServices] IStaffCheckpointWorkspace workspace, [FromServices] ICheckpointResultExportStore exports,
+            [FromServices] ICurrentUserAccessor user, CancellationToken ct) =>
+        {
+            var checkpoint = await workspace.ReadAsync(eventId, UserId(user), ct);
+            return Results.Ok(checkpoint.RunId is Guid runId
+                ? await exports.GetAsync(runId, checkpoint.Checkpoint.Id, ct) : null);
+        });
+
+        api.MapPost("/staff/events/{eventId:guid}/runs/{runId:guid}/checkpoint/export", async (
+            Guid eventId, Guid runId, [FromServices] IStaffCheckpointWorkspace workspace,
+            [FromServices] ICheckpointResultExportStore exports, [FromServices] ICurrentUserAccessor user,
+            [FromServices] SimulationSessionBook book, CancellationToken ct) =>
+        {
+            var actorId = UserId(user);
+            var checkpoint = await workspace.ReadAsync(eventId, actorId, ct);
+            if (checkpoint.RunId != runId) throw new DomainException("Lượt đã thay đổi. Tải lại checkpoint trước khi gửi.");
+            var draft = book.BuildCheckpointExport(runId, checkpoint.Checkpoint.Id, actorId);
+            return Results.Ok(await exports.SubmitAsync(draft, ct));
+        });
+
+        api.MapGet("/events/{eventId:guid}/distances/{distanceId:guid}/checkpoint-exports", async (
+            Guid eventId, Guid distanceId, [FromServices] ICheckpointResultExportStore exports,
+            [FromServices] ISimulationAuthorizer authorizer, CancellationToken ct) =>
+        {
+            await authorizer.EnsureCanManageAsync(eventId, ct);
+            return Results.Ok(await exports.ListAsync(eventId, distanceId, ct));
+        });
 
         api.MapPost("/staff/events/{eventId:guid}/runs/{runId:guid}/athletes/{registrationId:guid}/decisions",
             async (Guid eventId, Guid runId, Guid registrationId, DecisionBody body,
