@@ -60,12 +60,14 @@ public class StaffCheckpointTests
         var run = await book.CreateAsync(_eventId, _distanceId, null, 4);
         var reported = await book.RecordDecisionAsync(run.RunId, _a, "DQ", "Wrong bib", "Photo reference", _staff, "start");
         Assert.Equal("Racing", reported.Athletes.Single(a => a.RegistrationId == _a).Motion);
+        Assert.Equal(0, reported.Decisions![0].CreatedAtSimSeconds);
         await book.StartAsync(run.RunId);
         await book.AdvanceRunningAsync(200, default);
         Assert.Equal("Finished", book.SnapshotOf(run.RunId)!.Phase);
         await Assert.ThrowsAsync<DomainException>(() => book.CommitAsync(run.RunId));
         var reviewer = Guid.NewGuid();
         var reviewed = await book.ReviewDecisionAsync(run.RunId, reported.Decisions![0].Id, true, "Confirmed", reviewer);
+        Assert.Equal(reviewed.SimulatedSeconds, reviewed.Decisions![0].ReviewedAtSimSeconds);
         Assert.DoesNotContain(reviewed.Ranking, r => r.RegistrationId == _a);
         Assert.Equal("Dq", reviewed.Athletes.Single(a => a.RegistrationId == _a).Motion);
         var committed = await book.CommitAsync(run.RunId);

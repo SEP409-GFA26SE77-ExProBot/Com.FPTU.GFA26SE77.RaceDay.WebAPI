@@ -1,6 +1,6 @@
-# Staff checkpoint workspace (UserWeb)
+# Staff checkpoint workspace (AdminWeb)
 
-Workspace `/staff` dành cho tài khoản RaceStaff (Coordinator/Volunteer đã hợp nhất). Bản này phục vụ **simulation**, chưa triển khai StaffMobile hay thay thế quy trình ghi nhận thi đấu thực tế.
+Workspace `/checkpoint` trên AdminWeb (cổng 3001) dành cho tài khoản RaceStaff (Coordinator/Volunteer đã hợp nhất). Bản này phục vụ **simulation**, chưa triển khai StaffMobile hay thay thế quy trình ghi nhận thi đấu thực tế.
 
 ## Chuẩn bị và sử dụng
 
@@ -20,12 +20,12 @@ Script chỉ thêm những bản ghi chưa có. Nó không xóa đăng ký, pass
 - Staff: `coord1` tại **Start** (`cp-0`, thử DNS), `coord2` tại **1.25 km** (`cp-1.25`), `coord3` tại **tiếp nước 2.5 km** (`cp-2.5`), `coord4` tại **3.75 km** (`cp-3.75`), `vol1` tại **Finish** (`cp-5`). Đây đều là RaceStaff Active, mỗi người chỉ có một phân công trong giải test. Các ID này khớp tuyến đường đã lưu ngày 11/11/2026; nếu sửa/xóa checkpoint và đổi ID lần nữa, cần gán lại staff theo checkpoint mới.
 - Mật khẩu demo của các tài khoản trên: `MatKhau@123` (chỉ dùng môi trường local).
 
-Mở `/organizer/events/5aff0000-0000-4000-8000-000000000100/race-simulation` bằng `cuong.le`, chọn cự ly 5K và tạo lượt **Ready**. Staff đăng nhập UserWeb sẽ thấy giải trong `/staff`; chọn checkpoint được giao. Runner có thể xem đăng ký ở `/my-registrations`. Lượt simulation nằm trong bộ nhớ API, nên sau khi restart cần tạo lượt Ready lại. Bộ seed không đặt lại trạng thái VĐV đã commit; khi thử commit toàn bộ 12 người thì lượt sau không còn đủ 12 runner hợp lệ.
+Mở `/organizer/events/5aff0000-0000-4000-8000-000000000100/race-simulation` trên UserWeb bằng `cuong.le`, chọn cự ly 5K và tạo lượt **Ready**. Staff đăng nhập AdminWeb sẽ thấy giải trong `/checkpoint`; chọn checkpoint được giao. Runner có thể xem đăng ký ở `/my-registrations` trên UserWeb. Lượt simulation nằm trong bộ nhớ API, nên sau khi restart cần tạo lượt Ready lại. Bộ seed không đặt lại trạng thái VĐV đã commit; khi thử commit toàn bộ 12 người thì lượt sau không còn đủ 12 runner hợp lệ.
 
 1. Bật `Simulation__Enabled=true`, giữ cấu hình giờ xuất phát/time zone theo simulation hiện có.
 2. Chạy lại API. Event startup tự chạy migration `20261111030201_AddSimulationDecisionSource` cho lịch sử trạng thái và `20261111050000_AddSimulationCheckpointExports` cho bản kết quả staff gửi.
 3. Organizer mời tài khoản staff, gán **checkpoint trên bản đồ** của cự ly. Mã vị trí có dạng `map:{distanceId}:{checkpointId}`; API kiểm tra checkpoint thực sự thuộc giải/cự ly. Bản ghi thêm trực tiếp chưa liên kết tài khoản không đủ điều kiện đăng nhập workspace.
-4. Staff đăng nhập UserWeb → `/staff` → chọn phân công → mở checkpoint. Nhiệm vụ `duty:*` chưa có màn hình checkpoint.
+4. Staff đăng nhập AdminWeb → `/checkpoint` → chọn phân công → mở checkpoint. Nhiệm vụ `duty:*` chưa có màn hình checkpoint.
 5. Organizer tạo/chạy lượt. Staff nhận dữ liệu realtime, tra BIB/tên, xem lượt qua mốc, bản đồ và ghi nhận tình trạng.
 6. Khi lượt kết thúc, staff bấm **Gửi cho organizer** tại checkpoint. Bản gửi gồm giờ qua mốc, trạng thái từng VĐV và các ghi nhận tại mốc; mỗi mốc gửi một lần cho mỗi lượt. Organizer xem bản gửi ở trang **Kết quả giải** theo cự ly.
 7. Organizer xử lý hết báo cáo DQ rồi **bấm ghi kết quả** ở simulation, đối chiếu bản gửi của staff và công bố bảng xếp hạng khi đã có kết quả được ghi. Bản gửi checkpoint không tự ghi bảng xếp hạng.

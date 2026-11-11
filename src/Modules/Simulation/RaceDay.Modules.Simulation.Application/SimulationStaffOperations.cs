@@ -44,7 +44,8 @@ public sealed partial class SimulationSessionBook
                 });
             session.Decisions.Add(new SimulationDecisionDto(Guid.NewGuid(), registrationId, athlete.Bib,
                 athlete.Motion.ToString(), target, reason.Trim(), evidence?.Trim(), actorId, checkpointId,
-                DateTime.UtcNow, target == "DQ" && !organizer ? "Pending" : "Approved"));
+                DateTime.UtcNow, target == "DQ" && !organizer ? "Pending" : "Approved",
+                CreatedAtSimSeconds: view.SimulatedSeconds));
         }, cancellationToken);
 
     public Task<SimulationSnapshotDto> ReviewDecisionAsync(Guid runId, Guid decisionId, bool approve,
@@ -61,7 +62,8 @@ public sealed partial class SimulationSessionBook
             session.Decisions[index] = decision with
             {
                 Resolution = approve ? "Approved" : "Rejected", ReviewedBy = actorId,
-                ReviewedAtUtc = DateTime.UtcNow, ReviewReason = reason.Trim()
+                ReviewedAtUtc = DateTime.UtcNow, ReviewReason = reason.Trim(),
+                ReviewedAtSimSeconds = session.Engine.Capture().SimulatedSeconds
             };
         }, cancellationToken);
 
