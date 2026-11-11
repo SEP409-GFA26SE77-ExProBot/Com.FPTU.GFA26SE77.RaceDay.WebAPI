@@ -1,6 +1,6 @@
 ﻿# RaceDay local all-in-one:
 #   Docker Desktop → compose (Postgres/Mongo/Redis/Rabbit + API profile)
-#   → ngrok + PayOS webhook (live) → User FE (:3000) → Admin FE (:3001)
+#   → ngrok + PayOS webhook (live) → User FE SEP_UserWeb2 (:3000) → Admin FE (:3001)
 #
 # Run:
 #   .\deploy\dev-up.ps1
@@ -44,7 +44,7 @@ $EnvFile = Join-Path $RepoRoot ".env"
 $SepParent = Split-Path $RepoRoot -Parent
 
 if (-not $FePath) {
-    $FePath = Join-Path $SepParent "SEP_Pull_Dev_FE_User"
+    $FePath = Join-Path $SepParent "SEP_UserWeb2"
 }
 if (-not $FeAdminPath) {
     $FeAdminPath = Join-Path $SepParent "SEP_FronteEnd_Admin\Com.FPTU.GFA26SE77.RaceDay.AdminWeb"

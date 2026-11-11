@@ -51,6 +51,11 @@ public interface IEventRegistrationRepository
         Guid eventId,
         string bibNumber,
         CancellationToken cancellationToken = default);
+    Task<EventRegistration?> GetByEventDistanceAndUserAsync(
+        Guid eventId,
+        Guid distanceId,
+        Guid userId,
+        CancellationToken cancellationToken = default);
     Task<EventRegistration?> GetConfirmedByEventAndUserAsync(
         Guid eventId,
         Guid userId,

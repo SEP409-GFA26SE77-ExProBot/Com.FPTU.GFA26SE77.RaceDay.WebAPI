@@ -38,7 +38,7 @@ public class ProfileIdentityNumberTests
         var uow = Substitute.For<IUnitOfWork>();
         var handler = new UpdateMyProfileCommandHandler(current, users, roles, uow, Substitute.For<IEventBus>());
 
-        var result = await handler.Handle(new UpdateMyProfileCommand("Runner", null, null, GenderDto.Unknown, IdNumber: input), CancellationToken.None);
+        var result = await handler.Handle(new UpdateMyProfileCommand("Runner", null, null, null, GenderDto.Unknown, IdNumber: input), CancellationToken.None);
 
         Assert.Equal(expected, user.IdNumber);
         Assert.Equal(expected, result.IdNumber);
@@ -78,7 +78,7 @@ public class ProfileIdentityNumberTests
     [InlineData("A123456789012345678901234567890", false)]
     public void ProfileValidators_IdentityNumber_ApplyTheSameRules(string? input, bool expected)
     {
-        var self = new UpdateMyProfileCommand("Runner", null, null, GenderDto.Unknown, IdNumber: input);
+        var self = new UpdateMyProfileCommand("Runner", null, null, null, GenderDto.Unknown, IdNumber: input);
         var admin = new UpdateUserCommand(Guid.NewGuid(), "runner", "Runner", null, null,
             GenderDto.Unknown, Guid.NewGuid(), UserStatusDto.Active, null, null, null, input);
 

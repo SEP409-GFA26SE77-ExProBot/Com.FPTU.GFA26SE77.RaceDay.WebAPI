@@ -103,29 +103,72 @@ public sealed class EmergencyResponse : AggregateRoot
     }
 
     /// <summary>
-    /// Completes this response from <see cref="EmergencyResponseStatus.Assigned"/> or
-    /// <see cref="EmergencyResponseStatus.InProgress"/>. Does not change the source Device SOS.
+    /// Phân công được thêm khi hồ sơ còn Open, Assigned hoặc InProgress. Không đổi trạng thái hồ sơ.
     /// </summary>
-    public void Resolve(string? resolutionNotes, DateTime resolvedAtUtc)
+    public void EnsureCanReceiveAssignment()
+    {
+        if (Status is not (EmergencyResponseStatus.Open
+            or EmergencyResponseStatus.Assigned
+            or EmergencyResponseStatus.InProgress))
+        {
+            throw new DomainException("Chỉ hồ sơ đang mở, đã xác nhận hoặc đang xử lý mới được phân công nguồn lực.");
+        }
+    }
+
+    /// <summary>
+    /// Gỡ phân công chỉ khi hồ sơ còn Open.
+    /// </summary>
+    public void EnsureCanRemoveAssignment()
+    {
+        if (Status != EmergencyResponseStatus.Open)
+        {
+            throw new DomainException("Chỉ hồ sơ đang mở mới gỡ được phân công.");
+        }
+    }
+
+    /// <summary>
+    /// Kiểm tra trạng thái, ghi chú và thời điểm kết thúc. Không đổi hồ sơ.
+    /// </summary>
+    public void EnsureCanResolve(string? resolutionNotes, DateTime resolvedAtUtc)
     {
         if (Status is not (EmergencyResponseStatus.Assigned or EmergencyResponseStatus.InProgress))
         {
             throw new DomainException("Phản hồi khẩn cấp không thể kết thúc ở trạng thái hiện tại.");
         }
 
-        var notes = CoordinatorInvariants.RequiredLongText(
+        _ = CoordinatorInvariants.RequiredLongText(
+            resolutionNotes,
+            "Nội dung kết thúc phản hồi không được để trống.");
+        _ = CoordinatorInvariants.RequiredTimestamp(
+            resolvedAtUtc,
+            "Thời điểm kết thúc phản hồi khẩn cấp không hợp lệ.");
+    }
+
+    /// <summary>
+    /// Completes this response from <see cref="EmergencyResponseStatus.Assigned"/> or
+    /// <see cref="EmergencyResponseStatus.InProgress"/>. Does not change the source Device SOS
+    /// and does not complete or cancel assignments.
+    /// </summary>
+    public void Resolve(string? resolutionNotes, DateTime resolvedAtUtc, bool hasUnfinishedAssignment)
+    {
+        EnsureCanResolve(resolutionNotes, resolvedAtUtc);
+        if (hasUnfinishedAssignment)
+        {
+            throw new DomainException("Còn phân công chưa kết thúc nên không thể kết thúc hồ sơ.");
+        }
+
+        ResolutionNotes = CoordinatorInvariants.RequiredLongText(
             resolutionNotes,
             "Nội dung kết thúc phản hồi không được để trống.");
         ResolvedAtUtc = CoordinatorInvariants.RequiredTimestamp(
             resolvedAtUtc,
             "Thời điểm kết thúc phản hồi khẩn cấp không hợp lệ.");
-        ResolutionNotes = notes;
         Status = EmergencyResponseStatus.Resolved;
     }
 
     /// <summary>
     /// Hủy hồ sơ từ Open, Assigned hoặc InProgress. Bắt buộc có lý do và thời điểm.
-    /// Không đổi SOS nguồn và không sửa phân công; handler chuyển phân công sang Completed.
+    /// Không đổi SOS nguồn và không sửa phân công; handler hủy phân công chưa kết thúc.
     /// </summary>
     public void Cancel(string? reason, DateTime cancelledAtUtc)
     {

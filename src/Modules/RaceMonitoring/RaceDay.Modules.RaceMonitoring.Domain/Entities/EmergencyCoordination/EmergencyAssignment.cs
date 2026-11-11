@@ -21,6 +21,9 @@ public sealed class EmergencyAssignment : AggregateRoot
     public EmergencyAssignmentStatus Status { get; private set; }
     public string? Notes { get; private set; }
 
+    public bool IsFinished =>
+        Status is EmergencyAssignmentStatus.Completed or EmergencyAssignmentStatus.Cancelled;
+
     private EmergencyAssignment()
     {
     }
@@ -77,19 +80,17 @@ public sealed class EmergencyAssignment : AggregateRoot
     }
 
     /// <summary>
-    /// Hồ sơ ứng cứu bị hủy: ghi nhận phân công đã kết thúc bằng Completed, không dùng Cancelled.
-    /// Phân công đã Completed giữ nguyên mốc hoàn thành.
+    /// Hồ sơ ứng cứu bị hủy: Assigned, Accepted và Arrived chuyển sang Cancelled.
+    /// Completed và Cancelled giữ nguyên trạng thái cùng các mốc thời gian.
+    /// Không ghi CompletedAtUtc.
     /// </summary>
-    public void CompleteBecauseResponseCancelled(DateTime completedAtUtc)
+    public void CancelBecauseResponseCancelled()
     {
-        if (Status == EmergencyAssignmentStatus.Completed)
+        if (IsFinished)
         {
             return;
         }
 
-        CompletedAtUtc = CoordinatorInvariants.RequiredTimestamp(
-            completedAtUtc,
-            "Thời điểm hoàn thành phân công không hợp lệ.");
-        Status = EmergencyAssignmentStatus.Completed;
+        Status = EmergencyAssignmentStatus.Cancelled;
     }
 }

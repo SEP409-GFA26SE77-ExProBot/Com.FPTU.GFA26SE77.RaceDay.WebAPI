@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Domain;
 using RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination;
@@ -17,6 +18,10 @@ public sealed class RaceMonitoringUnitOfWork(RaceMonitoringDbContext dbContext) 
         catch (DbUpdateException ex) when (IsDuplicateAssignment(ex))
         {
             throw new DomainException("Nguồn lực này đã nằm trong danh sách phân công của hồ sơ.");
+        }
+        catch (DbUpdateException ex) when (IsDuplicateEventResourceCode(ex))
+        {
+            throw new DomainException("Mã nguồn lực đã tồn tại trong giải.");
         }
         catch (DbUpdateException ex) when (IsDuplicateSourceSos(ex))
         {
@@ -45,6 +50,35 @@ public sealed class RaceMonitoringUnitOfWork(RaceMonitoringDbContext dbContext) 
 
     private static bool IsDuplicateAssignment(DbUpdateException ex) =>
         Contains(ex, "IX_emergency_assignments_ResponseId_ResourceId");
+
+    private bool IsDuplicateEventResourceCode(DbUpdateException ex)
+    {
+        var name = dbContext.Model
+            .FindEntityType(typeof(EmergencyResource))
+            ?.GetIndexes()
+            .FirstOrDefault(index =>
+                index.IsUnique
+                && index.Properties.Count == 2
+                && index.Properties[0].Name == nameof(EmergencyResource.EventId)
+                && index.Properties[1].Name == nameof(EmergencyResource.ResourceCode))
+            ?.GetDatabaseName();
+        return name is not null && IsUniqueViolation(ex, name);
+    }
+
+    private static bool IsUniqueViolation(DbUpdateException ex, string constraintName)
+    {
+        for (Exception? current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException postgres
+                && postgres.SqlState == PostgresErrorCodes.UniqueViolation
+                && string.Equals(postgres.ConstraintName, constraintName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private void DetachAdded<TEntity>()
         where TEntity : class

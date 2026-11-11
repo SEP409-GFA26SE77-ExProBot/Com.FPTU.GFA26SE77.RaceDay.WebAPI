@@ -218,6 +218,12 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<int>("RegisteredCount")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("ResultsPublished")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ResultsPublishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("RouteGeometryJson")
                         .IsRequired()
                         .HasColumnType("jsonb");

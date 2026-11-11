@@ -65,6 +65,7 @@ public sealed class FinanceDbContext(DbContextOptions<FinanceDbContext> options)
             e.Property(x => x.Reason).HasMaxLength(1000);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
             e.Property(x => x.RejectReason).HasMaxLength(1000);
+            e.HasIndex(x => new { x.IsSystemErrorClaim, x.Status });
             e.Ignore(x => x.DomainEvents);
         });
 

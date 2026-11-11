@@ -201,10 +201,7 @@ public sealed class CreateEmergencyAssignmentCommandHandler(
             ?? throw new DomainException("Không tìm thấy phản hồi khẩn cấp.");
         var scope = await EmergencyResponseAccess.EnsureCanCoordinateResponseAsync(
             response, scopes, access, sosOps, currentUser, cancellationToken);
-        if (response.Status != EmergencyResponseStatus.Open)
-        {
-            throw new DomainException("Chỉ hồ sơ đang mở mới được phân công nguồn lực.");
-        }
+        response.EnsureCanReceiveAssignment();
 
         var resource = await resources.GetByIdAsync(request.Body.EmergencyResourceId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy nguồn lực.");
@@ -321,10 +318,7 @@ public sealed class RemoveEmergencyAssignmentCommandHandler(
             throw new DomainException("Không tìm thấy phân công.");
         }
 
-        if (response.Status != EmergencyResponseStatus.Open)
-        {
-            throw new DomainException("Chỉ hồ sơ đang mở mới gỡ được phân công.");
-        }
+        response.EnsureCanRemoveAssignment();
 
         assignments.Remove(assignment);
         await unitOfWork.SaveChangesAsync(cancellationToken);

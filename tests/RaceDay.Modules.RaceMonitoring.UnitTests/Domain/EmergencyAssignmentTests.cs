@@ -55,30 +55,51 @@ public class EmergencyAssignmentTests
         Assert.Equal("Không thể chuyển phân công ở trạng thái hiện tại.", ex.Message);
     }
 
-    [Fact]
-    public void Response_Cancellation_Completes_Open_Assignment_Without_Using_Cancelled()
+    [Theory]
+    [InlineData(EmergencyAssignmentStatus.Assigned)]
+    [InlineData(EmergencyAssignmentStatus.Accepted)]
+    [InlineData(EmergencyAssignmentStatus.Arrived)]
+    public void Response_Cancellation_Cancels_Unfinished_Assignment_Without_Completion_Time(
+        EmergencyAssignmentStatus status)
     {
-        var assignment = Assigned();
+        DateTime? acceptedAt = status is EmergencyAssignmentStatus.Accepted or EmergencyAssignmentStatus.Arrived
+            ? Later
+            : null;
+        DateTime? arrivedAt = status == EmergencyAssignmentStatus.Arrived ? Later.AddMinutes(5) : null;
+        var assignment = EmergencyAssignment.Create(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            AssignedAt,
+            status,
+            acceptedAt,
+            arrivedAt);
 
-        assignment.CompleteBecauseResponseCancelled(Later);
+        assignment.CancelBecauseResponseCancelled();
+        assignment.CancelBecauseResponseCancelled();
 
-        Assert.Equal(EmergencyAssignmentStatus.Completed, assignment.Status);
-        Assert.Equal(Later, assignment.CompletedAtUtc);
+        Assert.Equal(EmergencyAssignmentStatus.Cancelled, assignment.Status);
+        Assert.True(assignment.IsFinished);
+        Assert.Null(assignment.CompletedAtUtc);
+        Assert.Equal(AssignedAt, assignment.AssignedAtUtc);
+        Assert.Equal(acceptedAt, assignment.AcceptedAtUtc);
+        Assert.Equal(arrivedAt, assignment.ArrivedAtUtc);
     }
 
     [Fact]
-    public void Response_Cancellation_Turns_A_Cancelled_Row_Into_Completed()
+    public void Response_Cancellation_Leaves_Cancelled_Assignment_Untouched()
     {
         var assignment = EmergencyAssignment.Create(
             Guid.NewGuid(),
             Guid.NewGuid(),
             AssignedAt,
-            EmergencyAssignmentStatus.Cancelled);
+            EmergencyAssignmentStatus.Cancelled,
+            acceptedAtUtc: Later);
 
-        assignment.CompleteBecauseResponseCancelled(Later);
+        assignment.CancelBecauseResponseCancelled();
 
-        Assert.Equal(EmergencyAssignmentStatus.Completed, assignment.Status);
-        Assert.Equal(Later, assignment.CompletedAtUtc);
+        Assert.Equal(EmergencyAssignmentStatus.Cancelled, assignment.Status);
+        Assert.Equal(Later, assignment.AcceptedAtUtc);
+        Assert.Null(assignment.CompletedAtUtc);
     }
 
     [Fact]
@@ -90,11 +111,14 @@ public class EmergencyAssignmentTests
             Guid.NewGuid(),
             AssignedAt,
             EmergencyAssignmentStatus.Completed,
+            acceptedAtUtc: Later,
             completedAtUtc: completedAt);
 
-        assignment.CompleteBecauseResponseCancelled(Later);
+        assignment.CancelBecauseResponseCancelled();
 
         Assert.Equal(EmergencyAssignmentStatus.Completed, assignment.Status);
+        Assert.True(assignment.IsFinished);
+        Assert.Equal(Later, assignment.AcceptedAtUtc);
         Assert.Equal(completedAt, assignment.CompletedAtUtc);
     }
 

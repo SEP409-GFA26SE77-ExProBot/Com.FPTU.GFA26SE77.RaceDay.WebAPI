@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\RaceDay.Modules.Map.Application\RaceDay.Modules.Map.Application.csproj" />
+    <ProjectReference Include="..\RaceDay.Modules.Map.Contracts\RaceDay.Modules.Map.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Infrastructure\RaceDay.Shared.Infrastructure.csproj" />
   </ItemGroup>
 

@@ -48,11 +48,9 @@ public sealed class CancelEmergencyResponseCommandHandler(
             response, scopes, access, sosOps, currentUser, cancellationToken);
         response.Cancel(request.Body.Reason, DateTime.UtcNow);
         var rows = await assignments.ListTrackedByResponseAsync(response.Id, cancellationToken);
-        var completedAt = response.CancelledAtUtc
-            ?? throw new DomainException("Thời điểm hủy phản hồi không hợp lệ.");
         foreach (var row in rows)
         {
-            row.CompleteBecauseResponseCancelled(completedAt);
+            row.CancelBecauseResponseCancelled();
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

@@ -30,6 +30,8 @@ public static class DependencyInjection
                 policy.RequireAuthenticatedUser().RequireRole("Admin"))
             .AddPolicy(AuthPolicies.ManagerOnly, policy =>
                 policy.RequireAuthenticatedUser().RequireRole("Manager"))
+            .AddPolicy(AuthPolicies.ManagerOrAdmin, policy =>
+                policy.RequireAuthenticatedUser().RequireRole("Manager", "Admin"))
             .AddPolicy(AuthPolicies.HumanUser, policy =>
                 policy.RequireAuthenticatedUser().RequireAssertion(ctx =>
                     !ctx.User.HasClaim("token_use", "wear")

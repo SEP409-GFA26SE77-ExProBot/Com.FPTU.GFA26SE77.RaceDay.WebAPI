@@ -148,6 +148,50 @@ public sealed class EventRegistration : AggregateRoot
         Touch();
     }
 
+    /// <summary>
+    /// Có bệnh lý đặc biệt cần BTC duyệt tay.
+    /// <c>[]</c>, rỗng, hoặc chỉ <c>none</c> → không bệnh lý → đủ điều kiện auto-approve.
+    /// </summary>
+    public bool HasSpecialMedicalConditions()
+    {
+        var raw = (MedicalCodesJson ?? string.Empty).Trim();
+        if (raw.Length == 0 || raw == "[]" || raw == "null")
+        {
+            return false;
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array)
+            {
+                return !string.Equals(raw, "none", StringComparison.OrdinalIgnoreCase);
+            }
+
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                var code = el.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? el.GetString()?.Trim()
+                    : el.ToString().Trim();
+                if (string.IsNullOrEmpty(code))
+                {
+                    continue;
+                }
+
+                if (!code.Equals("none", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return !raw.Equals("none", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     public void Confirm(string? bibNumber = null)
     {
         if (Status is not (RegistrationStatus.PendingApproval or RegistrationStatus.PendingPayment))
@@ -180,7 +224,8 @@ public sealed class EventRegistration : AggregateRoot
     }
 
     /// <summary>
-    /// VĐV đã thanh toán bị từ chối → sửa hồ sơ và nộp lại chờ duyệt (không tạo đơn/TT mới).
+    /// Legacy: chỉ còn cho đơn Rejected cũ chưa bị auto-cancel sau refund.
+    /// Policy hiện tại: reject → hủy slot + hoàn theo ngày → Cancelled (không nộp lại trên đơn cũ).
     /// </summary>
     public void UpdateProfileAndResubmit(
         string fullName,
@@ -252,11 +297,15 @@ public sealed class EventRegistration : AggregateRoot
         Touch();
     }
 
-    /// <summary>After paid refund (runner request or post-reject cleanup) — free the registration.</summary>
+    /// <summary>
+    /// After paid refund — hủy ĐK, xóa BIB (nhả số cho VĐV khác), slot đã ReleaseSlotAsync riêng.
+    /// </summary>
     public void MarkCancelledAfterRefund()
     {
         if (Status is RegistrationStatus.Cancelled)
         {
+            BibNumber = null;
+            Touch();
             return;
         }
 
@@ -266,6 +315,7 @@ public sealed class EventRegistration : AggregateRoot
         }
 
         Status = RegistrationStatus.Cancelled;
+        BibNumber = null;
         Touch();
     }
 
@@ -334,6 +384,46 @@ public sealed class EventRegistration : AggregateRoot
         Touch();
         return true;
     }
+
+    public void SetLeaderboardResult(DateTime startedAtUtc, DateTime finishedAtUtc, long resultSeconds)
+    {
+        if (Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
+        {
+            throw new DomainException("Chỉ VĐV đã được duyệt mới có thể có kết quả.");
+        }
+
+        if (resultSeconds < 0)
+        {
+            throw new DomainException("Kết quả finish không hợp lệ.");
+        }
+
+        if (finishedAtUtc.Kind != DateTimeKind.Utc)
+        {
+            finishedAtUtc = DateTime.SpecifyKind(finishedAtUtc, DateTimeKind.Utc);
+        }
+
+        StartedAtUtc = DateTime.SpecifyKind(startedAtUtc, DateTimeKind.Utc);
+        FinishedAtUtc = finishedAtUtc;
+        ResultSeconds = resultSeconds;
+        Status = RegistrationStatus.Finished;
+        RaceStatus = RaceStatus.Finished;
+        Touch();
+    }
+
+    public void RemoveLeaderboardResult()
+    {
+        if (Status != RegistrationStatus.Finished || !ResultSeconds.HasValue)
+        {
+            throw new DomainException("VĐV chưa có kết quả trên bảng xếp hạng.");
+        }
+
+        FinishedAtUtc = null;
+        ResultSeconds = null;
+        Status = RegistrationStatus.Confirmed;
+        RaceStatus = StartedAtUtc.HasValue ? RaceStatus.Running : RaceStatus.NotStarted;
+        Touch();
+    }
+
     public bool Start(DateTime startedAtUtc)
     {
         EnsureRaceNotStopped();

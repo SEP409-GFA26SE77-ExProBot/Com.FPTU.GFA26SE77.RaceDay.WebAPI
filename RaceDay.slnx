@@ -70,6 +70,13 @@
     <Project Path="src/Modules/RaceMonitoring/RaceDay.Modules.RaceMonitoring.Domain/RaceDay.Modules.RaceMonitoring.Domain.csproj" />
     <Project Path="src/Modules/RaceMonitoring/RaceDay.Modules.RaceMonitoring.Infrastructure/RaceDay.Modules.RaceMonitoring.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Simulation/">
+    <Project Path="src/Modules/Simulation/RaceDay.Modules.Simulation.Api/RaceDay.Modules.Simulation.Api.csproj" />
+    <Project Path="src/Modules/Simulation/RaceDay.Modules.Simulation.Application/RaceDay.Modules.Simulation.Application.csproj" />
+    <Project Path="src/Modules/Simulation/RaceDay.Modules.Simulation.Contracts/RaceDay.Modules.Simulation.Contracts.csproj" />
+    <Project Path="src/Modules/Simulation/RaceDay.Modules.Simulation.Domain/RaceDay.Modules.Simulation.Domain.csproj" />
+    <Project Path="src/Modules/Simulation/RaceDay.Modules.Simulation.Infrastructure/RaceDay.Modules.Simulation.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/_Template/">
     <Project Path="src/Modules/_Template/RaceDay.Modules._Template.Api/RaceDay.Modules._Template.Api.csproj" />
     <Project Path="src/Modules/_Template/RaceDay.Modules._Template.Application/RaceDay.Modules._Template.Application.csproj" />
@@ -89,7 +96,9 @@
     <Project Path="tests/RaceDay.Modules.Event.UnitTests/RaceDay.Modules.Event.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Iam.UnitTests/RaceDay.Modules.Iam.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Photo.UnitTests/RaceDay.Modules.Photo.UnitTests.csproj" />
+    <Project Path="tests/RaceDay.Modules.Finance.UnitTests/RaceDay.Modules.Finance.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.RaceMonitoring.UnitTests/RaceDay.Modules.RaceMonitoring.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Shared.UnitTests/RaceDay.Shared.UnitTests.csproj" />
+    <Project Path="tests/RaceDay.Modules.Simulation.UnitTests/RaceDay.Modules.Simulation.UnitTests.csproj" />
   </Folder>
 </Solution>

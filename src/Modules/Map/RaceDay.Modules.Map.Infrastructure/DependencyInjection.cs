@@ -21,15 +21,18 @@ public static class DependencyInjection
                 npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "map")));
 
         services.AddScoped<IRaceCourseRepository, RaceCourseRepository>();
+        services.AddScoped<RaceDay.Modules.Map.Contracts.Courses.IRaceCourseReadQuery,
+            RaceDay.Modules.Map.Infrastructure.Courses.RaceCourseReadQuery>();
         services.AddScoped<IMapUnitOfWork, MapUnitOfWork>();
-        services.AddHttpClient(NominatimGeocodeService.HttpClientName, client =>
+        // Nominatim OSM DNS hay fail ở VN; Photon (komoot) ổn định hơn, không cần API key.
+        services.AddHttpClient(PhotonGeocodeService.HttpClientName, client =>
         {
-            client.BaseAddress = new Uri("https://nominatim.openstreetmap.org/");
+            client.BaseAddress = new Uri("https://photon.komoot.io/");
             client.DefaultRequestHeaders.UserAgent.ParseAdd(
                 "RaceDay-Api/1.0 (organizer-setup-map; contact=support@raceday.vn)");
             client.Timeout = TimeSpan.FromSeconds(12);
         });
-        services.AddScoped<IGeocodeService, NominatimGeocodeService>();
+        services.AddScoped<IGeocodeService, PhotonGeocodeService>();
         services.AddHostedService<MapDataSeeder>();
         return services;
     }
