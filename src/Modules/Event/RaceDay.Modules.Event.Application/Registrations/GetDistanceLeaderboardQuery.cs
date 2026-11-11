@@ -1,4 +1,5 @@
 ﻿using MediatR;
+using FluentValidation;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
@@ -18,19 +19,38 @@ public sealed record LeaderboardItemDto(
     string TotalTime,
     string Pace);
 
+/// <summary>Paginated leaderboard results for one race distance.</summary>
 public sealed record PaginatedLeaderboardDto(
     IReadOnlyList<LeaderboardItemDto> Items,
     int TotalCount,
     int TotalPages,
     int CurrentPage,
-    int PageSize);
+    int PageSize,
+    bool ResultsPublished = true);
 
+/// <summary>Query for finished runners in one race distance.</summary>
+/// <param name="RequirePublished">
+/// Public/user bảng xếp hạng: true → chỉ trả dữ liệu khi organizer đã Publish.
+/// Organizer preview: false → luôn xem được bản nháp đã ghi finish.
+/// </param>
 public sealed record GetDistanceLeaderboardQuery(
     Guid EventId,
     Guid DistanceId,
     string? Gender = null, // Thêm tham số lọc giới tính
     int Page = 1,
-    int PageSize = 50) : IRequest<PaginatedLeaderboardDto>;
+    int PageSize = 50,
+    bool RequirePublished = false) : IRequest<PaginatedLeaderboardDto>;
+
+public sealed class GetDistanceLeaderboardQueryValidator : AbstractValidator<GetDistanceLeaderboardQuery>
+{
+    public GetDistanceLeaderboardQueryValidator()
+    {
+        RuleFor(x => x.EventId).NotEmpty();
+        RuleFor(x => x.DistanceId).NotEmpty();
+        RuleFor(x => x.Page).InclusiveBetween(1, 1_000_000);
+        RuleFor(x => x.PageSize).InclusiveBetween(1, 100);
+    }
+}
 
 public sealed class GetDistanceLeaderboardQueryHandler(
     IRaceEventRepository events,
@@ -44,12 +64,19 @@ public sealed class GetDistanceLeaderboardQueryHandler(
             ?? throw new DomainException("Không tìm thấy giải.");
 
         var distance = race.GetDistance(request.DistanceId);
+
+        if (request.RequirePublished && !distance.ResultsPublished)
+        {
+            return new PaginatedLeaderboardDto([], 0, 0, request.Page, request.PageSize, ResultsPublished: false);
+        }
+
         var allRegistrations = await registrations.ListByEventAsync(request.EventId, cancellationToken);
 
         // Khởi tạo query lọc VĐV hoàn thành
         var finishedRunnersQuery = allRegistrations
             .Where(r => r.DistanceId == request.DistanceId
                      && r.Status == RegistrationStatus.Finished
+                     && r.RaceStatus == RaceStatus.Finished
                      && r.ResultSeconds.HasValue);
 
         // Lọc thêm theo giới tính nếu có truyền lên (bỏ qua nếu truyền "All" hoặc để trống)
@@ -103,6 +130,12 @@ public sealed class GetDistanceLeaderboardQueryHandler(
             ));
         }
 
-        return new PaginatedLeaderboardDto(leaderboard, totalCount, totalPages, request.Page, request.PageSize);
+        return new PaginatedLeaderboardDto(
+            leaderboard,
+            totalCount,
+            totalPages,
+            request.Page,
+            request.PageSize,
+            ResultsPublished: distance.ResultsPublished);
     }
 }

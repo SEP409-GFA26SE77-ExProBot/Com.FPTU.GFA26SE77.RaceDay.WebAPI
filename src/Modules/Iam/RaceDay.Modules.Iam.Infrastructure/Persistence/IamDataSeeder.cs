@@ -21,9 +21,11 @@ public sealed class IamDataSeeder(
     private static readonly Guid AdminRoleId = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private static readonly Guid UserRoleId = Guid.Parse("22222222-2222-2222-2222-222222222222");
     private static readonly Guid OrganizerRoleId = Guid.Parse("33333333-3333-3333-3333-333333333333");
-    private static readonly Guid CoordinatorRoleId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+    /// <summary>Reuse former Coordinator GUID — renamed to Race-staff.</summary>
+    private static readonly Guid RaceStaffRoleId = Guid.Parse("44444444-4444-4444-4444-444444444444");
     private static readonly Guid PhotographerRoleId = Guid.Parse("55555555-5555-5555-5555-555555555555");
-    private static readonly Guid VolunteerRoleId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+    private static readonly Guid LegacyVolunteerRoleId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+    private static readonly Guid ManagerRoleId = Guid.Parse("77777777-7777-7777-7777-777777777777");
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -54,9 +56,10 @@ public sealed class IamDataSeeder(
             await SeedUsersAsync(db, hasher, seedPassword, cancellationToken);
         }
 
-        // Staff ops (coord/photo/vol) không auto-seed — tạo khi cần qua ProvisionStaff / admin.
+        // Staff ops (race-staff/photo) không auto-seed — tạo khi cần qua ProvisionStaff / admin.
         // EnsureStaffUsersAsync giữ trong file nhưng không gọi để tránh tái tạo sau wipe.
 
+        await EnsureManagerUserAsync(db, hasher, seedPassword, cancellationToken);
         await UpgradePlaceholderPasswordsAsync(db, hasher, cancellationToken);
         logger.LogInformation("IAM seed completed.");
     }
@@ -318,17 +321,72 @@ public sealed class IamDataSeeder(
             }
         }
 
-        await EnsureRole(AdminRoleId, "Admin", "Quản trị hệ thống RaceDay");
+        await EnsureRole(AdminRoleId, "Admin", "Quản trị hệ thống / tài khoản RaceDay");
         await EnsureRole(UserRoleId, "User", "Người dùng / vận động viên");
         await EnsureRole(OrganizerRoleId, "Organizer", "Ban tổ chức sự kiện");
-        await EnsureRole(CoordinatorRoleId, "Coordinator", "Điều phối viên giải");
+        await EnsureRole(RaceStaffRoleId, "Race-staff", "Nhân sự hiện trường (gộp Coordinator + Volunteer)");
         await EnsureRole(PhotographerRoleId, "Photographer", "Nhiếp ảnh giải");
-        await EnsureRole(VolunteerRoleId, "Volunteer", "Tình nguyện viên giải");
+        await EnsureRole(ManagerRoleId, "Manager", "Duyệt giải + cấu hình gói / promo");
+        await db.SaveChangesAsync(ct);
+
+        // Migrate existing DBs: Coordinator → Race-staff; Volunteer users → Race-staff; drop Volunteer role.
+        var raceStaff = await db.Roles.FirstOrDefaultAsync(x => x.Id == RaceStaffRoleId, ct)
+            ?? await db.Roles.FirstOrDefaultAsync(x => x.RoleName == "Race-staff" || x.RoleName == "Coordinator", ct);
+        if (raceStaff is not null && !string.Equals(raceStaff.RoleName, "Race-staff", StringComparison.Ordinal))
+        {
+            raceStaff.Rename("Race-staff", "Nhân sự hiện trường (gộp Coordinator + Volunteer)");
+        }
+
+        var legacyVolunteer = await db.Roles.FirstOrDefaultAsync(
+            x => x.Id == LegacyVolunteerRoleId || x.RoleName == "Volunteer", ct);
+        if (legacyVolunteer is not null && raceStaff is not null)
+        {
+            var volunteerUsers = await db.Users.Where(x => x.RoleId == legacyVolunteer.Id).ToListAsync(ct);
+            foreach (var user in volunteerUsers)
+            {
+                user.ChangeRole(raceStaff.Id);
+                user.ClearDomainEvents();
+            }
+
+            db.Roles.Remove(legacyVolunteer);
+        }
+
+        var manager = await db.Roles.FirstOrDefaultAsync(x => x.Id == ManagerRoleId || x.RoleName == "Manager", ct);
+        if (manager is null)
+        {
+            db.Roles.Add(Role.Restore(ManagerRoleId, "Manager", "Duyệt giải + cấu hình gói / promo"));
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task EnsureManagerUserAsync(
+        IamDbContext db,
+        IPasswordHasher hasher,
+        string seedPassword,
+        CancellationToken ct)
+    {
+        const string email = "manager@raceday.vn";
+        if (await db.Users.AnyAsync(x => x.Email == email || x.Username == "manager", ct))
+        {
+            return;
+        }
+
+        if (!await db.Roles.AnyAsync(x => x.Id == ManagerRoleId || x.RoleName == "Manager", ct))
+        {
+            return;
+        }
+
+        db.Users.Add(BuildSeed(
+            Guid.Parse("f7777777-7777-4777-8777-777777777777"),
+            email, "manager", ManagerRoleId, hasher.Hash(seedPassword),
+            "Trần Quản Lý Gói", "0907000007", new DateOnly(1992, 4, 12), Gender.Female, UserStatus.Active, true,
+            "Manager seed — duyệt giải / catalog gói", true));
         await db.SaveChangesAsync(ct);
     }
 
     /// <summary>
-    /// 4 account / role (Coordinator, Photographer, Volunteer) — skip nếu email đã tồn tại.
+    /// 4 account / role (Race-staff, Photographer) — skip nếu email đã tồn tại.
     /// </summary>
     private static async Task EnsureStaffUsersAsync(
         IamDbContext db,
@@ -359,21 +417,21 @@ public sealed class IamDataSeeder(
     private static User[] BuildStaffSeeds(string passwordHash) =>
     [
         BuildSeed(Guid.Parse("a1444444-0001-4000-8000-000000000001"),
-            "coord1@raceday.vn", "coord1", CoordinatorRoleId, passwordHash,
-            "Nguyễn Điều Phối Một", "0911000001", new DateOnly(1994, 2, 10), Gender.Male, UserStatus.Active, true,
-            "Coordinator seed #1", true),
+            "coord1@raceday.vn", "coord1", RaceStaffRoleId, passwordHash,
+            "Nguyễn Race Staff Một", "0911000001", new DateOnly(1994, 2, 10), Gender.Male, UserStatus.Active, true,
+            "Race-staff seed #1", true),
         BuildSeed(Guid.Parse("a1444444-0002-4000-8000-000000000002"),
-            "coord2@raceday.vn", "coord2", CoordinatorRoleId, passwordHash,
-            "Trần Điều Phối Hai", "0911000002", new DateOnly(1993, 6, 18), Gender.Female, UserStatus.Active, true,
-            "Coordinator seed #2", true),
+            "coord2@raceday.vn", "coord2", RaceStaffRoleId, passwordHash,
+            "Trần Race Staff Hai", "0911000002", new DateOnly(1993, 6, 18), Gender.Female, UserStatus.Active, true,
+            "Race-staff seed #2", true),
         BuildSeed(Guid.Parse("a1444444-0003-4000-8000-000000000003"),
-            "coord3@raceday.vn", "coord3", CoordinatorRoleId, passwordHash,
-            "Lê Điều Phối Ba", "0911000003", new DateOnly(1996, 9, 5), Gender.Male, UserStatus.Active, true,
-            "Coordinator seed #3", true),
+            "coord3@raceday.vn", "coord3", RaceStaffRoleId, passwordHash,
+            "Lê Race Staff Ba", "0911000003", new DateOnly(1996, 9, 5), Gender.Male, UserStatus.Active, true,
+            "Race-staff seed #3", true),
         BuildSeed(Guid.Parse("a1444444-0004-4000-8000-000000000004"),
-            "coord4@raceday.vn", "coord4", CoordinatorRoleId, passwordHash,
-            "Phạm Điều Phối Tư", "0911000004", new DateOnly(1992, 12, 22), Gender.Female, UserStatus.Active, true,
-            "Coordinator seed #4", true),
+            "coord4@raceday.vn", "coord4", RaceStaffRoleId, passwordHash,
+            "Phạm Race Staff Tư", "0911000004", new DateOnly(1992, 12, 22), Gender.Female, UserStatus.Active, true,
+            "Race-staff seed #4", true),
 
         BuildSeed(Guid.Parse("a1555555-0001-4000-8000-000000000001"),
             "photo1@raceday.vn", "photo1", PhotographerRoleId, passwordHash,
@@ -391,23 +449,6 @@ public sealed class IamDataSeeder(
             "photo4@raceday.vn", "photo4", PhotographerRoleId, passwordHash,
             "Bùi Ảnh Tư", "0912000004", new DateOnly(1998, 10, 3), Gender.Female, UserStatus.Active, true,
             "Photographer seed #4", true),
-
-        BuildSeed(Guid.Parse("a1666666-0001-4000-8000-000000000001"),
-            "vol1@raceday.vn", "vol1", VolunteerRoleId, passwordHash,
-            "Ngô Tình Nguyện Một", "0913000001", new DateOnly(2001, 3, 12), Gender.Male, UserStatus.Active, true,
-            "Volunteer seed #1", true),
-        BuildSeed(Guid.Parse("a1666666-0002-4000-8000-000000000002"),
-            "vol2@raceday.vn", "vol2", VolunteerRoleId, passwordHash,
-            "Đỗ Tình Nguyện Hai", "0913000002", new DateOnly(2000, 5, 21), Gender.Female, UserStatus.Active, true,
-            "Volunteer seed #2", true),
-        BuildSeed(Guid.Parse("a1666666-0003-4000-8000-000000000003"),
-            "vol3@raceday.vn", "vol3", VolunteerRoleId, passwordHash,
-            "Mai Tình Nguyện Ba", "0913000003", new DateOnly(1999, 8, 9), Gender.Male, UserStatus.Active, true,
-            "Volunteer seed #3", true),
-        BuildSeed(Guid.Parse("a1666666-0004-4000-8000-000000000004"),
-            "vol4@raceday.vn", "vol4", VolunteerRoleId, passwordHash,
-            "Lý Tình Nguyện Tư", "0913000004", new DateOnly(2002, 11, 17), Gender.Female, UserStatus.Active, true,
-            "Volunteer seed #4", true),
     ];
 
     private static async Task SeedUsersAsync(

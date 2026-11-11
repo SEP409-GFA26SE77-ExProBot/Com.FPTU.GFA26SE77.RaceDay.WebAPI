@@ -18,7 +18,8 @@ public sealed class CheckpointScan : AggregateRoot
         Guid registrationId,
         Guid checkpointId,
         ScanMethod scanMethod,
-        DateTime scannedAtUtc)
+        DateTime scannedAtUtc,
+        Guid? id = null)
     {
         if (registrationId == Guid.Empty || checkpointId == Guid.Empty)
         {
@@ -35,12 +36,23 @@ public sealed class CheckpointScan : AggregateRoot
             throw new DomainException("Thời điểm quét checkpoint không hợp lệ.");
         }
 
-        return new CheckpointScan
+        if (id == Guid.Empty)
+        {
+            throw new DomainException("Mã lượt quét không hợp lệ.");
+        }
+
+        var scan = new CheckpointScan
         {
             RegistrationId = registrationId,
             CheckpointId = checkpointId,
             ScanMethod = scanMethod,
             ScannedAtUtc = scannedAtUtc
         };
+        if (id.HasValue)
+        {
+            scan.Id = id.Value;
+        }
+
+        return scan;
     }
 }

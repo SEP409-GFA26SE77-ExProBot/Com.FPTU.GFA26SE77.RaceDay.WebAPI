@@ -218,6 +218,12 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<int>("RegisteredCount")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("ResultsPublished")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("ResultsPublishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("RouteGeometryJson")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -696,6 +702,12 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)");
 
+                    b.Property<string>("RaceStatus")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("RejectionReason")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
@@ -741,6 +753,43 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .HasFilter("\"Status\" NOT IN ('Rejected', 'Cancelled')");
 
                     b.ToTable("event_registrations", "event");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Registrations.RaceStatusChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ChangedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ChangedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PreviousStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("RegistrationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RegistrationId", "ChangedAtUtc");
+
+                    b.ToTable("event_registration_race_status_changes", "event");
                 });
 
             modelBuilder.Entity("RaceDay.Modules.Event.Domain.Registrations.RegistrationCheckpointPassage", b =>
@@ -1097,6 +1146,15 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Navigation("Permit");
 
                     b.Navigation("Weather");
+                });
+
+            modelBuilder.Entity("RaceDay.Modules.Event.Domain.Registrations.RaceStatusChange", b =>
+                {
+                    b.HasOne("RaceDay.Modules.Event.Domain.Registrations.EventRegistration", null)
+                        .WithMany()
+                        .HasForeignKey("RegistrationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("RaceDay.Modules.Event.Domain.Events.EventDistance", b =>

@@ -1,5 +1,5 @@
 -- =============================================================================
--- RaceDay Postgres — schema + seed (IAM / Event / Payment)
+-- RaceDay Postgres — schema + seed (IAM / Event / Payment / RaceMonitoring)
 -- Khớp EF migrations hiện tại. Idempotent (IF NOT EXISTS / ON CONFLICT DO NOTHING).
 --
 -- Chạy:
@@ -9,10 +9,10 @@
 -- Seed password (tất cả user Active): MatKhau@123
 --   admin@raceday.vn | an.nguyen@raceday.vn | binh.tran@raceday.vn
 --   cuong.le@raceday.vn (Organizer) | dung.pham@raceday.vn (Pending)
---   Staff ops (4/role):
---     coord1..4@raceday.vn (Coordinator)
+--   manager@raceday.vn (Manager — duyệt giải / gói)
+--   Staff ops:
+--     coord1..4 / vol1..4@raceday.vn (Race-staff)
 --     photo1..4@raceday.vn (Photographer)
---     vol1..4@raceday.vn (Volunteer)
 --
 -- Lịch giải seed (mỗi ngày 1, không trùng):
 --   2026-03-15 HCMC Night | 2026-06-07 Hanoi | 2026-06-21 VnExpress Marathon Quy Nhon (flagship R2)
@@ -328,6 +328,295 @@ CREATE INDEX IF NOT EXISTS "IX_payment_transactions_PaymentId"
     ON payment.payment_transactions ("PaymentId");
 
 -- -----------------------------------------------------------------------------
+-- RACE MONITORING
+-- -----------------------------------------------------------------------------
+CREATE SCHEMA IF NOT EXISTS race_monitoring;
+
+CREATE TABLE IF NOT EXISTS race_monitoring."__EFMigrationsHistory" (
+    "MigrationId"    varchar(150) NOT NULL PRIMARY KEY,
+    "ProductVersion" varchar(32)  NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS race_monitoring.runner_locations (
+    "Id"             uuid PRIMARY KEY,
+    "RegistrationId" uuid NOT NULL,
+    "Latitude"       double precision NOT NULL,
+    "Longitude"      double precision NOT NULL,
+    "RecordedAtUtc"  timestamptz NOT NULL,
+    "ReceivedAtUtc"  timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "IX_runner_locations_RegistrationId_RecordedAtUtc"
+    ON race_monitoring.runner_locations ("RegistrationId", "RecordedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.checkpoint_scans (
+    "Id"             uuid PRIMARY KEY,
+    "RegistrationId" uuid NOT NULL,
+    "CheckpointId"   uuid NOT NULL,
+    "ScannedAtUtc"   timestamptz NOT NULL,
+    "ScanMethod"     varchar(20) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "IX_checkpoint_scans_CheckpointId_ScannedAtUtc"
+    ON race_monitoring.checkpoint_scans ("CheckpointId", "ScannedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.runner_status_histories (
+    "Id"             uuid PRIMARY KEY,
+    "RegistrationId" uuid NOT NULL,
+    "PreviousStatus" varchar(32) NULL,
+    "NewStatus"      varchar(32) NOT NULL,
+    "ChangedAtUtc"   timestamptz NOT NULL,
+    "ChangedBy"      uuid NULL,
+    "Reason"         text NULL
+);
+
+CREATE INDEX IF NOT EXISTS "IX_runner_status_histories_RegistrationId_ChangedAtUtc"
+    ON race_monitoring.runner_status_histories ("RegistrationId", "ChangedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.route_deviations (
+    "Id"                uuid PRIMARY KEY,
+    "RegistrationId"    uuid NOT NULL,
+    "DetectedAtUtc"     timestamptz NOT NULL,
+    "DistanceFromRoute" numeric(12,2) NOT NULL,
+    "Severity"          varchar(32) NOT NULL,
+    "Status"            varchar(32) NOT NULL,
+    "ResolvedAtUtc"     timestamptz NULL,
+    "Notes"             text NULL,
+    CONSTRAINT "CK_route_deviations_DistanceFromRoute" CHECK ("DistanceFromRoute" >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS "IX_route_deviations_RegistrationId_DetectedAtUtc"
+    ON race_monitoring.route_deviations ("RegistrationId", "DetectedAtUtc");
+CREATE INDEX IF NOT EXISTS "IX_route_deviations_Status_DetectedAtUtc"
+    ON race_monitoring.route_deviations ("Status", "DetectedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.emergency_resources (
+    "Id"           uuid PRIMARY KEY,
+    "EventId"      uuid NULL,
+    "ResourceCode" varchar(50) NOT NULL,
+    "ResourceType" varchar(32) NOT NULL,
+    "Name"         varchar(200) NOT NULL,
+    "Status"       varchar(32) NOT NULL,
+    "Notes"        text NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_emergency_resources_EventId_ResourceCode"
+    ON race_monitoring.emergency_resources ("EventId", "ResourceCode")
+    WHERE "EventId" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_emergency_resources_ResourceCode_NoEvent"
+    ON race_monitoring.emergency_resources ("ResourceCode")
+    WHERE "EventId" IS NULL;
+CREATE INDEX IF NOT EXISTS "IX_emergency_resources_Status"
+    ON race_monitoring.emergency_resources ("Status");
+
+-- SourceSosAlertId points at device.sos_alerts. No cross-schema foreign key.
+-- This script never creates race_monitoring.sos_alerts. The block below also
+-- folds a database created from an older copy of this script.
+CREATE TABLE IF NOT EXISTS race_monitoring.emergency_responses (
+    "Id"               uuid PRIMARY KEY,
+    "SourceSosAlertId" uuid NOT NULL,
+    "IncidentType"     varchar(32) NOT NULL,
+    "Priority"         varchar(32) NOT NULL,
+    "Status"           varchar(32) NOT NULL,
+    "AssignedAtUtc"      timestamptz NULL,
+    "ResolvedAtUtc"      timestamptz NULL,
+    "ResolutionNotes"    text NULL,
+    "CancelledAtUtc"     timestamptz NULL,
+    "CancellationReason" text NULL
+);
+
+ALTER TABLE race_monitoring.emergency_responses
+    ADD COLUMN IF NOT EXISTS "CancelledAtUtc" timestamptz NULL;
+ALTER TABLE race_monitoring.emergency_responses
+    ADD COLUMN IF NOT EXISTS "CancellationReason" text NULL;
+
+ALTER TABLE race_monitoring.emergency_responses
+    DROP CONSTRAINT IF EXISTS "FK_emergency_responses_sos_alerts_SOSAlertId";
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'race_monitoring'
+          AND table_name = 'emergency_responses'
+          AND column_name = 'SOSAlertId'
+    ) THEN
+        ALTER TABLE race_monitoring.emergency_responses
+            RENAME COLUMN "SOSAlertId" TO "SourceSosAlertId";
+    END IF;
+END $$;
+
+DROP INDEX IF EXISTS race_monitoring."IX_emergency_responses_SOSAlertId";
+DROP TABLE IF EXISTS race_monitoring.sos_alerts;
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_emergency_responses_SourceSosAlertId"
+    ON race_monitoring.emergency_responses ("SourceSosAlertId");
+CREATE INDEX IF NOT EXISTS "IX_emergency_responses_Status_Priority"
+    ON race_monitoring.emergency_responses ("Status", "Priority");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.emergency_assignments (
+    "Id"                  uuid PRIMARY KEY,
+    "EmergencyResponseId" uuid NOT NULL,
+    "EmergencyResourceId" uuid NOT NULL,
+    "AssignedAtUtc"       timestamptz NOT NULL,
+    "AcceptedAtUtc"       timestamptz NULL,
+    "ArrivedAtUtc"        timestamptz NULL,
+    "CompletedAtUtc"      timestamptz NULL,
+    "Status"              varchar(32) NOT NULL,
+    "Notes"               text NULL,
+    CONSTRAINT "FK_emg_assignments_resources_ResourceId"
+        FOREIGN KEY ("EmergencyResourceId") REFERENCES race_monitoring.emergency_resources ("Id") ON DELETE RESTRICT,
+    CONSTRAINT "FK_emg_assignments_responses_ResponseId"
+        FOREIGN KEY ("EmergencyResponseId") REFERENCES race_monitoring.emergency_responses ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_emergency_assignments_EmergencyResourceId_AssignedAtUtc"
+    ON race_monitoring.emergency_assignments ("EmergencyResourceId", "AssignedAtUtc");
+CREATE INDEX IF NOT EXISTS "IX_emergency_assignments_EmergencyResponseId_AssignedAtUtc"
+    ON race_monitoring.emergency_assignments ("EmergencyResponseId", "AssignedAtUtc");
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_emergency_assignments_ResponseId_ResourceId"
+    ON race_monitoring.emergency_assignments ("EmergencyResponseId", "EmergencyResourceId");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.aid_stations (
+    "Id"           uuid PRIMARY KEY,
+    "EventId"      uuid NOT NULL,
+    "CheckpointId" uuid NULL,
+    "Name"         varchar(200) NOT NULL,
+    "Latitude"     double precision NOT NULL,
+    "Longitude"    double precision NOT NULL,
+    "Status"       varchar(32) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS "IX_aid_stations_EventId"
+    ON race_monitoring.aid_stations ("EventId");
+CREATE INDEX IF NOT EXISTS "IX_aid_stations_CheckpointId"
+    ON race_monitoring.aid_stations ("CheckpointId");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.supply_items (
+    "Id"          uuid PRIMARY KEY,
+    "Name"        varchar(200) NOT NULL,
+    "Unit"        varchar(30) NOT NULL,
+    "Description" text NULL,
+    "IsActive"    boolean NOT NULL DEFAULT true
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_supply_items_Name_Unit"
+    ON race_monitoring.supply_items ("Name", "Unit");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.aid_station_inventories (
+    "Id"                uuid PRIMARY KEY,
+    "AidStationId"      uuid NOT NULL,
+    "SupplyItemId"      uuid NOT NULL,
+    "QuantityAvailable" numeric(18,3) NOT NULL,
+    "LastUpdatedAtUtc"  timestamptz NOT NULL,
+    CONSTRAINT "CK_aid_station_inventories_QuantityAvailable" CHECK ("QuantityAvailable" >= 0),
+    CONSTRAINT "FK_aid_station_inventories_aid_stations_AidStationId"
+        FOREIGN KEY ("AidStationId") REFERENCES race_monitoring.aid_stations ("Id") ON DELETE RESTRICT,
+    CONSTRAINT "FK_aid_station_inventories_supply_items_SupplyItemId"
+        FOREIGN KEY ("SupplyItemId") REFERENCES race_monitoring.supply_items ("Id") ON DELETE RESTRICT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_aid_station_inventories_AidStationId_SupplyItemId"
+    ON race_monitoring.aid_station_inventories ("AidStationId", "SupplyItemId");
+CREATE INDEX IF NOT EXISTS "IX_aid_station_inventories_SupplyItemId"
+    ON race_monitoring.aid_station_inventories ("SupplyItemId");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.aid_station_supply_transactions (
+    "Id"                    uuid PRIMARY KEY,
+    "AidStationInventoryId" uuid NOT NULL,
+    "TransactionType"       varchar(32) NOT NULL,
+    "Quantity"              numeric(18,3) NOT NULL,
+    "OccurredAtUtc"         timestamptz NOT NULL,
+    "RecordedBy"            uuid NULL,
+    "Notes"                 text NULL,
+    CONSTRAINT "CK_aid_station_supply_transactions_Quantity" CHECK ("Quantity" > 0),
+    CONSTRAINT "FK_aid_supply_tx_inventories_InventoryId"
+        FOREIGN KEY ("AidStationInventoryId") REFERENCES race_monitoring.aid_station_inventories ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_aid_supply_tx_InventoryId_OccurredAtUtc"
+    ON race_monitoring.aid_station_supply_transactions ("AidStationInventoryId", "OccurredAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.contingency_plans (
+    "Id"               uuid PRIMARY KEY,
+    "EventId"          uuid NOT NULL,
+    "PlanType"         varchar(32) NOT NULL,
+    "Name"             varchar(200) NOT NULL,
+    "Description"      text NOT NULL,
+    "TriggerCondition" text NULL,
+    "Status"           varchar(32) NOT NULL,
+    "CreatedAtUtc"     timestamptz NOT NULL,
+    "CreatedBy"        uuid NULL
+);
+
+CREATE INDEX IF NOT EXISTS "IX_contingency_plans_EventId_Status"
+    ON race_monitoring.contingency_plans ("EventId", "Status");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.contingency_incidents (
+    "Id"                 uuid PRIMARY KEY,
+    "EventId"            uuid NOT NULL,
+    "ContingencyPlanId"  uuid NULL,
+    "IncidentType"       varchar(32) NOT NULL,
+    "Severity"           varchar(32) NOT NULL,
+    "Description"        text NOT NULL,
+    "DetectedAtUtc"      timestamptz NOT NULL,
+    "Status"             varchar(32) NOT NULL,
+    "ResolvedAtUtc"      timestamptz NULL,
+    CONSTRAINT "FK_contingency_incidents_contingency_plans_ContingencyPlanId"
+        FOREIGN KEY ("ContingencyPlanId") REFERENCES race_monitoring.contingency_plans ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_contingency_incidents_EventId_DetectedAtUtc"
+    ON race_monitoring.contingency_incidents ("EventId", "DetectedAtUtc");
+CREATE INDEX IF NOT EXISTS "IX_contingency_incidents_ContingencyPlanId"
+    ON race_monitoring.contingency_incidents ("ContingencyPlanId");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.emergency_decisions (
+    "Id"                    uuid PRIMARY KEY,
+    "ContingencyIncidentId" uuid NOT NULL,
+    "DecisionType"          varchar(32) NOT NULL,
+    "DecisionDetails"       text NOT NULL,
+    "DecidedBy"             uuid NOT NULL,
+    "DecidedAtUtc"          timestamptz NOT NULL,
+    "EffectiveAtUtc"        timestamptz NULL,
+    CONSTRAINT "FK_emg_decisions_incidents_IncidentId"
+        FOREIGN KEY ("ContingencyIncidentId") REFERENCES race_monitoring.contingency_incidents ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_emergency_decisions_ContingencyIncidentId_DecidedAtUtc"
+    ON race_monitoring.emergency_decisions ("ContingencyIncidentId", "DecidedAtUtc");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.broom_wagons (
+    "Id"          uuid PRIMARY KEY,
+    "EventId"     uuid NOT NULL,
+    "VehicleCode" varchar(50) NOT NULL,
+    "VehicleType" varchar(50) NULL,
+    "Status"      varchar(32) NOT NULL,
+    "Notes"       text NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_broom_wagons_EventId_VehicleCode"
+    ON race_monitoring.broom_wagons ("EventId", "VehicleCode");
+
+CREATE TABLE IF NOT EXISTS race_monitoring.broom_wagon_checkpoint_logs (
+    "Id"           uuid PRIMARY KEY,
+    "BroomWagonId" uuid NOT NULL,
+    "CheckpointId" uuid NOT NULL,
+    "RecordedAtUtc" timestamptz NOT NULL,
+    "ScanMethod"   varchar(20) NOT NULL,
+    "RecordedBy"   uuid NULL,
+    "Notes"        text NULL,
+    CONSTRAINT "FK_broom_wagon_checkpoint_logs_broom_wagons_BroomWagonId"
+        FOREIGN KEY ("BroomWagonId") REFERENCES race_monitoring.broom_wagons ("Id") ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS "IX_broom_wagon_checkpoint_logs_BroomWagonId_RecordedAtUtc"
+    ON race_monitoring.broom_wagon_checkpoint_logs ("BroomWagonId", "RecordedAtUtc");
+CREATE INDEX IF NOT EXISTS "IX_broom_wagon_checkpoint_logs_CheckpointId_RecordedAtUtc"
+    ON race_monitoring.broom_wagon_checkpoint_logs ("CheckpointId", "RecordedAtUtc");
+
+-- -----------------------------------------------------------------------------
 -- Stamp EF history (để `dotnet run` MigrateAsync không tạo lại bảng)
 -- -----------------------------------------------------------------------------
 INSERT INTO iam."__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES
@@ -347,6 +636,13 @@ INSERT INTO payment."__EFMigrationsHistory" ("MigrationId", "ProductVersion") VA
     ('20261005104409_InitialPayment', '10.0.12')
 ON CONFLICT ("MigrationId") DO NOTHING;
 
+INSERT INTO race_monitoring."__EFMigrationsHistory" ("MigrationId", "ProductVersion") VALUES
+    ('20261014013255_InitialRaceMonitoring', '10.0.12'),
+    ('20261026052256_AddCoordinatorEntities', '10.0.12'),
+    ('20261026094939_DropRaceMonitoringSosAlerts', '10.0.12'),
+    ('20261027044213_AddEmergencyResponseCancellationAndAssignmentUniqueness', '10.0.12')
+ON CONFLICT ("MigrationId") DO NOTHING;
+
 
 -- ========== SEED ==========
 
@@ -356,12 +652,12 @@ BEGIN;
 -- Roles (fixed GUIDs = IamDataSeeder)
 -- -----------------------------------------------------------------------------
 INSERT INTO iam.roles (role_id, role_name, description) VALUES
-    ('11111111-1111-1111-1111-111111111111', 'Admin', 'Quản trị hệ thống RaceDay'),
+    ('11111111-1111-1111-1111-111111111111', 'Admin', 'Quản trị hệ thống / tài khoản RaceDay'),
     ('22222222-2222-2222-2222-222222222222', 'User', 'Người dùng / vận động viên'),
     ('33333333-3333-3333-3333-333333333333', 'Organizer', 'Ban tổ chức sự kiện'),
-    ('44444444-4444-4444-4444-444444444444', 'Coordinator', 'Điều phối viên giải'),
+    ('44444444-4444-4444-4444-444444444444', 'Race-staff', 'Nhân sự hiện trường (gộp Coordinator + Volunteer)'),
     ('55555555-5555-5555-5555-555555555555', 'Photographer', 'Nhiếp ảnh giải'),
-    ('66666666-6666-6666-6666-666666666666', 'Volunteer', 'Tình nguyện viên giải')
+    ('77777777-7777-7777-7777-777777777777', 'Manager', 'Duyệt giải + cấu hình gói / promo')
 ON CONFLICT (role_id) DO NOTHING;
 
 -- -----------------------------------------------------------------------------
@@ -414,7 +710,15 @@ INSERT INTO iam.users (
     'Phạm Minh Dũng', '0905000005', '2000-11-25', 1, 2, false,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
 ),
--- Coordinator ×4
+(
+    'f7777777-7777-4777-8777-777777777777',
+    'manager@raceday.vn', 'manager',
+    '77777777-7777-7777-7777-777777777777',
+    'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+    'Trần Quản Lý Gói', '0907000007', '1992-04-12', 2, 1, true,
+    TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
+),
+-- Race-staff (legacy coord emails) ×4
 (
     'a1444444-0001-4000-8000-000000000001',
     'coord1@raceday.vn', 'coord1',
@@ -480,11 +784,11 @@ INSERT INTO iam.users (
     'Bùi Ảnh Tư', '0912000004', '1998-10-03', 2, 1, true,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
 ),
--- Volunteer ×4
+-- Race-staff (legacy vol emails) ×4
 (
     'a1666666-0001-4000-8000-000000000001',
     'vol1@raceday.vn', 'vol1',
-    '66666666-6666-6666-6666-666666666666',
+    '44444444-4444-4444-4444-444444444444',
     'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
     'Ngô Tình Nguyện Một', '0913000001', '2001-03-12', 1, 1, true,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
@@ -492,7 +796,7 @@ INSERT INTO iam.users (
 (
     'a1666666-0002-4000-8000-000000000002',
     'vol2@raceday.vn', 'vol2',
-    '66666666-6666-6666-6666-666666666666',
+    '44444444-4444-4444-4444-444444444444',
     'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
     'Đỗ Tình Nguyện Hai', '0913000002', '2000-05-21', 2, 1, true,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
@@ -500,7 +804,7 @@ INSERT INTO iam.users (
 (
     'a1666666-0003-4000-8000-000000000003',
     'vol3@raceday.vn', 'vol3',
-    '66666666-6666-6666-6666-666666666666',
+    '44444444-4444-4444-4444-444444444444',
     'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
     'Mai Tình Nguyện Ba', '0913000003', '1999-08-09', 1, 1, true,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
@@ -508,7 +812,7 @@ INSERT INTO iam.users (
 (
     'a1666666-0004-4000-8000-000000000004',
     'vol4@raceday.vn', 'vol4',
-    '66666666-6666-6666-6666-666666666666',
+    '44444444-4444-4444-4444-444444444444',
     'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
     'Lý Tình Nguyện Tư', '0913000004', '2002-11-17', 2, 1, true,
     TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00'
@@ -524,6 +828,12 @@ INSERT INTO iam.profiles (
     'Tài khoản quản trị RaceDay', 'admin@raceday.vn', '0901000001',
     2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'
 ),
+(
+    'f7777777-7777-4777-8777-777777777777',
+    'Manager seed — duyệt giải / catalog gói', 'manager@raceday.vn', '0907000007',
+    2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'
+    )
+,
 (
     'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
     'Vận động viên phong trào TP.HCM', 'an.nguyen@raceday.vn', '0902000002',
@@ -544,18 +854,18 @@ INSERT INTO iam.profiles (
     'Hồ sơ chờ xác minh email', 'dung.pham@raceday.vn', '0905000005',
     0, NULL, NULL
 ),
-('a1444444-0001-4000-8000-000000000001', 'Coordinator seed #1', 'coord1@raceday.vn', '0911000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1444444-0002-4000-8000-000000000002', 'Coordinator seed #2', 'coord2@raceday.vn', '0911000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1444444-0003-4000-8000-000000000003', 'Coordinator seed #3', 'coord3@raceday.vn', '0911000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1444444-0004-4000-8000-000000000004', 'Coordinator seed #4', 'coord4@raceday.vn', '0911000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0001-4000-8000-000000000001', 'Race-staff seed #1', 'coord1@raceday.vn', '0911000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0002-4000-8000-000000000002', 'Race-staff seed #2', 'coord2@raceday.vn', '0911000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0003-4000-8000-000000000003', 'Race-staff seed #3', 'coord3@raceday.vn', '0911000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0004-4000-8000-000000000004', 'Race-staff seed #4', 'coord4@raceday.vn', '0911000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
 ('a1555555-0001-4000-8000-000000000001', 'Photographer seed #1', 'photo1@raceday.vn', '0912000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
 ('a1555555-0002-4000-8000-000000000002', 'Photographer seed #2', 'photo2@raceday.vn', '0912000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
 ('a1555555-0003-4000-8000-000000000003', 'Photographer seed #3', 'photo3@raceday.vn', '0912000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
 ('a1555555-0004-4000-8000-000000000004', 'Photographer seed #4', 'photo4@raceday.vn', '0912000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1666666-0001-4000-8000-000000000001', 'Volunteer seed #1', 'vol1@raceday.vn', '0913000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1666666-0002-4000-8000-000000000002', 'Volunteer seed #2', 'vol2@raceday.vn', '0913000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1666666-0003-4000-8000-000000000003', 'Volunteer seed #3', 'vol3@raceday.vn', '0913000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
-('a1666666-0004-4000-8000-000000000004', 'Volunteer seed #4', 'vol4@raceday.vn', '0913000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system')
+('a1666666-0001-4000-8000-000000000001', 'Race-staff seed #1', 'vol1@raceday.vn', '0913000001', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1666666-0002-4000-8000-000000000002', 'Race-staff seed #2', 'vol2@raceday.vn', '0913000002', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1666666-0003-4000-8000-000000000003', 'Race-staff seed #3', 'vol3@raceday.vn', '0913000003', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1666666-0004-4000-8000-000000000004', 'Race-staff seed #4', 'vol4@raceday.vn', '0913000004', 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system')
 ON CONFLICT (user_id) DO NOTHING;
 
 -- -----------------------------------------------------------------------------
@@ -706,54 +1016,67 @@ ON CONFLICT ("Id") DO NOTHING;
 -- -----------------------------------------------------------------------------
 INSERT INTO event.event_distances (
     "Id", "EventId", "Type", "Name", "DistanceKm",
-    "ElevationGainM", "MaxElevationM", "MinElevationM",
     "Capacity", "RegisteredCount", "Price", "Currency", "Color",
-    start_name, start_lat, start_lng, finish_name, finish_lat, finish_lng,
     "RouteGeometryJson"
 ) VALUES
 -- HCMC Night
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
- '5K', '5K Night Fun', 5, 15, 10, 0, 2000, 1, 350000, 'VND', '#22C55E',
- 'Start NH', 10.7731, 106.7031, 'Finish NH', 10.7731, 106.7031, '{}'::jsonb),
+ '5K', '5K Night Fun', 5, 2000, 1, 350000, 'VND', '#22C55E', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc2', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
- '10K', '10K City Lights', 10, 30, 18, 0, 1800, 0, 550000, 'VND', '#0EA5E9',
- 'Start NH', 10.7731, 106.7031, 'Finish NH', 10.7760, 106.7010, '{}'::jsonb),
+ '10K', '10K City Lights', 10, 1800, 0, 550000, 'VND', '#0EA5E9', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc3', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
- '21K', '21K Half Night', 21, 60, 25, 0, 1200, 0, 950000, 'VND', '#F59E0B',
- 'Start NH', 10.7731, 106.7031, 'Finish NH', 10.7800, 106.7000, '{}'::jsonb),
+ '21K', '21K Half Night', 21, 1200, 0, 950000, 'VND', '#F59E0B', '{}'::jsonb),
 -- Hanoi
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbd1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa4',
- '21K', 'Lakeside Half', 21.1, 80, 20, 5, 1500, 0, 790000, 'VND', '#8B5CF6',
- 'Hồ Tây Start', 21.0583, 105.8229, 'Hồ Tây Finish', 21.0583, 105.8229, '{}'::jsonb),
+ '21K', 'Lakeside Half', 21.1, 1500, 0, 790000, 'VND', '#8B5CF6', '{}'::jsonb),
 -- Nha Trang
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbe1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa5',
- '10K', 'Ocean 10K', 10, 120, 80, 0, 1000, 0, 420000, 'VND', '#06B6D4',
- 'Start NT', 12.2388, 109.1967, 'Finish NT', 12.2450, 109.1900, '{}'::jsonb),
+ '10K', 'Ocean 10K', 10, 1000, 0, 420000, 'VND', '#06B6D4', '{}'::jsonb),
 -- Quy Nhơn (EventDataSeeder IDs — 5K/10K/21K/42K)
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '5K', 'Fun Run 5K', 5, 15, 12, 0, 4000, 0, 450000, 'VND', '#22c55e',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
+ '5K', 'Fun Run 5K', 5, 4000, 0, 450000, 'VND', '#22c55e', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '10K', 'City 10K', 10, 30, 18, 0, 3500, 0, 650000, 'VND', '#0ea5e9',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.7855, 109.221, '{}'::jsonb),
+ '10K', 'City 10K', 10, 3500, 0, 650000, 'VND', '#0ea5e9', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb4', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '21K', 'Half Marathon', 21.1, 80, 35, 0, 2500, 0, 990000, 'VND', '#F59E0B',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
+ '21K', 'Half Marathon', 21.1, 2500, 0, 990000, 'VND', '#F59E0B', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb5', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '42K', 'Full Marathon', 42.195, 150, 40, 0, 2000, 0, 1450000, 'VND', '#EF4444',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
+ '42K', 'Full Marathon', 42.195, 2000, 0, 1450000, 'VND', '#EF4444', '{}'::jsonb),
 -- Sa Pa
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb3', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
- '21K', 'Cloud Valley', 21, 980, 2150, 1450, 800, 0, 900000, 'VND', '#F59E0B',
- 'Sa Pa Square', 22.3364, 103.8438, 'Sa Pa Square', 22.3364, 103.8438, '{}'::jsonb),
+ '21K', 'Cloud Valley', 21, 800, 0, 900000, 'VND', '#F59E0B', '{}'::jsonb),
 -- Mekong
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbf1', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa6',
- '10K', 'Delta 10K', 10, 10, 5, 0, 800, 0, 299000, 'VND', '#84CC16',
- 'Start CT', 10.0452, 105.7469, 'Finish CT', 10.0500, 105.7500, '{}'::jsonb),
+ '10K', 'Delta 10K', 10, 800, 0, 299000, 'VND', '#84CC16', '{}'::jsonb),
 -- Highlands draft
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbf2', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa7',
- '42K', 'Ultra Highland', 42, 1800, 1600, 900, 400, 0, 1200000, 'VND', '#EF4444',
- 'Start Đà Lạt', 11.9404, 108.4583, 'Finish Đà Lạt', 11.9404, 108.4583, '{}'::jsonb)
+ '42K', 'Ultra Highland', 42, 400, 0, 1200000, 'VND', '#EF4444', '{}'::jsonb)
+ON CONFLICT ("Id") DO NOTHING;
+
+-- -----------------------------------------------------------------------------
+-- Checkpoints cho 3 cự ly có registration seed (HCMC 5K, Đà Nẵng 10K, Hà Nội 21K)
+-- Type = tên enum CheckpointType
+-- -----------------------------------------------------------------------------
+INSERT INTO event.event_checkpoints (
+    "Id", "DistanceId", "ExternalId", "Name", "Km", "Lat", "Lng", "Type", "Cutoff", "Elevation", "SortOrder"
+) VALUES
+('55555555-cccc-4ccc-8ccc-ccccccccccc1', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc1',
+ 'CP-HCMC-START', 'Start Nguyễn Huệ', 0, 10.7731, 106.7031, 'Start', NULL, 5, 0),
+('55555555-cccc-4ccc-8ccc-ccccccccccc2', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc1',
+ 'CP-HCMC-AID', 'Aid 2.5K', 2.5, 10.7748, 106.7044, 'Aid', NULL, 6, 1),
+('55555555-cccc-4ccc-8ccc-ccccccccccc3', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbc1',
+ 'CP-HCMC-FIN', 'Finish Nguyễn Huệ', 5, 10.7762, 106.7018, 'Finish', '19:30', 5, 2),
+('55555555-cccc-4ccc-8ccc-ccccccccccc4', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+ 'CP-DN-START', 'Start Mỹ Khê', 0, 16.05995, 108.24909, 'Start', NULL, 4, 0),
+('55555555-cccc-4ccc-8ccc-ccccccccccc5', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+ 'CP-DN-WATER', 'Water 5K', 5, 16.0680, 108.2580, 'Water', NULL, 8, 1),
+('55555555-cccc-4ccc-8ccc-ccccccccccc6', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2',
+ 'CP-DN-FIN', 'Finish Sơn Trà', 10, 16.0800, 108.2700, 'Finish', '08:30', 12, 2),
+('55555555-cccc-4ccc-8ccc-ccccccccccc7', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbd1',
+ 'CP-HN-START', 'Start Hồ Tây', 0, 21.0583, 105.8229, 'Start', NULL, 10, 0),
+('55555555-cccc-4ccc-8ccc-ccccccccccc8', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbd1',
+ 'CP-HN-AID', 'Aid 10K', 10, 21.0680, 105.8300, 'Aid', NULL, 15, 1),
+('55555555-cccc-4ccc-8ccc-ccccccccccc9', '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbd1',
+ 'CP-HN-FIN', 'Finish Hồ Tây', 21.1, 21.0583, 105.8229, 'Finish', '09:00', 10, 2)
 ON CONFLICT ("Id") DO NOTHING;
 
 -- -----------------------------------------------------------------------------
@@ -790,6 +1113,8 @@ ON CONFLICT ("Id") DO NOTHING;
 -- -----------------------------------------------------------------------------
 -- Sample registrations (không trùng EventId+DistanceId+UserId active)
 -- An → HCMC 5K Confirmed (đã trả + duyệt)
+-- Bình → Đà Nẵng 10K PendingPayment (test checkout)
+-- An → Hà Nội 21K Confirmed (registration thứ 3 cho RaceMonitoring seed)
 -- Bình → Quy Nhơn 10K PendingPayment (test checkout)
 -- -----------------------------------------------------------------------------
 INSERT INTO event.event_registrations (
@@ -835,6 +1160,21 @@ INSERT INTO event.event_registrations (
     true, TIMESTAMPTZ '2026-02-05 09:00:00+00',
     NULL,
     TIMESTAMPTZ '2026-02-05 09:00:00+00', TIMESTAMPTZ '2026-02-05 09:00:00+00'
+),
+(
+    '44444444-dddd-4ddd-8ddd-ddddddddddd3',
+    '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa4',
+    '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbd1',
+    'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    'Confirmed',
+    'Nguyễn Văn An', 'an.nguyen@raceday.vn', '0902000002',
+    DATE '1998-05-20', 'Male', 172, 68, 'O',
+    'Nguyễn Thị Lan', '0902111111',
+    'Tee', 'M', 'Black',
+    '["none"]'::jsonb, 'health-an.pdf', 'https://example.com/demo/health-an.pdf',
+    true, TIMESTAMPTZ '2026-03-01 08:00:00+00',
+    '2101',
+    TIMESTAMPTZ '2026-03-01 08:00:00+00', TIMESTAMPTZ '2026-03-02 08:00:00+00'
 )
 ON CONFLICT ("Id") DO NOTHING;
 
@@ -924,17 +1264,13 @@ WHERE "Id" = '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1';
 
 INSERT INTO event.event_distances (
     "Id", "EventId", "Type", "Name", "DistanceKm",
-    "ElevationGainM", "MaxElevationM", "MinElevationM",
     "Capacity", "RegisteredCount", "Price", "Currency", "Color",
-    start_name, start_lat, start_lng, finish_name, finish_lat, finish_lng,
     "RouteGeometryJson"
 ) VALUES
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb4', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '21K', 'Half Marathon', 21.1, 80, 35, 0, 2500, 0, 990000, 'VND', '#F59E0B',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb),
+ '21K', 'Half Marathon', 21.1, 2500, 0, 990000, 'VND', '#F59E0B', '{}'::jsonb),
 ('22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb5', '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
- '42K', 'Full Marathon', 42.195, 150, 40, 0, 2000, 0, 1450000, 'VND', '#EF4444',
- 'Start Quy Nhơn', 13.782967, 109.219663, 'Finish Quy Nhơn', 13.782967, 109.219663, '{}'::jsonb)
+ '42K', 'Full Marathon', 42.195, 2000, 0, 1450000, 'VND', '#EF4444', '{}'::jsonb)
 ON CONFLICT ("Id") DO NOTHING;
 
 UPDATE event.event_distances SET
@@ -945,9 +1281,7 @@ UPDATE event.event_distances SET
     "Price" = CASE "Id"
         WHEN '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1' THEN 450000
         WHEN '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb2' THEN 650000
-        ELSE "Price" END,
-    start_name = 'Start Quy Nhơn', start_lat = 13.782967, start_lng = 109.219663,
-    finish_name = 'Finish Quy Nhơn', finish_lat = 13.782967, finish_lng = 109.219663
+        ELSE "Price" END
 WHERE "EventId" = '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaa1'
   AND "Id" IN (
     '22222222-bbbb-4bbb-8bbb-bbbbbbbbbbb1',

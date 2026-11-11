@@ -83,6 +83,11 @@ public sealed class EventDistance : Entity
     /// <summary>Số kết thúc dải BIB (1–9999, ≥ start).</summary>
     public int? BibRangeEnd { get; private set; }
 
+    /// <summary>Organizer đã công bố BXH cự ly này cho runner/public.</summary>
+    public bool ResultsPublished { get; private set; }
+
+    public DateTime? ResultsPublishedAtUtc { get; private set; }
+
     public IReadOnlyCollection<EventCheckpoint> Checkpoints => _checkpoints.AsReadOnly();
 
     public bool HasBibRange =>
@@ -353,6 +358,18 @@ public sealed class EventDistance : Entity
         BibPrefix = normalizedPrefix;
         BibRangeStart = rangeStart;
         BibRangeEnd = rangeEnd;
+    }
+
+    public void PublishResults(DateTime utcNow)
+    {
+        ResultsPublished = true;
+        ResultsPublishedAtUtc = utcNow;
+    }
+
+    public void UnpublishResults()
+    {
+        ResultsPublished = false;
+        ResultsPublishedAtUtc = null;
     }
 
     /// <summary>Ghép prefix + số 4 chữ số (1 → 0001).</summary>

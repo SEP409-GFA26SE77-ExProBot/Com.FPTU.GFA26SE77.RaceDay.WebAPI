@@ -70,6 +70,9 @@ services:
       Photo__Ocr__WorkerIdleDelaySeconds: "5"
       # 0 = không sleep giữa wave OCR
       Photo__Ocr__WorkerBusyDelaySeconds: "0"
+      # Organizer race simulation demo (REST + SignalR hub)
+      Simulation__Enabled: "true"
+      Simulation__StartTimeZone: "UTC"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

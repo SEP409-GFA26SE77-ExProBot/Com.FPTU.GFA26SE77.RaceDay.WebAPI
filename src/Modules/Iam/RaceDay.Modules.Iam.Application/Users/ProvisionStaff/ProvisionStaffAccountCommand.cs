@@ -53,24 +53,33 @@ public sealed class ProvisionStaffAccountCommandHandler(
 {
     private static readonly HashSet<string> AllowedRoles = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Coordinator", "Photographer", "Volunteer"
+        "Race-staff", "Photographer",
+        // legacy aliases (map sang Race-staff)
+        "Coordinator", "Volunteer"
     };
 
     public async Task<ProvisionStaffAccountResult> Handle(
         ProvisionStaffAccountCommand request,
         CancellationToken cancellationToken)
     {
-        var roleName = request.StaffRoleName.Trim();
-        if (!AllowedRoles.Contains(roleName))
+        var requested = request.StaffRoleName.Trim();
+        if (!AllowedRoles.Contains(requested))
         {
-            throw new DomainException("Role nhân sự không hợp lệ.");
+            throw new DomainException("Role nhân sự không hợp lệ (Race-staff|Photographer).");
         }
+
+        var roleName = requested.Equals("Coordinator", StringComparison.OrdinalIgnoreCase)
+            || requested.Equals("Volunteer", StringComparison.OrdinalIgnoreCase)
+            ? "Race-staff"
+            : (requested.Equals("Race-staff", StringComparison.OrdinalIgnoreCase) ? "Race-staff" : "Photographer");
 
         var role = await roles.GetByNameAsync(roleName, cancellationToken)
             ?? throw new DomainException($"Role {roleName} chưa được seed.");
 
         var notifyEmail = request.NotifyEmail.Trim().ToLowerInvariant();
-        var rolePrefix = roleName.ToLowerInvariant(); // photographer | coordinator | volunteer
+        var rolePrefix = roleName.Equals("Race-staff", StringComparison.OrdinalIgnoreCase)
+            ? "racestaff"
+            : "photographer";
         var username = await AllocateUsernameAsync(rolePrefix, cancellationToken);
         // Email IAM gen sẵn — không dùng Gmail cá nhân (tránh đụng account Runner)
         var accountEmail = await AllocateAccountEmailAsync(rolePrefix, username, cancellationToken);

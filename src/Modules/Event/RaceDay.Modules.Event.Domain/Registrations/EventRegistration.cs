@@ -10,6 +10,7 @@ public sealed class EventRegistration : AggregateRoot
     public Guid DistanceId { get; private set; }
     public Guid UserId { get; private set; }
     public RegistrationStatus Status { get; private set; } = RegistrationStatus.PendingPayment;
+    public RaceStatus RaceStatus { get; private set; } = RaceStatus.NotStarted;
     public string FullName { get; private set; } = string.Empty;
     public string Email { get; private set; } = string.Empty;
     public string Phone { get; private set; } = string.Empty;
@@ -147,6 +148,50 @@ public sealed class EventRegistration : AggregateRoot
         Touch();
     }
 
+    /// <summary>
+    /// Có bệnh lý đặc biệt cần BTC duyệt tay.
+    /// <c>[]</c>, rỗng, hoặc chỉ <c>none</c> → không bệnh lý → đủ điều kiện auto-approve.
+    /// </summary>
+    public bool HasSpecialMedicalConditions()
+    {
+        var raw = (MedicalCodesJson ?? string.Empty).Trim();
+        if (raw.Length == 0 || raw == "[]" || raw == "null")
+        {
+            return false;
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Array)
+            {
+                return !string.Equals(raw, "none", StringComparison.OrdinalIgnoreCase);
+            }
+
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                var code = el.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? el.GetString()?.Trim()
+                    : el.ToString().Trim();
+                if (string.IsNullOrEmpty(code))
+                {
+                    continue;
+                }
+
+                if (!code.Equals("none", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return !raw.Equals("none", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     public void Confirm(string? bibNumber = null)
     {
         if (Status is not (RegistrationStatus.PendingApproval or RegistrationStatus.PendingPayment))
@@ -179,7 +224,8 @@ public sealed class EventRegistration : AggregateRoot
     }
 
     /// <summary>
-    /// VĐV đã thanh toán bị từ chối → sửa hồ sơ và nộp lại chờ duyệt (không tạo đơn/TT mới).
+    /// Legacy: chỉ còn cho đơn Rejected cũ chưa bị auto-cancel sau refund.
+    /// Policy hiện tại: reject → hủy slot + hoàn theo ngày → Cancelled (không nộp lại trên đơn cũ).
     /// </summary>
     public void UpdateProfileAndResubmit(
         string fullName,
@@ -251,11 +297,15 @@ public sealed class EventRegistration : AggregateRoot
         Touch();
     }
 
-    /// <summary>After paid refund (runner request or post-reject cleanup) — free the registration.</summary>
+    /// <summary>
+    /// After paid refund — hủy ĐK, xóa BIB (nhả số cho VĐV khác), slot đã ReleaseSlotAsync riêng.
+    /// </summary>
     public void MarkCancelledAfterRefund()
     {
         if (Status is RegistrationStatus.Cancelled)
         {
+            BibNumber = null;
+            Touch();
             return;
         }
 
@@ -265,6 +315,7 @@ public sealed class EventRegistration : AggregateRoot
         }
 
         Status = RegistrationStatus.Cancelled;
+        BibNumber = null;
         Touch();
     }
 
@@ -305,6 +356,7 @@ public sealed class EventRegistration : AggregateRoot
     /// </summary>
     public bool Finish(DateTime finishedAtUtc, long resultSeconds)
     {
+        EnsureRaceNotStopped();
         if (Status == RegistrationStatus.Finished)
         {
             return false;
@@ -328,11 +380,53 @@ public sealed class EventRegistration : AggregateRoot
         FinishedAtUtc = finishedAtUtc;
         ResultSeconds = resultSeconds;
         Status = RegistrationStatus.Finished;
+        RaceStatus = RaceStatus.Finished;
         Touch();
         return true;
     }
+
+    public void SetLeaderboardResult(DateTime startedAtUtc, DateTime finishedAtUtc, long resultSeconds)
+    {
+        if (Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
+        {
+            throw new DomainException("Chỉ VĐV đã được duyệt mới có thể có kết quả.");
+        }
+
+        if (resultSeconds < 0)
+        {
+            throw new DomainException("Kết quả finish không hợp lệ.");
+        }
+
+        if (finishedAtUtc.Kind != DateTimeKind.Utc)
+        {
+            finishedAtUtc = DateTime.SpecifyKind(finishedAtUtc, DateTimeKind.Utc);
+        }
+
+        StartedAtUtc = DateTime.SpecifyKind(startedAtUtc, DateTimeKind.Utc);
+        FinishedAtUtc = finishedAtUtc;
+        ResultSeconds = resultSeconds;
+        Status = RegistrationStatus.Finished;
+        RaceStatus = RaceStatus.Finished;
+        Touch();
+    }
+
+    public void RemoveLeaderboardResult()
+    {
+        if (Status != RegistrationStatus.Finished || !ResultSeconds.HasValue)
+        {
+            throw new DomainException("VĐV chưa có kết quả trên bảng xếp hạng.");
+        }
+
+        FinishedAtUtc = null;
+        ResultSeconds = null;
+        Status = RegistrationStatus.Confirmed;
+        RaceStatus = StartedAtUtc.HasValue ? RaceStatus.Running : RaceStatus.NotStarted;
+        Touch();
+    }
+
     public bool Start(DateTime startedAtUtc)
     {
+        EnsureRaceNotStopped();
         if (Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
         {
             throw new DomainException("Chỉ VĐV confirmed mới có thể ghi nhận xuất phát.");
@@ -344,15 +438,56 @@ public sealed class EventRegistration : AggregateRoot
             return false;
         }
 
+        if (RaceStatus == RaceStatus.Finished)
+        {
+            throw new DomainException("Không thể ghi nhận xuất phát sau khi VĐV đã hoàn thành.");
+        }
+
         if (startedAtUtc.Kind != DateTimeKind.Utc)
         {
             startedAtUtc = DateTime.SpecifyKind(startedAtUtc, DateTimeKind.Utc);
         }
 
         StartedAtUtc = startedAtUtc;
+        RaceStatus = RaceStatus.Running;
         Touch();
         return true;
     }
+    public RaceStatusChange ChangeRaceStatus(RaceStatus target, string reason, Guid actorId,
+        DateTime nowUtc, DateTime? scheduledStartUtc)
+    {
+        if (Status is not (RegistrationStatus.Confirmed or RegistrationStatus.Finished))
+            throw new DomainException("Chỉ đăng ký đã được duyệt mới được cập nhật trạng thái thi đấu.");
+        if (target is not (RaceStatus.DNS or RaceStatus.DNF or RaceStatus.DQ))
+            throw new DomainException("Trạng thái phải là dns, dnf hoặc dq.");
+        if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length > 1000)
+            throw new DomainException("Lý do bắt buộc và không được vượt quá 1000 ký tự.");
+        if (actorId == Guid.Empty || nowUtc.Kind != DateTimeKind.Utc)
+            throw new DomainException("Người cập nhật hoặc thời gian cập nhật không hợp lệ.");
+
+        EnsureRaceNotStopped();
+        if (target == RaceStatus.DNS && (RaceStatus != RaceStatus.NotStarted
+            || StartedAtUtc.HasValue || FinishedAtUtc.HasValue || ResultSeconds.HasValue
+            || Status != RegistrationStatus.Confirmed))
+            throw new DomainException("Chỉ VĐV chưa xuất phát và chưa có kết quả mới được đánh DNS.");
+        if (target == RaceStatus.DNS && (scheduledStartUtc is null || nowUtc < scheduledStartUtc))
+            throw new DomainException("Chỉ được đánh DNS khi đã đến giờ xuất phát của cự ly/giải.");
+        if (target == RaceStatus.DNF && (RaceStatus != RaceStatus.Running
+            || FinishedAtUtc.HasValue || Status != RegistrationStatus.Confirmed))
+            throw new DomainException("Chỉ VĐV đang chạy, chưa hoàn thành mới được đánh DNF.");
+
+        var change = RaceStatusChange.Create(Id, RaceStatus, target, reason.Trim(), actorId, nowUtc);
+        RaceStatus = target;
+        UpdatedAtUtc = nowUtc;
+        return change;
+    }
+
+    private void EnsureRaceNotStopped()
+    {
+        if (RaceStatus is RaceStatus.DNS or RaceStatus.DNF or RaceStatus.DQ)
+            throw new DomainException("VĐV đã có trạng thái DNS/DNF/DQ; không thể tiếp tục hoặc đổi quyết định.");
+    }
+
     private void Touch() => UpdatedAtUtc = DateTime.UtcNow;
 }
 

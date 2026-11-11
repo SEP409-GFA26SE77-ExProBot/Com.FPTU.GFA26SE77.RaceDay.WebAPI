@@ -17,6 +17,7 @@ public static class ApiTags
     public const string Photo = "12. Photo — Upload / OCR / search";
     public const string Host = "13. Host";
     public const string RaceMonitoring = "14. RaceMonitoring";
+    public const string Simulation = "15. Simulation — Demo giả lập";
 
     public static IReadOnlyList<(string Name, string Description)> All { get; } =
     [
@@ -33,7 +34,8 @@ public static class ApiTags
         (Device, "Wear Device Flow (RFC 8628): auth/code + auth/token; runner link/approve; SOS scope sos:create; organizer ack/resolve."),
         (Photo, "Photographer bulk-upload + OCR async (SEP_Service_Photo); runner search theo BIB; dispute. Auth: Active staff Photographer của event (JWT role không đủ)."),
         (Host, "Health / hạ tầng host."),
-        (RaceMonitoring, "Giám sát giải (scaffold). Prefix /api/v1/race-monitoring")
+        (RaceMonitoring, "Phản hồi khẩn cấp theo giải. Prefix /api/v1/race-monitoring. JWT Admin | Organizer | Coordinator và quyền trên giải."),
+        (Simulation, "Demo giả lập. Chỉ map khi Simulation__Enabled=true. Prefix /api/v1/simulation. Chủ giải hoặc Coordinator Active.")
     ];
 
     public static string SortKey(string tag) => tag switch
@@ -52,6 +54,7 @@ public static class ApiTags
         Photo => "12",
         Host => "13",
         RaceMonitoring => "14",
+        Simulation => "15",
         _ => "99"
     };
 }

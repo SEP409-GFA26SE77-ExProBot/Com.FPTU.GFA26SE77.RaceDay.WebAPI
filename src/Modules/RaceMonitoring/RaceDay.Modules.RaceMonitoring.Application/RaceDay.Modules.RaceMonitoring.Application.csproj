@@ -7,6 +7,8 @@
   <ItemGroup>
     <ProjectReference Include="..\RaceDay.Modules.RaceMonitoring.Domain\RaceDay.Modules.RaceMonitoring.Domain.csproj" />
     <ProjectReference Include="..\RaceDay.Modules.RaceMonitoring.Contracts\RaceDay.Modules.RaceMonitoring.Contracts.csproj" />
+    <ProjectReference Include="..\..\Device\RaceDay.Modules.Device.Contracts\RaceDay.Modules.Device.Contracts.csproj" />
+    <ProjectReference Include="..\..\Event\RaceDay.Modules.Event.Contracts\RaceDay.Modules.Event.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Application\RaceDay.Shared.Application.csproj" />
   </ItemGroup>
   <ItemGroup>

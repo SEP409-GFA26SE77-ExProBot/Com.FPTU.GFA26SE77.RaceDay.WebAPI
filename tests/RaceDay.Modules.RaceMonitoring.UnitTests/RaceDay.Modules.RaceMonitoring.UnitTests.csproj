@@ -20,6 +20,9 @@
     <ProjectReference Include="..\..\src\Modules\RaceMonitoring\RaceDay.Modules.RaceMonitoring.Application\RaceDay.Modules.RaceMonitoring.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\RaceMonitoring\RaceDay.Modules.RaceMonitoring.Domain\RaceDay.Modules.RaceMonitoring.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\RaceMonitoring\RaceDay.Modules.RaceMonitoring.Contracts\RaceDay.Modules.RaceMonitoring.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\RaceMonitoring\RaceDay.Modules.RaceMonitoring.Infrastructure\RaceDay.Modules.RaceMonitoring.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Device\RaceDay.Modules.Device.Contracts\RaceDay.Modules.Device.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Event\RaceDay.Modules.Event.Contracts\RaceDay.Modules.Event.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Shared\RaceDay.Shared.Domain\RaceDay.Shared.Domain.csproj" />
     <ProjectReference Include="..\..\src\Shared\RaceDay.Shared.Application\RaceDay.Shared.Application.csproj" />
   </ItemGroup>

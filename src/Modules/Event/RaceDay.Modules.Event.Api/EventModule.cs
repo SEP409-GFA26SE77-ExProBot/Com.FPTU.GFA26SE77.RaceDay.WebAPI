@@ -6,9 +6,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using RaceDay.Modules.Event.Application.Certificates;
+using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Application.Complaints;
-using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Application.Disputes;
+using RaceDay.Modules.Event.Application.Events;
 using RaceDay.Modules.Event.Application.Events.Update;
 using RaceDay.Modules.Event.Application.Packages;
 using RaceDay.Modules.Event.Application.Registrations;
@@ -17,9 +19,9 @@ using RaceDay.Modules.Event.Application.Supplies;
 using RaceDay.Modules.Event.Infrastructure;
 using RaceDay.Modules.Event.Infrastructure.Events;
 using RaceDay.Shared.Application.Abstractions;
+using RaceDay.Shared.Domain.Exceptions;
 using RaceDay.Shared.Web.Auth;
 using RaceDay.Shared.Web.OpenApi;
-using RaceDay.Modules.Event.Application.Certificates;
 
 namespace RaceDay.Modules.Event.Api;
 
@@ -69,11 +71,12 @@ public static class EventModule
             IMediator mediator,
             CancellationToken ct) =>
         {
-            // Truyền biến gender vào GetDistanceLeaderboardQuery
-            var query = new GetDistanceLeaderboardQuery(eventId, distanceId, gender, page ?? 1, pageSize ?? 50);
+            // Chỉ hiện khi organizer đã Publish kết quả cự ly.
+            var query = new GetDistanceLeaderboardQuery(
+                eventId, distanceId, gender, page ?? 1, pageSize ?? 50, RequirePublished: true);
             return Results.Ok(await mediator.Send(query, ct));
         })
-        .WithSummary("Bảng xếp hạng cự ly (Phân trang, Lọc Giới tính)");
+        .WithSummary("Bảng xếp hạng cự ly đã công bố (Phân trang, Lọc Giới tính)");
 
         // không bắt role ORGANIZER riêng (không cần duyệt tài khoản organizer).
         var organizerApi = app.MapGroup("/api/v1/event/organizer")
@@ -165,6 +168,112 @@ public static class EventModule
                 "Chủ giải / admin. Trả distances (name, km, capacity, basePrice, startAt, endAt) + ticketPricing. "
                 + "Không lẫn GET public /event/distances (filter tối giản).")
             .Produces<OrganizerDistancesDetailDto>();
+
+        organizerApi.MapGet("/{eventId:guid}/distances/{distanceId:guid}/leaderboard", async (
+            Guid eventId,
+            Guid distanceId,
+            string? gender,
+            int? page,
+            int? pageSize,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new GetDistanceLeaderboardQuery(
+                    eventId, distanceId, gender, page ?? 1, pageSize ?? 50, RequirePublished: false), ct)))
+            .WithSummary("CRUD bảng xếp hạng: đọc bảng xếp hạng theo cự ly")
+            .WithDescription("Chủ giải hoặc Admin xem bản nháp/đã ghi finish kể cả khi chưa Publish.");
+
+        organizerApi.MapGet("/{eventId:guid}/distances/{distanceId:guid}/results-publish", async (
+            Guid eventId,
+            Guid distanceId,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetDistanceResultsPublishStatusQuery(eventId, distanceId), ct)))
+            .WithSummary("Trạng thái công bố kết quả cự ly")
+            .Produces<DistanceResultsPublishStatusDto>();
+
+        organizerApi.MapPost("/{eventId:guid}/distances/{distanceId:guid}/results-publish", async (
+            Guid eventId,
+            Guid distanceId,
+            SetDistanceResultsPublishedRequest body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new SetDistanceResultsPublishedCommand(eventId, distanceId, body.Published), ct)))
+            .WithSummary("Publish / Unpublish kết quả cự ly ra BXH public")
+            .Produces<DistanceResultsPublishStatusDto>();
+
+        organizerApi.MapPost("/{eventId:guid}/distances/{distanceId:guid}/leaderboard", async (
+            Guid eventId,
+            Guid distanceId,
+            UpsertLeaderboardResultRequest body,
+            IMediator mediator,
+            CancellationToken ct) =>
+        {
+            var result = await mediator.Send(new CreateLeaderboardResultCommand(
+                eventId, distanceId, body.UserId, body.TotalTime, body.StartAtUtc, body.FinishedAtUtc), ct);
+            return Results.Created(
+                $"/api/v1/event/organizer/{eventId}/distances/{distanceId}/leaderboard/user/{body.UserId}",
+                result);
+        })
+        .WithSummary("CRUD bảng xếp hạng: thêm kết quả finish")
+        .WithDescription("Chủ giải hoặc Admin thêm thủ công kết quả cho một đăng ký đã được duyệt.")
+        .Produces<LeaderboardItemDto>(StatusCodes.Status201Created);
+
+        organizerApi.MapPut("/{eventId:guid}/distances/{distanceId}/leaderboard/user/{userId:guid}", async (
+            Guid eventId,
+            Guid distanceId,
+            Guid userId,
+            UpdateLeaderboardResultRequest body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new UpdateLeaderboardResultCommand(
+                eventId, distanceId, userId, body.TotalTime, body.StartAtUtc, body.FinishedAtUtc), ct)))
+            .WithSummary("CRUD bảng xếp hạng: cập nhật kết quả theo UserId")
+            .Produces<LeaderboardItemDto>();
+
+        organizerApi.MapDelete("/{eventId:guid}/distances/{distanceId:guid}/leaderboard/user/{userId:guid}", async (
+            Guid eventId,
+            Guid distanceId,
+            Guid userId,
+            IMediator mediator,
+            CancellationToken ct) =>
+        {
+            await mediator.Send(new DeleteLeaderboardResultCommand(eventId, distanceId, userId), ct);
+            return Results.NoContent();
+        })
+        .WithSummary("CRUD bảng xếp hạng: xóa kết quả theo UserId")
+        .WithDescription("Xóa kết quả của UserId khỏi bảng xếp hạng và đưa đăng ký về trạng thái confirmed.");
+
+        organizerApi.MapGet("/{eventId:guid}/distances/{distanceId:guid}/leaderboard/pdf", async (
+            Guid eventId,
+            Guid distanceId,
+            IMediator mediator,
+            IRaceEventRepository events,
+            ICurrentUserAccessor currentUser,
+            ILeaderboardPdfService pdfService,
+            CancellationToken ct) =>
+        {
+            var userId = currentUser.UserId;
+            var race = await events.GetByIdWithDetailsAsync(eventId, ct)
+                ?? throw new DomainException("Không tìm thấy giải.");
+            if (!currentUser.IsAdmin && race.OrganizerUserId != userId)
+            {
+                throw new DomainException("Bạn không có quyền xuất bảng xếp hạng của giải này.");
+            }
+
+            var distance = race.GetDistance(distanceId);
+            var items = await LoadAllLeaderboardItemsAsync(eventId, distanceId, mediator, ct);
+            var pdf = pdfService.GenerateLeaderboardPdf(race.Name, distance.Name, items);
+            var safeEventName = string.Join("_", race.Name.Split(Path.GetInvalidFileNameChars()));
+            var safeDistanceName = string.Join("_", distance.Name.Split(Path.GetInvalidFileNameChars()));
+            return Results.File(
+                pdf,
+                "application/pdf",
+                $"leaderboard-{safeEventName}-{safeDistanceName}.pdf");
+        })
+        .WithSummary("Xuất bảng xếp hạng một cự ly của một giải ra PDF")
+        .WithDescription("Mỗi lần gọi trả về một file PDF gồm toàn bộ VĐV đã hoàn thành cự ly. Chỉ chủ giải hoặc Admin.");
 
         organizerApi.MapPut("/{eventId:guid}/bib-configs", async (
             Guid eventId, ReplaceDistanceBibConfigsRequest body, IMediator mediator, CancellationToken ct) =>
@@ -383,11 +492,28 @@ public static class EventModule
         userApi.MapPut("/registrations/{registrationId:guid}/resubmit", async (
             Guid registrationId, ResubmitRegistrationRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(body.ToCommand(registrationId), ct)))
-            .WithSummary("VĐV đã paid bị từ chối → sửa hồ sơ & nộp lại pending_approval (không TT lại)");
+            .WithSummary("Legacy: sửa & nộp lại đơn Rejected cũ (policy mới: reject → hủy + hoàn; ưu tiên đăng ký mới)");
 
         userApi.MapGet("/staff/me", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListMyStaffAssignmentsQuery(), ct)))
             .WithSummary("Các giải staff/volunteer đang được assign (Active)");
+
+        userApi.MapPatch("/{eventId:guid}/registrations/{registrationId:guid}/race-status", async (
+            Guid eventId, Guid registrationId, ChangeRaceStatusRequest body, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ChangeRaceStatusCommand(eventId, registrationId, body.Status, body.Reason), ct)))
+            .RequireAuthorization(AuthPolicies.HumanUser)
+            .WithSummary("Ghi nhận DNS / DNF / DQ cho VĐV")
+            .WithDescription("Body: { status: dns|dnf|dq, reason: 1–1000 ký tự }. "
+                + "Admin, chủ giải hoặc Race-staff Active đã liên kết tài khoản của đúng giải. "
+                + "DNS: chưa xuất phát, đã đến giờ xuất phát (UTC); DNF: đang chạy; DQ: chưa chạy/đang chạy/đã finish. "
+                + "Không đảo quyết định. Gửi lại cùng status/reason trả quyết định ban đầu. "
+                + "409: trạng thái đã bị cập nhật đồng thời, cần tải lại dữ liệu.")
+            .Produces<RaceStatusChangeDto>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status409Conflict);
 
         // Endpoint /start
         userApi.MapPost("/start", async (StartRequestDto body, IMediator mediator, CancellationToken ct) =>
@@ -404,26 +530,33 @@ public static class EventModule
             .WithSummary("Staff/organizer ghi nhận finish cho VĐV")
             .WithDescription("Body: { eventId, bib, distanceId }.")
             .Produces<FinishResultDto>(StatusCodes.Status200OK);
-        // Endpoint tải giấy chứng nhận hoàn thành của VĐV dưới dạng file PDF
-        userApi.MapGet("/certificate", async (
-            [FromQuery] Guid eventId,
+
+        userApi.MapGet("/registrations/{registrationId:guid}/certificate", async (
+            Guid registrationId,
             IMediator mediator,
             ICertificatePdfService pdfService,
             CancellationToken ct) =>
         {
-            var certData = await mediator.Send(new GetRunnerCertificateQuery(eventId), ct);
+            var certData = await mediator.Send(new GetRunnerCertificateQuery(registrationId), ct);
+            if (certData is null)
+            {
+                return Results.Ok(false);
+            }
+
             var pdfBytes = pdfService.GenerateCertificatePdf(certData);
-
-            string safeName = certData.RunnerName.Replace(" ", "_");
-            string fileName = $"Certificate_{safeName}_{certData.BibNumber}.pdf";
-
+            var safeName = certData.RunnerName.Replace(" ", "_");
+            var fileName = $"Certificate_{safeName}_{certData.BibNumber}.pdf";
             return Results.File(pdfBytes, "application/pdf", fileName);
         })
-        .WithSummary("Tải giấy chứng nhận hoàn thành giải chạy (PDF)")
-        .WithDescription("Query: eventId. UserId lấy từ token đăng nhập. Mọi vai trò (User/Runner/Organizer/...) đều có thể tải chứng nhận nếu chính tài khoản đó đã hoàn thành (Finished) giải này; nếu chưa hoàn thành trả về lỗi 400.")
-        .Produces(StatusCodes.Status200OK, contentType: "application/pdf")
-        .Produces(StatusCodes.Status400BadRequest)
-        .Produces(StatusCodes.Status401Unauthorized);
+            .WithSummary("Tải giấy chứng nhận hoàn thành giải chạy (PDF)")
+            .WithDescription(
+                "Chỉ chủ đăng ký. Finished + kết quả hợp lệ → application/pdf. "
+                + "Chưa đủ điều kiện → HTTP 200 body false (JSON).")
+            .Produces(StatusCodes.Status200OK, contentType: "application/pdf")
+            .Produces(StatusCodes.Status200OK, contentType: "application/json")
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status401Unauthorized);
+
         userApi.MapPost("/check-in", async (CheckInRequestDto body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(
                 new CheckInRegistrationCommand(body.EventId, body.Bib, body.QrPayload), ct)))
@@ -448,7 +581,7 @@ public static class EventModule
         .WithSummary("VĐV tạo đăng ký → pending_payment")
         .WithDescription(
             "Giải phải registration-open. Tiếp: POST /api/v1/payment/checkout. "
-            + "PayOS PAID → pending_approval. Organizer approve → confirmed + bib + qrPayload.");
+            + "PayOS PAID → auto confirmed+BIB nếu không bệnh lý đặc biệt; có bệnh lý → pending_approval chờ BTC duyệt.");
 
         // ── Endpoint Khiếu Nại cho VĐV ──
         userApi.MapPost("/complaints", async (
@@ -488,42 +621,41 @@ public static class EventModule
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status401Unauthorized);
 
-        var adminApi = app.MapGroup("/api/v1/event/admin")
+        // Manager: duyệt/từ chối giải + catalog gói (promo / duration / capacity). Admin giữ IAM + hệ thống.
+        var managerApi = app.MapGroup("/api/v1/event/admin")
             .WithTags(ApiTags.EventAdmin)
-            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
-        adminApi.MapGet("/pending", async (IMediator mediator, CancellationToken ct) =>
+        managerApi.MapGet("/pending", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListPendingEventsQuery(), ct)))
-            .WithSummary("Danh sách giải chờ duyệt");
+            .WithSummary("Danh sách giải chờ duyệt (Manager)");
 
-        adminApi.MapGet("/{eventId:guid}", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+        managerApi.MapGet("/{eventId:guid}", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new GetRaceEventByIdQuery(eventId), ct)))
-            .WithSummary("Chi tiết giải (kể cả chưa public)");
+            .WithSummary("Chi tiết giải kể cả chưa public (Manager)");
 
-        adminApi.MapPost("/{eventId:guid}/approve", async (
+        managerApi.MapPost("/{eventId:guid}/approve", async (
             Guid eventId, ApproveEventRequest? body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ApproveRaceEventCommand(eventId, body?.OpenRegistration ?? false), ct)))
-            .WithSummary("Duyệt giải (mặc định KHÔNG mở ĐK)")
+            .WithSummary("Duyệt giải (Manager; mặc định KHÔNG mở ĐK)")
             .WithDescription(
                 "Chỉ chuyển PendingApproval → Approved. Muốn mở ĐK ngay: body { \"openRegistration\": true }. "
-                + "Không thì organizer/admin gọi POST .../open-registration sau.");
+                + "Không thì organizer gọi POST .../open-registration sau.");
 
-        adminApi.MapPost("/{eventId:guid}/reject", async (
+        managerApi.MapPost("/{eventId:guid}/reject", async (
             Guid eventId, RejectRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new RejectRaceEventCommand(eventId, body.Reason), ct)))
-            .WithSummary("Từ chối giải (cần reason)");
-
-        // ── Admin promo-code management ───────────────────────────────
+            .WithSummary("Từ chối giải (Manager; cần reason)");
 
         var promoApi = app.MapGroup("/api/v1/event/admin/promos")
             .WithTags(ApiTags.EventAdmin)
-            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
         promoApi.MapGet("/", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListPromoCodesQuery(), ct)))
-            .WithSummary("Danh sách tất cả promo codes (Admin)");
+            .WithSummary("Danh sách tất cả promo codes (Manager)");
 
         promoApi.MapPost("/", async (CreatePromoCodeRequest body, IMediator mediator, CancellationToken ct) =>
         {
@@ -531,7 +663,7 @@ public static class EventModule
                 new CreatePromoCodeCommand(body.Code, body.PercentOff, body.ExpiresAtUtc, body.MaxRedemptions), ct);
             return Results.Created($"/api/v1/event/admin/promos/{result.Id}", result);
         })
-        .WithSummary("Tạo promo code mới (Admin)")
+        .WithSummary("Tạo promo code mới (Manager)")
         .Produces<PromoCodeDto>(StatusCodes.Status201Created);
 
         promoApi.MapPatch("/{promoId:guid}", async (Guid promoId, UpdatePromoCodeRequest body, IMediator mediator, CancellationToken ct) =>
@@ -545,18 +677,16 @@ public static class EventModule
                 body.ClearMaxRedemptions ?? false), ct);
             return Results.Ok(result);
         })
-        .WithSummary("Cập nhật promo code (activate/deactivate/expiry/max) (Admin)");
-
-        // ── Admin package duration / capacity catalog ─────────────────
+        .WithSummary("Cập nhật promo code (Manager)");
 
         var durationApi = app.MapGroup("/api/v1/event/admin/package-durations")
             .WithTags(ApiTags.EventAdmin)
-            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
         durationApi.MapGet("/", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListPackageDurationsQuery(), ct)))
-            .WithSummary("Danh sách thời hạn gói (Admin)");
+            .WithSummary("Danh sách thời hạn gói (Manager)");
 
         durationApi.MapPost("/", async (CreatePackageDurationRequest body, IMediator mediator, CancellationToken ct) =>
         {
@@ -564,22 +694,22 @@ public static class EventModule
                 new CreatePackageDurationCommand(body.Name, body.Months, body.Price, body.SortOrder), ct);
             return Results.Created($"/api/v1/event/admin/package-durations/{result.Id}", result);
         })
-        .WithSummary("Tạo thời hạn gói (name, months, price)")
+        .WithSummary("Tạo thời hạn gói (Manager)")
         .Produces<PackageDurationOptionDto>(StatusCodes.Status201Created);
 
         durationApi.MapPatch("/{id:guid}", async (Guid id, UpdatePackageDurationRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new UpdatePackageDurationCommand(
                 id, body.Name, body.Price, body.SortOrder, body.Active), ct)))
-            .WithSummary("Cập nhật thời hạn gói (Admin)");
+            .WithSummary("Cập nhật thời hạn gói (Manager)");
 
         var capacityApi = app.MapGroup("/api/v1/event/admin/package-capacities")
             .WithTags(ApiTags.EventAdmin)
-            .RequireAuthorization(AuthPolicies.AdminOnly)
+            .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
         capacityApi.MapGet("/", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListPackageCapacitiesQuery(), ct)))
-            .WithSummary("Danh sách quy mô VĐV gói (Admin)");
+            .WithSummary("Danh sách quy mô VĐV gói (Manager)");
 
         capacityApi.MapPost("/", async (CreatePackageCapacityRequest body, IMediator mediator, CancellationToken ct) =>
         {
@@ -587,13 +717,13 @@ public static class EventModule
                 new CreatePackageCapacityCommand(body.Name, body.MaxParticipants, body.AddOnFee, body.SortOrder), ct);
             return Results.Created($"/api/v1/event/admin/package-capacities/{result.Id}", result);
         })
-        .WithSummary("Tạo quy mô VĐV gói (name, maxParticipants, addOnFee)")
+        .WithSummary("Tạo quy mô VĐV gói (Manager)")
         .Produces<PackageCapacityOptionDto>(StatusCodes.Status201Created);
 
         capacityApi.MapPatch("/{id:guid}", async (Guid id, UpdatePackageCapacityRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new UpdatePackageCapacityCommand(
                 id, body.Name, body.AddOnFee, body.SortOrder, body.Active), ct)))
-            .WithSummary("Cập nhật quy mô VĐV gói (Admin)");
+            .WithSummary("Cập nhật quy mô VĐV gói (Manager)");
 
         return app;
     }
@@ -606,6 +736,31 @@ public static class EventModule
             "banner" or "image" or "cover" => "event-banners",
             _ => null
         };
+
+    private static async Task<IReadOnlyList<LeaderboardItemDto>> LoadAllLeaderboardItemsAsync(
+        Guid eventId,
+        Guid distanceId,
+        IMediator mediator,
+        CancellationToken cancellationToken)
+    {
+        const int pageSize = 100;
+        var items = new List<LeaderboardItemDto>();
+        var page = 1;
+
+        while (true)
+        {
+            var result = await mediator.Send(
+                new GetDistanceLeaderboardQuery(eventId, distanceId, null, page, pageSize),
+                cancellationToken);
+            items.AddRange(result.Items);
+            if (page >= result.TotalPages || result.Items.Count == 0)
+            {
+                return items;
+            }
+
+            page++;
+        }
+    }
 
     private sealed record RejectRequest(string Reason);
     private sealed record ApproveEventRequest(bool OpenRegistration = false);
@@ -704,4 +859,5 @@ public static class EventModule
     // ĐÃ CHUYỂN VÀO TRONG CLASS EventModule
     private sealed record CreateComplaintRequest(Guid EventId, Guid DistanceId, string Title, string Content, IReadOnlyList<string>? EvidenceLinks);
     private sealed record ReplyComplaintRequest(string ResponseContent, string Decision);
+    private sealed record SetDistanceResultsPublishedRequest(bool Published);
 }

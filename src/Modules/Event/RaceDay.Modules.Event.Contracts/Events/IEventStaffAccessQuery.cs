@@ -8,7 +8,7 @@ public interface IEventStaffAccessQuery
         Guid userId,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Any Active staff role (Coordinator / Photographer / Volunteer).</summary>
+    /// <summary>Any Active staff role (Race-staff / Photographer).</summary>
     Task<bool> ExistsActiveStaffUserAsync(
         Guid eventId,
         Guid userId,

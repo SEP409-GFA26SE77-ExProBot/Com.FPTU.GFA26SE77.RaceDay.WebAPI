@@ -28,16 +28,20 @@ public static class DependencyInjection
             .AddPolicy(AuthPolicies.PublicUser, policy => policy.RequireAuthenticatedUser())
             .AddPolicy(AuthPolicies.AdminOnly, policy =>
                 policy.RequireAuthenticatedUser().RequireRole("Admin"))
+            .AddPolicy(AuthPolicies.ManagerOnly, policy =>
+                policy.RequireAuthenticatedUser().RequireRole("Manager"))
+            .AddPolicy(AuthPolicies.ManagerOrAdmin, policy =>
+                policy.RequireAuthenticatedUser().RequireRole("Manager", "Admin"))
             .AddPolicy(AuthPolicies.HumanUser, policy =>
                 policy.RequireAuthenticatedUser().RequireAssertion(ctx =>
                     !ctx.User.HasClaim("token_use", "wear")
                     && ctx.User.FindFirst("device_id") is null))
-            .AddPolicy(AuthPolicies.OrganizerOrCoordinator, policy =>
+            .AddPolicy(AuthPolicies.OrganizerOrRaceStaff, policy =>
                 policy.RequireAuthenticatedUser()
                     .RequireAssertion(ctx =>
                         !ctx.User.HasClaim("token_use", "wear")
                         && ctx.User.FindFirst("device_id") is null)
-                    .RequireRole("Admin", "Organizer", "Coordinator"))
+                    .RequireRole("Admin", "Organizer", "Race-staff"))
             .AddPolicy(AuthPolicies.SosWrite, policy =>
                 policy.RequireAuthenticatedUser()
                     .RequireClaim("scope", "sos:create")

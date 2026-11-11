@@ -205,6 +205,15 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
             .OrderByDescending(x => x.CreatedAtUtc)
             .ToListAsync(cancellationToken);
 
+    public Task<EventRegistration?> GetByEventDistanceAndUserAsync(
+        Guid eventId,
+        Guid distanceId,
+        Guid userId,
+        CancellationToken cancellationToken = default)
+        => db.Registrations.FirstOrDefaultAsync(
+            x => x.EventId == eventId && x.DistanceId == distanceId && x.UserId == userId,
+            cancellationToken);
+
     public Task<bool> ExistsForUserDistanceAsync(Guid eventId, Guid distanceId, Guid userId, CancellationToken cancellationToken = default)
         => db.Registrations.AnyAsync(
             x => x.EventId == eventId && x.DistanceId == distanceId && x.UserId == userId
@@ -339,7 +348,7 @@ public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegis
         CancellationToken cancellationToken = default)
         => db.Registrations.AsNoTracking()
             .Where(x => x.EventId == eventId && x.UserId == userId
-                && x.Status == RegistrationStatus.Finished && x.FinishedAtUtc != null)
+                && x.Status == RegistrationStatus.Finished && x.RaceStatus == RaceStatus.Finished && x.FinishedAtUtc != null)
             .OrderByDescending(x => x.FinishedAtUtc)
             .ThenByDescending(x => x.Id)
             .FirstOrDefaultAsync(cancellationToken);
