@@ -28,6 +28,7 @@ public static class SimulationModule
         services.AddSingleton<ISimulationBroadcaster, SignalRSimulationBroadcaster>();
         services.AddSingleton<SimulationSessionBook>();
         services.AddScoped<ISimulationAuthorizer, SimulationAuthorizer>();
+        services.AddScoped<IStaffCheckpointWorkspace, StaffCheckpointWorkspace>();
         services.AddHostedService<SimulationClockHostedService>();
         services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, UseHubAccessToken);
         return services;
@@ -69,6 +70,8 @@ public static class SimulationModule
         var api = app.MapGroup("/api/v1/simulation")
             .WithTags(ApiTags.Simulation)
             .RequireAuthorization(AuthPolicies.HumanUser);
+
+        api.MapStaffSimulationEndpoints();
 
         api.MapGet("/events/{eventId:guid}/distances/{distanceId:guid}", async (
             Guid eventId,
@@ -159,9 +162,6 @@ public static class SimulationModule
         api.MapPost("/runs/{runId:guid}/athletes/{registrationId:guid}/sos", (
             Guid runId, Guid registrationId, SimulationSessionBook book, ISimulationAuthorizer authorizer, CancellationToken ct) =>
             Mutate(runId, book, authorizer, () => book.SosAsync(runId, registrationId, ct), ct));
-        api.MapPost("/runs/{runId:guid}/athletes/{registrationId:guid}/dnf", (
-            Guid runId, Guid registrationId, SimulationSessionBook book, ISimulationAuthorizer authorizer, CancellationToken ct) =>
-            Mutate(runId, book, authorizer, () => book.DnfAsync(runId, registrationId, ct), ct));
         api.MapPost("/runs/{runId:guid}/athletes/{registrationId:guid}/fraud/chip", async (
             Guid runId,
             Guid registrationId,

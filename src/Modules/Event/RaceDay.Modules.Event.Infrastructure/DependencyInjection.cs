@@ -65,6 +65,8 @@ public static class DependencyInjection
             RaceDay.Modules.Event.Infrastructure.Events.EventSosOpsAccessQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventRegistrationRaceQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventRegistrationRaceQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventStaffAssignmentQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventStaffAssignmentQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventCheckpointQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventCheckpointQuery>();
         services.AddSingleton<RaceDay.Modules.Event.Contracts.Simulation.ISimulationDemoGate,
@@ -75,6 +77,8 @@ public static class DependencyInjection
             RaceDay.Modules.Event.Infrastructure.Simulation.SimulationOfficialStartSource>();
         services.AddScoped<RaceDay.Modules.Event.Application.Simulation.ISimulationFinishWriter,
             RaceDay.Modules.Event.Infrastructure.Simulation.EfSimulationFinishWriter>();
+        services.AddScoped<RaceDay.Modules.Event.Application.Simulation.ISimulationStatusWriter,
+            RaceDay.Modules.Event.Infrastructure.Simulation.EfSimulationStatusWriter>();
         services.AddScoped<RaceDay.Modules.Event.Application.Simulation.ISimulationPassageWriter,
             RaceDay.Modules.Event.Infrastructure.Simulation.EfSimulationPassageWriter>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Simulation.ISimulationResultCommitPort,

@@ -14,7 +14,9 @@ public enum AthleteMotion
 {
     Racing,
     Finished,
-    Dnf
+    Dnf,
+    Dns,
+    Dq
 }
 
 public sealed record SimulationCoursePoint(double Lat, double Lng);

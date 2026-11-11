@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Map\RaceDay.Modules.Map.Contracts\RaceDay.Modules.Map.Contracts.csproj" />
     <ProjectReference Include="..\RaceDay.Modules.Event.Domain\RaceDay.Modules.Event.Domain.csproj" />
     <ProjectReference Include="..\RaceDay.Modules.Event.Contracts\RaceDay.Modules.Event.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Application\RaceDay.Shared.Application.csproj" />
