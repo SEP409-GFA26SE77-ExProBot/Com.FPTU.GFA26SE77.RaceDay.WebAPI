@@ -767,6 +767,10 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ChangedByUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("CheckpointExternalId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
                     b.Property<string>("PreviousStatus")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -778,6 +782,9 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)");
 
                     b.Property<Guid>("RegistrationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SimulationRunId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("Status")

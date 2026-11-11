@@ -34,9 +34,12 @@ public class RaceEventWorkflowTests
                 ("CP-FIN", "Finish", 42.2, 11.9, 108.4, CheckpointType.Finish, "22:00", 1495)
             ]);
 
+        distance.SetBibConfig(null, 1, 500);
         race.ReplaceDistances([distance]);
         race.ReplaceDocuments(
         [
+            EventDocument.Create(race.Id, "official-letter", "Official letter", "letter.pdf", "/files/letter.pdf", required: true),
+            EventDocument.Create(race.Id, "security", "Security plan", "security.pdf", "/files/security.pdf", required: true),
             EventDocument.Create(race.Id, "plan", "Kế hoạch", "plan.pdf", "/files/plan.pdf", required: true),
             EventDocument.Create(race.Id, "rules", "Điều lệ", "rules.pdf", "/files/rules.pdf", required: true)
         ]);

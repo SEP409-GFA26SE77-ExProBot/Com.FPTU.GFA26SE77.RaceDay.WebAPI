@@ -8,6 +8,8 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.RaceMonitoring.UnitTests.Application;
 
+[Trait("Workflow", "WF-02")]
+[Trait("Feature", "MF-07")]
 public class CheckpointScanRecorderTests
 {
     [Fact]

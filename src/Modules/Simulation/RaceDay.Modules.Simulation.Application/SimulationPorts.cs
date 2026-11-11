@@ -51,17 +51,17 @@ public interface ISimulationAuthorizer
 }
 
 /// <summary>
-/// Organizer of the event or an Active Coordinator. Admin, photographer and volunteer do not pass.
+/// Only the event owner controls the simulation. Staff use the assigned checkpoint API.
 /// The actor is the authenticated user, never a client-supplied id.
 /// </summary>
 public sealed class SimulationAuthorizer(
     ICurrentUserAccessor currentUser,
-    IEventSosOpsAccessQuery access) : ISimulationAuthorizer
+    IEventOrganizerAccessQuery access) : ISimulationAuthorizer
 {
     public async Task EnsureCanManageAsync(Guid eventId, CancellationToken cancellationToken = default)
     {
         var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
-        if (!await access.CanManageSosAsync(eventId, userId, cancellationToken))
+        if ((await access.GetAsync(eventId, cancellationToken))?.OrganizerUserId != userId)
         {
             throw new DomainException("Bạn không có quyền điều khiển giả lập của giải này.");
         }

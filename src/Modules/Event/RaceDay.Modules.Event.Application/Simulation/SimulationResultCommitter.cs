@@ -157,7 +157,8 @@ public sealed class SimulationResultCommitter(
     ISimulationPassageWriter passages,
     ICurrentUserAccessor currentUser,
     IEventSosOpsAccessQuery access,
-    ILogger<SimulationResultCommitter> logger) : ISimulationResultCommitPort
+    ILogger<SimulationResultCommitter> logger,
+    ISimulationStatusWriter? statusWriter = null) : ISimulationResultCommitPort
 {
     public const string ChangedDistanceOrEventReason =
         "Đăng ký đã đổi event hoặc cự ly sau khi kiểm tra. Không ghi với dữ liệu mới.";
@@ -201,6 +202,23 @@ public sealed class SimulationResultCommitter(
             {
                 items.Add(new SimulationCommitItemResult(
                     draft.RegistrationId, SimulationCommitOutcomes.CommittedThisRun, null, null));
+                continue;
+            }
+
+            if (draft.Decision is not null)
+            {
+                try
+                {
+                    items.Add(statusWriter is null
+                        ? Skipped(draft.RegistrationId, "Chưa cấu hình ghi trạng thái giả lập.")
+                        : await statusWriter.WriteAsync(command.EventId, command.DistanceId, draft, cancellationToken));
+                }
+                catch (DomainException ex) { items.Add(Skipped(draft.RegistrationId, ex.Message)); }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Simulation status outcome unknown for {RegistrationId}", draft.RegistrationId);
+                    items.Add(Unknown(draft.RegistrationId));
+                }
                 continue;
             }
 

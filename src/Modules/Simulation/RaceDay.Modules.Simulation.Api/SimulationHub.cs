@@ -1,3 +1,6 @@
+using System.Runtime.CompilerServices;
+using System.Security.Claims;
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
@@ -16,8 +19,33 @@ public interface ISimulationClient
 }
 
 [Authorize(Policy = AuthPolicies.HumanUser)]
-public sealed class SimulationHub(SimulationSessionBook book, ISimulationAuthorizer authorizer) : Hub<ISimulationClient>
+public sealed class SimulationHub(SimulationSessionBook book, ISimulationAuthorizer authorizer, IServiceScopeFactory scopes) : Hub<ISimulationClient>
 {
+    // Resolve permissions on every update, including while waiting/paused/finished.
+    // A connection never joins the organizer group or receives the full run snapshot.
+    public async IAsyncEnumerable<StaffCheckpointSnapshotDto> WatchCheckpoint(Guid eventId,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var rawId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier) ?? Context.User?.FindFirstValue("sub");
+        if (!Guid.TryParse(rawId, out var userId)) throw new HubException("Cần đăng nhập.");
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, Context.ConnectionAborted);
+        while (!linked.IsCancellationRequested)
+        {
+            StaffCheckpointSnapshotDto snapshot;
+            await using (var scope = scopes.CreateAsyncScope())
+            {
+                try
+                {
+                    snapshot = await scope.ServiceProvider.GetRequiredService<IStaffCheckpointWorkspace>()
+                        .ReadAsync(eventId, userId, linked.Token);
+                }
+                catch (DomainException ex) { throw new HubException(ex.Message); }
+            }
+            yield return snapshot;
+            await Task.Delay(1000, linked.Token);
+        }
+    }
+
     public async Task JoinRun(Guid runId)
     {
         try

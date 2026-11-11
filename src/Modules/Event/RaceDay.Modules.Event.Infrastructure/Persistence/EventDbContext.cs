@@ -362,6 +362,7 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
             entity.Property(x => x.PreviousStatus).HasConversion<string>().HasMaxLength(20);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.CheckpointExternalId).HasMaxLength(120);
             entity.HasIndex(x => new { x.RegistrationId, x.ChangedAtUtc });
             entity.HasOne<EventRegistration>().WithMany().HasForeignKey(x => x.RegistrationId)
                 .OnDelete(DeleteBehavior.Restrict);

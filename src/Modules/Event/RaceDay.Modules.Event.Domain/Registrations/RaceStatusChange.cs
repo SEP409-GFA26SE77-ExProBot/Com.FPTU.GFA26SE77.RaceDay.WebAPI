@@ -11,8 +11,16 @@ public sealed class RaceStatusChange : Entity
     public string Reason { get; private set; } = string.Empty;
     public Guid ChangedByUserId { get; private set; }
     public DateTime ChangedAtUtc { get; private set; }
+    public Guid? SimulationRunId { get; private set; }
+    public string? CheckpointExternalId { get; private set; }
 
     private RaceStatusChange() { }
+
+    public void SetSimulationSource(Guid runId, string checkpointId)
+    {
+        SimulationRunId = runId;
+        CheckpointExternalId = checkpointId;
+    }
 
     internal static RaceStatusChange Create(Guid registrationId, RaceStatus previousStatus,
         RaceStatus status, string reason, Guid changedByUserId, DateTime changedAtUtc) => new()
