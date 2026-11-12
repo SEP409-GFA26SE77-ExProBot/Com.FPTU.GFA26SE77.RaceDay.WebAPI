@@ -44,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<IEventUnitOfWork, EventUnitOfWork>();
         services.AddHostedService<PackageExpiryLockHostedService>();
         services.AddHostedService<RegistrationWindowHostedService>();
+        services.AddHostedService<RegistrationSlotHoldExpiryHostedService>();
         services.AddScoped<IEventComplaintRepository, EventComplaintRepository>();
         services.AddScoped<ICertificatePdfService, QuestPdfCertificateQuery>();
         services.AddScoped<ILeaderboardPdfService, QuestPdfLeaderboardService>();

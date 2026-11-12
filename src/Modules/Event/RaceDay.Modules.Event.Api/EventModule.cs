@@ -361,18 +361,53 @@ public static class EventModule
 
         organizerApi.MapPost("/{eventId:guid}/staff/invite", async (
             Guid eventId, InviteEventStaffRequest body, IMediator mediator, CancellationToken ct) =>
-            Results.Ok(await mediator.Send(new InviteEventStaffCommand(eventId, body), ct)))
-            .WithSummary("Mời nhân sự qua email");
+        {
+            // Chuẩn hoá: email trống → null (không bắt buộc).
+            var normalized = body with
+            {
+                Email = string.IsNullOrWhiteSpace(body.Email) ? null : body.Email.Trim(),
+                Password = string.IsNullOrWhiteSpace(body.Password) ? null : body.Password,
+                Phone = string.IsNullOrWhiteSpace(body.Phone) ? null : body.Phone.Trim()
+            };
+            return Results.Ok(await mediator.Send(new InviteEventStaffCommand(eventId, normalized), ct));
+        })
+            .WithSummary("Tạo tài khoản nhân sự (email / mật khẩu tuỳ chọn)");
 
         organizerApi.MapPost("/{eventId:guid}/staff", async (
             Guid eventId, AddEventStaffRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new AddEventStaffCommand(eventId, body), ct)))
             .WithSummary("Thêm nhân sự trực tiếp (active)");
 
-        organizerApi.MapPatch("/{eventId:guid}/staff/{memberId:guid}/station", async (
+        // Dùng POST .../update (cùng pattern lock/reset) — tránh 405 khi chỉ có DELETE trên resource path.
+        organizerApi.MapPost("/{eventId:guid}/staff/{memberId:guid}/update", async (
+            Guid eventId, Guid memberId, UpdateEventStaffRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            var normalized = body with
+            {
+                Email = body.Email is null ? null : body.Email.Trim(),
+                Phone = string.IsNullOrWhiteSpace(body.Phone) ? null : body.Phone.Trim()
+            };
+            return Results.Ok(await mediator.Send(new UpdateEventStaffCommand(eventId, memberId, normalized), ct));
+        })
+            .WithSummary("Cập nhật hồ sơ + vị trí nhân sự");
+
+        organizerApi.MapPost("/{eventId:guid}/staff/{memberId:guid}/station", async (
             Guid eventId, Guid memberId, AssignEventStaffStationRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new AssignEventStaffStationCommand(eventId, memberId, body), ct)))
             .WithSummary("Gán checkpoint / điểm tiếp tế / nhiệm vụ");
+
+        organizerApi.MapPost("/{eventId:guid}/staff/{memberId:guid}/reset-password", async (
+            Guid eventId, Guid memberId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new ResetEventStaffPasswordCommand(eventId, memberId), ct)))
+            .WithSummary("Khôi phục mật khẩu gốc nhân sự");
+
+        organizerApi.MapPost("/{eventId:guid}/staff/{memberId:guid}/lock", async (
+            Guid eventId, Guid memberId, SetEventStaffLockRequest body, IMediator mediator, CancellationToken ct) =>
+        {
+            await mediator.Send(new SetEventStaffLockCommand(eventId, memberId, body), ct);
+            return Results.NoContent();
+        })
+            .WithSummary("Khóa / mở khóa tài khoản IAM của nhân sự");
 
         organizerApi.MapDelete("/{eventId:guid}/staff/{memberId:guid}", async (
             Guid eventId, Guid memberId, IMediator mediator, CancellationToken ct) =>
@@ -531,28 +566,20 @@ public static class EventModule
             .WithDescription("Body: { eventId, bib, distanceId }.")
             .Produces<FinishResultDto>(StatusCodes.Status200OK);
 
+        // FE (SEP_UserWeb2) vẽ canvas + PDF phía client từ JSON — không trả file PDF ở đây.
         userApi.MapGet("/registrations/{registrationId:guid}/certificate", async (
             Guid registrationId,
             IMediator mediator,
-            ICertificatePdfService pdfService,
             CancellationToken ct) =>
         {
             var certData = await mediator.Send(new GetRunnerCertificateQuery(registrationId), ct);
-            if (certData is null)
-            {
-                return Results.Ok(false);
-            }
-
-            var pdfBytes = pdfService.GenerateCertificatePdf(certData);
-            var safeName = certData.RunnerName.Replace(" ", "_");
-            var fileName = $"Certificate_{safeName}_{certData.BibNumber}.pdf";
-            return Results.File(pdfBytes, "application/pdf", fileName);
+            return certData is null ? Results.Ok(false) : Results.Ok(certData);
         })
-            .WithSummary("Tải giấy chứng nhận hoàn thành giải chạy (PDF)")
+            .WithSummary("Dữ liệu chứng nhận hoàn thành (JSON) cho trang chứng nhận FE")
             .WithDescription(
-                "Chỉ chủ đăng ký. Finished + kết quả hợp lệ → application/pdf. "
-                + "Chưa đủ điều kiện → HTTP 200 body false (JSON).")
-            .Produces(StatusCodes.Status200OK, contentType: "application/pdf")
+                "Chỉ chủ đăng ký. Finished + kết quả hợp lệ → CertificateDataDto. "
+                + "Chưa đủ điều kiện → HTTP 200 body false.")
+            .Produces<CertificateDataDto>(StatusCodes.Status200OK)
             .Produces(StatusCodes.Status200OK, contentType: "application/json")
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized);

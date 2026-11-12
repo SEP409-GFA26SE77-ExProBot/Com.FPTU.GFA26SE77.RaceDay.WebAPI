@@ -1,43 +1,37 @@
-using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using RaceDay.Modules.Event.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations;
 
 /// <inheritdoc />
+[DbContext(typeof(EventDbContext))]
+[Migration("20261110143000_AddDistanceResultsPublished")]
 public partial class AddDistanceResultsPublished : Migration
 {
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.AddColumn<bool>(
-            name: "ResultsPublished",
-            schema: "event",
-            table: "event_distances",
-            type: "boolean",
-            nullable: false,
-            defaultValue: false);
+        // Idempotent: cột có thể đã có từ lần apply thủ công / snapshot lệch history.
+        migrationBuilder.Sql(
+            """
+            ALTER TABLE event.event_distances
+                ADD COLUMN IF NOT EXISTS "ResultsPublished" boolean NOT NULL DEFAULT false;
 
-        migrationBuilder.AddColumn<DateTime>(
-            name: "ResultsPublishedAtUtc",
-            schema: "event",
-            table: "event_distances",
-            type: "timestamp with time zone",
-            nullable: true);
+            ALTER TABLE event.event_distances
+                ADD COLUMN IF NOT EXISTS "ResultsPublishedAtUtc" timestamp with time zone NULL;
+            """);
     }
 
     /// <inheritdoc />
     protected override void Down(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.DropColumn(
-            name: "ResultsPublished",
-            schema: "event",
-            table: "event_distances");
-
-        migrationBuilder.DropColumn(
-            name: "ResultsPublishedAtUtc",
-            schema: "event",
-            table: "event_distances");
+        migrationBuilder.Sql(
+            """
+            ALTER TABLE event.event_distances DROP COLUMN IF EXISTS "ResultsPublishedAtUtc";
+            ALTER TABLE event.event_distances DROP COLUMN IF EXISTS "ResultsPublished";
+            """);
     }
 }

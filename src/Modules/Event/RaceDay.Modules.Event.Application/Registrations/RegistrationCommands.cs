@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FluentValidation;
 using MediatR;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Application.Events;
@@ -52,7 +53,8 @@ public sealed record RegistrationDto(
     Guid? CheckedInByUserId = null,
     DateTime? FinishedAtUtc = null,
     long? ResultSeconds = null,
-    string RaceStatus = "not_started");
+    string RaceStatus = "not_started",
+    DateTime? SlotHeldUntilUtc = null);
 
 public static class RegistrationDtoMapper
 {
@@ -114,7 +116,8 @@ public static class RegistrationDtoMapper
             r.CheckedInByUserId,
             r.FinishedAtUtc,
             r.ResultSeconds,
-            ToApiRaceStatus(r.RaceStatus));
+            ToApiRaceStatus(r.RaceStatus),
+            r.SlotHeldUntilUtc);
     }
 }
 
@@ -172,7 +175,8 @@ public sealed class CreateRegistrationCommandHandler(
     IEventRegistrationRepository registrations,
     ICurrentUserAccessor currentUser,
     IEventUnitOfWork unitOfWork,
-    IEventBus eventBus) : IRequestHandler<CreateRegistrationCommand, RegistrationDto>
+    IEventBus eventBus,
+    IConfiguration configuration) : IRequestHandler<CreateRegistrationCommand, RegistrationDto>
 {
     public async Task<RegistrationDto> Handle(CreateRegistrationCommand request, CancellationToken cancellationToken)
     {
@@ -197,17 +201,28 @@ public sealed class CreateRegistrationCommandHandler(
                 "Đơn bị BTC từ chối đang được hủy/hoàn. Vui lòng đợi vài phút rồi đăng ký lại, hoặc liên hệ hỗ trợ nếu trạng thái không đổi.");
         }
 
+        var now = DateTime.UtcNow;
         var active = await registrations.ListActiveByUserEventAsync(request.EventId, userId, cancellationToken);
         var sameDistance = active.FirstOrDefault(x => x.DistanceId == request.DistanceId);
         if (sameDistance is not null)
         {
-            // Idempotent: submit lại cùng cự ly khi còn chờ TT → trả đơn cũ (FE thanh toán tiếp).
+            // Idempotent: submit lại cùng cự ly khi hold còn sống → trả đơn cũ (FE thanh toán tiếp).
             if (sameDistance.Status == RegistrationStatus.PendingPayment)
             {
-                return RegistrationDtoMapper.ToDto(sameDistance, race, distance);
-            }
+                if (sameDistance.IsSlotHoldActive(now))
+                {
+                    return RegistrationDtoMapper.ToDto(sameDistance, race, distance);
+                }
 
-            throw new DomainException("Bạn đã đăng ký cự ly này.");
+                RegistrationSlotHold.TryReleaseHeldSlot(sameDistance, distance);
+                sameDistance.CancelUnpaid();
+                registrations.Update(sameDistance);
+                active = active.Where(x => x.Id != sameDistance.Id).ToList();
+            }
+            else
+            {
+                throw new DomainException("Bạn đã đăng ký cự ly này.");
+            }
         }
 
         var blocking = active.FirstOrDefault(x =>
@@ -218,12 +233,35 @@ public sealed class CreateRegistrationCommandHandler(
                 "Bạn đã có đăng ký đang chờ duyệt/đã xác nhận cho giải này. Không thể đăng ký thêm cự ly khác.");
         }
 
-        // Một giải / một đơn chờ TT: đổi cự ly → hủy các pending_payment cũ.
+        // Một giải / một đơn chờ TT: đổi cự ly → nhả hold + hủy pending_payment cũ.
         foreach (var unpaid in active.Where(x => x.Status == RegistrationStatus.PendingPayment))
         {
+            try
+            {
+                var unpaidDistance = race.GetDistance(unpaid.DistanceId);
+                RegistrationSlotHold.TryReleaseHeldSlot(unpaid, unpaidDistance);
+            }
+            catch (DomainException)
+            {
+                if (unpaid.HasSlotHold)
+                {
+                    unpaid.ClearSlotHold();
+                }
+            }
+
             unpaid.CancelUnpaid();
             registrations.Update(unpaid);
         }
+
+        if (!await events.TryReserveDistanceSlotAsync(request.DistanceId, cancellationToken))
+        {
+            throw new DomainException("Cự ly đã hết slot.");
+        }
+
+        // Atomic reserve đã +1 — reload để RegisteredCount khớp DB trước khi save domain khác.
+        race = await events.GetByIdWithDetailsAsync(request.EventId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy giải.");
+        distance = race.GetDistance(request.DistanceId);
 
         var medicalJson = JsonSerializer.Serialize(request.MedicalCodes ?? Array.Empty<string>());
         var reg = EventRegistration.Create(
@@ -255,8 +293,8 @@ public sealed class CreateRegistrationCommandHandler(
             distance.Name,
             distance.Price);
         reg.LockQuotedPrice(quoted.Price, quoted.PhaseKey, quoted.PhaseName);
+        reg.ReserveSlotHold(RegistrationSlotHold.HoldUntilUtc(configuration, now));
 
-        // Status = PendingPayment — FE gọi Payment checkout; slot tăng sau khi paid.
         await registrations.AddAsync(reg, cancellationToken);
         await eventBus.PublishAsync(
             new RegistrationCreatedIntegrationEvent(reg.Id, reg.EventId, reg.UserId),
@@ -629,17 +667,38 @@ public sealed class CancelUnpaidRegistrationCommandHandler(
             throw new DomainException("Không thể hủy đăng ký của người khác.");
         }
 
-        reg.CancelUnpaid();
-        registrations.Update(reg);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-
         var race = await events.GetByIdWithDetailsAsync(reg.EventId, cancellationToken);
         EventDistance? distance = null;
         if (race is not null)
         {
-            try { distance = race.GetDistance(reg.DistanceId); } catch { /* ignore */ }
+            try
+            {
+                distance = race.GetDistance(reg.DistanceId);
+                RegistrationSlotHold.TryReleaseHeldSlot(reg, distance);
+            }
+            catch (DomainException)
+            {
+                if (reg.HasSlotHold)
+                {
+                    await events.ReleaseDistanceSlotAsync(reg.DistanceId, cancellationToken);
+                    reg.ClearSlotHold();
+                }
+            }
+        }
+        else if (reg.HasSlotHold)
+        {
+            await events.ReleaseDistanceSlotAsync(reg.DistanceId, cancellationToken);
+            reg.ClearSlotHold();
         }
 
+        reg.CancelUnpaid();
+        registrations.Update(reg);
+        if (race is not null)
+        {
+            events.Update(race);
+        }
+
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return RegistrationDtoMapper.ToDto(reg, race, distance);
     }
 }

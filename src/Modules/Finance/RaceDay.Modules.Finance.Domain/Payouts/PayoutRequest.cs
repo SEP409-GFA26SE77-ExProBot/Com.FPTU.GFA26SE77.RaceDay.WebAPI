@@ -70,24 +70,45 @@ public sealed class PayoutRequest : AggregateRoot
         };
     }
 
-    public void MarkTransferred(string? receiptUrl)
+    /// <summary>Bước 1: Manager duyệt lệnh — chưa ghi đã chuyển khoản.</summary>
+    public void Approve()
     {
-        if (Status is not (PayoutRequestStatus.Pending or PayoutRequestStatus.Approved))
+        if (Status != PayoutRequestStatus.Pending)
         {
             throw new DomainException("Chỉ duyệt lệnh đang chờ.");
         }
 
+        Status = PayoutRequestStatus.Approved;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Bước 2: Manager xác nhận đã CK ngoài hệ thống.
+    /// Bắt buộc URL/biên nhận để đối soát (không tự động gọi ngân hàng).
+    /// </summary>
+    public void MarkTransferred(string receiptUrl)
+    {
+        if (Status != PayoutRequestStatus.Approved)
+        {
+            throw new DomainException("Chỉ xác nhận chuyển khoản sau khi lệnh đã được duyệt.");
+        }
+
+        if (string.IsNullOrWhiteSpace(receiptUrl))
+        {
+            throw new DomainException("Cần URL biên nhận / chứng từ chuyển khoản.");
+        }
+
         Status = PayoutRequestStatus.Transferred;
-        ReceiptUrl = string.IsNullOrWhiteSpace(receiptUrl) ? ReceiptUrl : receiptUrl.Trim();
+        ReceiptUrl = receiptUrl.Trim();
         TransferredAtUtc = DateTime.UtcNow;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
     public void Reject(string reason)
     {
-        if (Status != PayoutRequestStatus.Pending)
+        if (Status is not (PayoutRequestStatus.Pending or PayoutRequestStatus.Approved))
         {
-            throw new DomainException("Chỉ từ chối lệnh đang chờ.");
+            throw new DomainException("Chỉ từ chối lệnh đang chờ duyệt hoặc đã duyệt chưa chuyển khoản.");
         }
 
         if (string.IsNullOrWhiteSpace(reason))

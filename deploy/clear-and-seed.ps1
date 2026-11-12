@@ -91,8 +91,12 @@ if ($mongo) {
 
 Write-Step "Done"
 Write-Host ""
-Write-Host 'Password: MatKhau@123 (email verified, no OTP)' -ForegroundColor Green
+Write-Host 'Password ALL: MatKhau@123 (email verified, no OTP)' -ForegroundColor Green
 Write-Host '  admin / admin@raceday.vn'
-Write-Host '  cuong.le / cuong.le@raceday.vn   (organizer)'
-Write-Host '  an.nguyen .. uyen.mai           (13 runners, 11 with BIB on Grand Marathon)'
+Write-Host '  manager / manager@raceday.vn'
+Write-Host '  cuong.le / cuong.le@raceday.vn     (organizer Grand Marathon)'
+Write-Host '  binh.tran                       (5KM Finished + certificate)'
+Write-Host '  an.nguyen .. uyen.mai           (runners; 5KM published / 10KM sim pool)'
+Write-Host '  coord1,coord2,vol1,vol2,photo1,photo2  (staff Invited on Grand)'
+Write-Host 'Seed file: deploy/sql/clear_and_seed.sql (ONE FILE)'
 Write-Host ""

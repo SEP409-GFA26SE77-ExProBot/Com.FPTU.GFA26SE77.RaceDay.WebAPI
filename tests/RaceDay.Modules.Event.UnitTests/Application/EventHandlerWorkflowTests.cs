@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using NSubstitute;
 using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Application.Events;
@@ -22,6 +23,7 @@ public class EventHandlerWorkflowTests
             800, startTime: startTime, tagline: "Roof of Indochina");
         var distance = EventDistance.Create(
             race.Id, "Cloud Valley", 21, 500, 900_000, "#F59E0B", type: "21K", routeGeometryJson: "{}");
+        distance.SetBibConfig("21", 1, 500);
         race.ReplaceDistances([distance]);
         race.ReplaceDocuments([
             EventDocument.Create(race.Id, "official-letter", "Official letter", "official-letter.pdf", "/official-letter.pdf", true),
@@ -76,7 +78,7 @@ public class EventHandlerWorkflowTests
 
         var distance = Assert.Single(result);
         Assert.Equal(race.Distances.First().Id, distance.Id);
-        Assert.Equal("21K", distance.Type);
+        Assert.Equal("HM", distance.Type);
         Assert.Equal(21, distance.DistanceKm);
     }
 
@@ -94,7 +96,8 @@ public class EventHandlerWorkflowTests
         current.UserId.Returns(UserId);
 
         await Assert.ThrowsAsync<DomainException>(() =>
-            new CreateRegistrationCommandHandler(events, regs, current, Substitute.For<IEventUnitOfWork>(), Substitute.For<IEventBus>())
+            new CreateRegistrationCommandHandler(
+                    events, regs, current, Substitute.For<IEventUnitOfWork>(), Substitute.For<IEventBus>(), EmptyConfig())
                 .Handle(new CreateRegistrationCommand(
                     race.Id, distanceId, "Runner", "r@raceday.vn", "0901111222",
                     null, null, null, null, null, null, null, null, null, null, null, null, null, null, true),
@@ -116,10 +119,13 @@ public class EventHandlerWorkflowTests
         var bus = Substitute.For<IEventBus>();
 
         events.GetByIdWithDetailsAsync(race.Id, Arg.Any<CancellationToken>()).Returns(race);
+        events.TryReserveDistanceSlotAsync(distanceId, Arg.Any<CancellationToken>()).Returns(true);
+        regs.ListByUserAsync(UserId, Arg.Any<CancellationToken>()).Returns([]);
+        regs.ListActiveByUserEventAsync(race.Id, UserId, Arg.Any<CancellationToken>()).Returns([]);
         regs.ExistsForUserDistanceAsync(race.Id, distanceId, UserId, Arg.Any<CancellationToken>()).Returns(false);
         current.UserId.Returns(UserId);
 
-        var result = await new CreateRegistrationCommandHandler(events, regs, current, uow, bus)
+        var result = await new CreateRegistrationCommandHandler(events, regs, current, uow, bus, EmptyConfig())
             .Handle(new CreateRegistrationCommand(
                 race.Id, distanceId, "Runner", "r@raceday.vn", "0901111222",
                 new DateOnly(1998, 5, 1), "Male", "001", 170, 60, "A+",
@@ -127,9 +133,14 @@ public class EventHandlerWorkflowTests
                 CancellationToken.None);
 
         Assert.Equal("pending_payment", result.Status);
+        Assert.NotNull(result.SlotHeldUntilUtc);
+        await events.Received(1).TryReserveDistanceSlotAsync(distanceId, Arg.Any<CancellationToken>());
         await regs.Received(1).AddAsync(Arg.Any<EventRegistration>(), Arg.Any<CancellationToken>());
         await uow.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
+
+    private static IConfiguration EmptyConfig()
+        => new ConfigurationBuilder().Build();
 
     [Fact]
     public async Task Organizer_ApproveRegistration()
@@ -158,10 +169,10 @@ public class EventHandlerWorkflowTests
                 Substitute.For<IEventBus>(),
                 Substitute.For<IEmailSender>(),
                 Substitute.For<Microsoft.Extensions.Logging.ILogger<ApproveRegistrationCommandHandler>>())
-            .Handle(new ApproveRegistrationCommand(reg.Id, "BIB-1"), CancellationToken.None);
+            .Handle(new ApproveRegistrationCommand(reg.Id, "210001"), CancellationToken.None);
 
         Assert.Equal("confirmed", result.Status);
-        Assert.Equal("BIB-1", result.BibNumber);
+        Assert.Equal("210001", result.BibNumber);
     }
 
     [Fact]

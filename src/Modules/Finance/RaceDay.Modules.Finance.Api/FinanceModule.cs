@@ -35,7 +35,8 @@ public static class FinanceModule
             module = "finance",
             status = "ready",
             policy =
-                "fee 5%; payout advance 30% from T-4w then 70% after race (Manager/Admin approve); " +
+                "fee 5%; payout: advance 30% from T-4w then 70% after race; " +
+                "Manager approve → bank transfer offline → confirm+receipt; " +
                 "refund 100% if ≥90d before event, 85% if ≥60d, 0% if <60d or after start"
         }));
 
@@ -89,15 +90,19 @@ public static class FinanceModule
 
         manager.MapGet("/payouts", async (IMediator m, CancellationToken ct) =>
             Results.Ok(await m.Send(new ListAdminPayoutsQuery(), ct)))
-            .WithSummary("Danh sách yêu cầu giải ngân chờ duyệt");
+            .WithSummary("Danh sách yêu cầu giải ngân (pending / approved / transferred / rejected)");
 
-        manager.MapPost("/payouts/{id:guid}/approve", async (Guid id, ApproveBody? body, IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new ApproveAdminPayoutCommand(id, body?.ReceiptUrl), ct)))
-            .WithSummary("Manager duyệt / xác nhận đã chuyển khoản → transferred");
+        manager.MapPost("/payouts/{id:guid}/approve", async (Guid id, IMediator m, CancellationToken ct) =>
+            Results.Ok(await m.Send(new ApproveAdminPayoutCommand(id), ct)))
+            .WithSummary("Bước 1: duyệt lệnh rút (chưa chuyển khoản)");
+
+        manager.MapPost("/payouts/{id:guid}/confirm-transfer", async (Guid id, ConfirmTransferBody body, IMediator m, CancellationToken ct) =>
+            Results.Ok(await m.Send(new ConfirmTransferAdminPayoutCommand(id, body.ReceiptUrl), ct)))
+            .WithSummary("Bước 2: xác nhận đã CK ngoài hệ thống + URL biên nhận bắt buộc → transferred");
 
         manager.MapPost("/payouts/{id:guid}/reject", async (Guid id, RejectBody body, IMediator m, CancellationToken ct) =>
             Results.Ok(await m.Send(new RejectAdminPayoutCommand(id, body.Reason), ct)))
-            .WithSummary("Manager từ chối giải ngân → nhả reserve trên ledger");
+            .WithSummary("Từ chối (pending/approved chưa CK) → nhả reserve trên ledger");
 
         manager.MapGet("/system-error-refunds", async (bool? pendingOnly, IMediator m, CancellationToken ct) =>
             Results.Ok(await m.Send(new ListSystemErrorRefundsQuery(pendingOnly != false), ct)))
@@ -120,8 +125,11 @@ public static class FinanceModule
         adminPayouts.MapGet("/payouts", async (IMediator m, CancellationToken ct) =>
             Results.Ok(await m.Send(new ListAdminPayoutsQuery(), ct)));
 
-        adminPayouts.MapPost("/payouts/{id:guid}/approve", async (Guid id, ApproveBody? body, IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new ApproveAdminPayoutCommand(id, body?.ReceiptUrl), ct)));
+        adminPayouts.MapPost("/payouts/{id:guid}/approve", async (Guid id, IMediator m, CancellationToken ct) =>
+            Results.Ok(await m.Send(new ApproveAdminPayoutCommand(id), ct)));
+
+        adminPayouts.MapPost("/payouts/{id:guid}/confirm-transfer", async (Guid id, ConfirmTransferBody body, IMediator m, CancellationToken ct) =>
+            Results.Ok(await m.Send(new ConfirmTransferAdminPayoutCommand(id, body.ReceiptUrl), ct)));
 
         adminPayouts.MapPost("/payouts/{id:guid}/reject", async (Guid id, RejectBody body, IMediator m, CancellationToken ct) =>
             Results.Ok(await m.Send(new RejectAdminPayoutCommand(id, body.Reason), ct)));
@@ -154,6 +162,6 @@ public static class FinanceModule
         return app;
     }
 
-    private sealed record ApproveBody(string? ReceiptUrl);
+    private sealed record ConfirmTransferBody(string ReceiptUrl);
     private sealed record RejectBody(string Reason);
 }

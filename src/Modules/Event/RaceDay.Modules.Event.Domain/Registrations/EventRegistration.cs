@@ -41,6 +41,11 @@ public sealed class EventRegistration : AggregateRoot
     public Guid? CheckedInByUserId { get; private set; }
     public DateTime? FinishedAtUtc { get; private set; }
     public long? ResultSeconds { get; private set; }
+    /// <summary>
+    /// Giữ chỗ capacity đến thời điểm này (PendingPayment). Null = không còn hold
+    /// (đã paid / đã nhả / chưa reserve).
+    /// </summary>
+    public DateTime? SlotHeldUntilUtc { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -145,8 +150,42 @@ public sealed class EventRegistration : AggregateRoot
         }
 
         Status = RegistrationStatus.PendingApproval;
+        ClearSlotHold();
         Touch();
     }
+
+    /// <summary>Đánh dấu đã giữ slot (RegisteredCount đã +1) đến <paramref name="untilUtc"/>.</summary>
+    public void ReserveSlotHold(DateTime untilUtc)
+    {
+        if (Status != RegistrationStatus.PendingPayment)
+        {
+            throw new DomainException("Chỉ giữ chỗ khi đơn đang chờ thanh toán.");
+        }
+
+        if (untilUtc <= DateTime.UtcNow)
+        {
+            throw new DomainException("Thời hạn giữ chỗ không hợp lệ.");
+        }
+
+        SlotHeldUntilUtc = untilUtc;
+        Touch();
+    }
+
+    public void ClearSlotHold()
+    {
+        if (SlotHeldUntilUtc is null)
+        {
+            return;
+        }
+
+        SlotHeldUntilUtc = null;
+        Touch();
+    }
+
+    public bool HasSlotHold => SlotHeldUntilUtc is not null;
+
+    public bool IsSlotHoldActive(DateTime utcNow)
+        => SlotHeldUntilUtc is DateTime until && until > utcNow;
 
     /// <summary>
     /// Có bệnh lý đặc biệt cần BTC duyệt tay.
@@ -294,6 +333,7 @@ public sealed class EventRegistration : AggregateRoot
         }
 
         Status = RegistrationStatus.Cancelled;
+        ClearSlotHold();
         Touch();
     }
 
