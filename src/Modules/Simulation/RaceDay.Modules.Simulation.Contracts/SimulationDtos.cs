@@ -87,7 +87,25 @@ public sealed record SimulationSnapshotDto(
     IReadOnlyList<SimulationAthleteDto> Athletes,
     IReadOnlyList<SimulationRankDto> Ranking,
     IReadOnlyList<SimulationCheckpointLeaderDto> CheckpointLeaders,
-    IReadOnlyList<SimulationLogDto> Log);
+    IReadOnlyList<SimulationLogDto> Log,
+    IReadOnlyList<SimulationDecisionDto>? Decisions = null);
+
+public sealed record SimulationDecisionDto(
+    Guid Id, Guid RegistrationId, string Bib, string PreviousStatus, string Status,
+    string Reason, string? Evidence, Guid ActorId, string CheckpointId, DateTime CreatedAtUtc,
+    string Resolution, Guid? ReviewedBy = null, DateTime? ReviewedAtUtc = null, string? ReviewReason = null);
+
+public sealed record StaffCheckpointAthleteDto(
+    Guid RegistrationId, string Bib, string FullName, string Motion, bool Sos,
+    double CourseKm, double SpeedKmh, double? PassedAtSeconds, double RemainingKm,
+    bool CanDnf, bool CanDns, bool CanReport);
+
+public sealed record StaffCheckpointSnapshotDto(
+    Guid EventId, string EventName, Guid DistanceId, string Title,
+    SimulationCheckpointDto Checkpoint, IReadOnlyList<SimulationPointDto> Polyline, double DistanceKm,
+    Guid? RunId, int Generation, long Version, string? Phase, double SimulatedSeconds,
+    double PlaybackRate, string? CommitState,
+    IReadOnlyList<StaffCheckpointAthleteDto> Athletes, IReadOnlyList<SimulationDecisionDto> Decisions);
 
 public sealed record SimulationCommitItemDto(
     Guid RegistrationId,

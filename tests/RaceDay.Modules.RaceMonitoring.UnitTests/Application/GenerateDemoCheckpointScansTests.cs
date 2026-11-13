@@ -20,12 +20,12 @@ public class GenerateDemoCheckpointScansTests
         registrations.ListEligibleByEventAsync(eventId, Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new EventRegistrationRaceCandidate(registrationId, eventId, distanceId, "A0001"),
-                new EventRegistrationRaceCandidate(Guid.NewGuid(), eventId, otherDistanceId, "B0002")
+                new EventRegistrationRaceCandidate(registrationId, eventId, distanceId, "A0001", "Runner A", "Confirmed", null),
+                new EventRegistrationRaceCandidate(Guid.NewGuid(), eventId, otherDistanceId, "B0002", "Runner B", "Confirmed", null)
             });
         var checkpoints = Substitute.For<IEventCheckpointQuery>();
         checkpoints.ListByEventAsync(eventId, Arg.Any<CancellationToken>())
-            .Returns(new[] { new EventCheckpointInfo(checkpointId, eventId, distanceId) });
+            .Returns(new[] { new EventCheckpointInfo(checkpointId, eventId, distanceId, "Checkpoint KM 5") });
         var recorder = Substitute.For<ICheckpointScanRecorder>();
         var recorded = new List<CheckpointScanRecord>();
         recorder.RecordAsync(Arg.Any<CheckpointScanRecord>(), Arg.Any<CancellationToken>())

@@ -1,11 +1,15 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using RaceDay.Modules.Event.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations;
 
 /// <inheritdoc />
+[DbContext(typeof(EventDbContext))]
+[Migration("20261110143000_AddDistanceResultsPublished")]
 public partial class AddDistanceResultsPublished : Migration
 {
     /// <inheritdoc />

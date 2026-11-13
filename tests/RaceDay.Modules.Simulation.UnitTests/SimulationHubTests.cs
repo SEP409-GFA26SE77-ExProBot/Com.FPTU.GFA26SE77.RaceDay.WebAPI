@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -22,6 +23,68 @@ namespace RaceDay.Modules.Simulation.UnitTests;
 public class SimulationHubTests
 {
     [Fact]
+    public async Task Staff_stream_uses_authenticated_identity_and_stops_after_revocation()
+    {
+        var staffId = Guid.NewGuid();
+        var eventId = Guid.NewGuid();
+        var distanceId = Guid.NewGuid();
+        var signingKey = new string('k', 48);
+        var workspace = new RevocableWorkspace(staffId, eventId, distanceId);
+        var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.Configuration["Jwt:SigningKey"] = signingKey;
+        builder.Configuration["Jwt:Issuer"] = "raceday";
+        builder.Configuration["Jwt:Audience"] = "raceday-clients";
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Services.AddSharedWeb(builder.Configuration);
+        builder.Services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, SimulationModule.UseHubAccessToken);
+        builder.Services.AddSignalR();
+        builder.Services.AddSingleton<ISimulationFieldSource>(new FixedField(Field(eventId, distanceId, Guid.NewGuid())));
+        builder.Services.AddSingleton<ISimulationCommitGateway, RecordingGateway>();
+        builder.Services.AddSingleton<ISimulationBroadcaster, NoopSimulationBroadcaster>();
+        builder.Services.AddSingleton<SimulationSessionBook>();
+        builder.Services.AddSingleton<ISimulationAuthorizer, DenyAuthorizer>();
+        builder.Services.AddSingleton<IStaffCheckpointWorkspace>(workspace);
+        await using var app = builder.Build();
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapHub<SimulationHub>(SimulationModule.HubPath);
+        await app.StartAsync();
+        try
+        {
+            await using var connection = new HubConnectionBuilder()
+                .WithUrl(app.Urls.Single() + SimulationModule.HubPath,
+                    options => options.AccessTokenProvider = () => Task.FromResult<string?>(Token(signingKey, staffId)))
+                .Build();
+            await connection.StartAsync();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var stream = await connection.StreamAsChannelAsync<StaffCheckpointSnapshotDto>("WatchCheckpoint", eventId, timeout.Token);
+            var snapshot = await stream.ReadAsync(timeout.Token);
+            Assert.Equal("cp", snapshot.Checkpoint.Id);
+            Assert.Null(snapshot.RunId);
+            workspace.Revoked = true;
+            await Assert.ThrowsAsync<Microsoft.AspNetCore.SignalR.HubException>(async () =>
+            {
+                await foreach (var _ in stream.ReadAllAsync(timeout.Token)) { }
+            });
+            var run = await app.Services.GetRequiredService<SimulationSessionBook>().CreateAsync(eventId, distanceId, null, 1);
+            await Assert.ThrowsAsync<Microsoft.AspNetCore.SignalR.HubException>(() => connection.InvokeAsync("JoinRun", run.RunId));
+        }
+        finally { await app.StopAsync(); }
+    }
+
+    private sealed class RevocableWorkspace(Guid staffId, Guid eventId, Guid distanceId) : IStaffCheckpointWorkspace
+    {
+        public volatile bool Revoked;
+        public Task<StaffCheckpointSnapshotDto> ReadAsync(Guid id, Guid actor, CancellationToken ct = default)
+        {
+            if (Revoked || actor != staffId || id != eventId) throw new DomainException("Assignment revoked");
+            return Task.FromResult(new StaffCheckpointSnapshotDto(eventId, "Race", distanceId, "Distance",
+                new("cp", "Checkpoint", 1, 10, 106, "cp"), [], 2, null, 0, 0, null, 0, 1, null, [], []));
+        }
+    }
+
+    [Fact]
     public async Task Join_checks_permission_and_reconnect_receives_the_current_snapshot()
     {
         var userId = Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd");
@@ -31,6 +94,7 @@ public class SimulationHubTests
         var signingKey = new string('k', 48);
 
         var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
         builder.Configuration["Jwt:SigningKey"] = signingKey;
         builder.Configuration["Jwt:Issuer"] = "raceday";
         builder.Configuration["Jwt:Audience"] = "raceday-clients";
@@ -42,7 +106,7 @@ public class SimulationHubTests
         builder.Services.AddSingleton<ISimulationCommitGateway, RecordingGateway>();
         builder.Services.AddSingleton<ISimulationBroadcaster, SignalRSimulationBroadcaster>();
         builder.Services.AddSingleton<SimulationSessionBook>();
-        builder.Services.AddSingleton<IEventSosOpsAccessQuery>(new AllowUser(userId));
+        builder.Services.AddSingleton<IEventOrganizerAccessQuery>(new AllowUser(userId));
         builder.Services.AddScoped<ISimulationAuthorizer, SimulationAuthorizer>();
 
         var app = builder.Build();
@@ -171,6 +235,7 @@ public class SimulationHubTests
     public void Routes_match_the_demo_contract()
     {
         var builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
         builder.Services.AddSignalR();
         builder.Services.AddAuthorization();
         builder.Services.AddSingleton<ISimulationFieldSource>(new FixedField(Field(
@@ -204,6 +269,9 @@ public class SimulationHubTests
             "/api/v1/simulation/runs/{runId:guid}/athletes/{registrationId:guid}/speed",
             "/api/v1/simulation/runs/{runId:guid}/athletes/{registrationId:guid}/sos",
             "/api/v1/simulation/runs/{runId:guid}/athletes/{registrationId:guid}/dnf",
+            "/api/v1/simulation/staff/events/{eventId:guid}/checkpoint/export",
+            "/api/v1/simulation/staff/events/{eventId:guid}/runs/{runId:guid}/checkpoint/export",
+            "/api/v1/simulation/events/{eventId:guid}/distances/{distanceId:guid}/checkpoint-exports",
             "/api/v1/simulation/runs/{runId:guid}/athletes/{registrationId:guid}/fraud/chip",
             "/api/v1/simulation/runs/{runId:guid}/athletes/{registrationId:guid}/fraud/passage",
             "/api/v1/simulation/hub"
@@ -275,10 +343,10 @@ public class SimulationHubTests
             => Task.FromResult(new SimulationCommitBatch(false, "unused", []));
     }
 
-    private sealed class AllowUser(Guid userId) : IEventSosOpsAccessQuery
+    private sealed class AllowUser(Guid userId) : IEventOrganizerAccessQuery
     {
-        public Task<bool> CanManageSosAsync(Guid eventId, Guid candidate, CancellationToken cancellationToken = default)
-            => Task.FromResult(candidate == userId);
+        public Task<EventOrganizerAccessInfo?> GetAsync(Guid eventId, CancellationToken cancellationToken = default)
+            => Task.FromResult<EventOrganizerAccessInfo?>(new(eventId, userId, "Draft", "Demo"));
     }
 
     private sealed class AllowAll : ISimulationAuthorizer

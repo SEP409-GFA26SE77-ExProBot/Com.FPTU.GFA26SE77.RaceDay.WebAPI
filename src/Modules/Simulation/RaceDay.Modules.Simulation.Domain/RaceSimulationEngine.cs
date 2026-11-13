@@ -235,6 +235,25 @@ public sealed class RaceSimulationEngine
         Log("CHIP", athlete.Bib + " " + athlete.ChipId);
     }
 
+    public void SetRaceStatus(Guid registrationId, AthleteMotion status)
+    {
+        var athlete = Require(registrationId);
+        if (status is not (AthleteMotion.Dnf or AthleteMotion.Dns or AthleteMotion.Dq))
+            throw new DomainException("Trạng thái phải là DNF, DNS hoặc DQ.");
+        if (athlete.Motion is AthleteMotion.Dnf or AthleteMotion.Dns or AthleteMotion.Dq)
+            throw new DomainException("VĐV đã có quyết định. Không thể ghi đè quyết định cũ.");
+        if (status == AthleteMotion.Dns && (Phase != SimulationPhase.Ready || athlete.Splits.Count > 0))
+            throw new DomainException("DNS chỉ dành cho VĐV chưa xuất phát, trước khi chạy lượt giả lập.");
+        if (status == AthleteMotion.Dnf && (Phase == SimulationPhase.Ready || athlete.Motion != AthleteMotion.Racing))
+            throw new DomainException("DNF chỉ dành cho VĐV đang chạy, chưa về đích.");
+        athlete.Motion = status;
+        athlete.ValidFinish = false;
+        athlete.CurrentKmh = 0;
+        Log(status.ToString().ToUpperInvariant(), athlete.Bib);
+        // DNS before Start must not prevent the organizer from starting the remaining field.
+        if (Phase != SimulationPhase.Ready) FinishIfComplete();
+    }
+
     public void Note(string kind, string subject) => Log(kind, subject);
 
     public bool InjectPassage(Guid registrationId, string checkpointId)
@@ -381,6 +400,11 @@ public sealed class RaceSimulationEngine
 
     private bool TryAccept(Athlete athlete, int index, long simMicros, bool injected)
     {
+        if (athlete.Motion is AthleteMotion.Dnf or AthleteMotion.Dns or AthleteMotion.Dq)
+        {
+            return false;
+        }
+
         if (index < 0 || index >= _checkpoints.Count)
         {
             return false;
@@ -456,7 +480,7 @@ public sealed class RaceSimulationEngine
     private void FinishIfComplete()
     {
         if (_athletes.Count > 0 && _athletes.All(athlete =>
-                athlete.Motion is AthleteMotion.Finished or AthleteMotion.Dnf))
+                athlete.Motion is AthleteMotion.Finished or AthleteMotion.Dnf or AthleteMotion.Dns or AthleteMotion.Dq))
         {
             Phase = SimulationPhase.Finished;
         }

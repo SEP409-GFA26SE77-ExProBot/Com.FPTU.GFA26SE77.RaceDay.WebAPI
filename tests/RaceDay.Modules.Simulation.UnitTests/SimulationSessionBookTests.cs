@@ -197,8 +197,8 @@ public class SimulationSessionBookTests
     {
         var (book, _, _) = NewBook();
         var created = await book.CreateAsync(_eventId, _distanceId, null, 3);
-        var allowed = new SimulationAuthorizer(new FakeUser(Guid.NewGuid(), admin: true), new FakeAccess(allow: true));
-        var denied = new SimulationAuthorizer(new FakeUser(Guid.NewGuid(), admin: true), new FakeAccess(allow: false));
+        var allowed = new SimulationAuthorizer(new FakeUser(_eventId, admin: true), new FakeAccess(_eventId));
+        var denied = new SimulationAuthorizer(new FakeUser(Guid.NewGuid(), admin: true), new FakeAccess(_eventId));
         await Assert.ThrowsAsync<DomainException>(() => SimulationAccess.ReadAsync(book, denied, created.RunId));
         var started = await book.StartAsync(created.RunId);
         var read = await SimulationAccess.ReadAsync(book, allowed, created.RunId);
@@ -485,9 +485,9 @@ public class SimulationSessionBookTests
         public bool IsInRole(string role) => admin && role == "Admin";
     }
 
-    private sealed class FakeAccess(bool allow) : IEventSosOpsAccessQuery
+    private sealed class FakeAccess(Guid ownerId) : IEventOrganizerAccessQuery
     {
-        public Task<bool> CanManageSosAsync(Guid eventId, Guid userId, CancellationToken cancellationToken = default)
-            => Task.FromResult(allow);
+        public Task<EventOrganizerAccessInfo?> GetAsync(Guid eventId, CancellationToken cancellationToken = default)
+            => Task.FromResult<EventOrganizerAccessInfo?>(new(eventId, ownerId, "Draft", "Demo"));
     }
 }

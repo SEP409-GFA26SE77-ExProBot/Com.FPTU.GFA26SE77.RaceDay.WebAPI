@@ -3,6 +3,8 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.RaceMonitoring.UnitTests.Domain;
 
+[Trait("Workflow", "WF-02")]
+[Trait("Feature", "MF-07")]
 public class CheckpointScanTests
 {
     private static readonly DateTime ScannedAt = new(2026, 10, 27, 5, 18, 35, DateTimeKind.Utc);

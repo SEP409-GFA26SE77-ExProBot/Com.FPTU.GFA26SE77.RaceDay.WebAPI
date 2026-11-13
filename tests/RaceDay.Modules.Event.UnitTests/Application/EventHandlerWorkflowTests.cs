@@ -22,6 +22,7 @@ public class EventHandlerWorkflowTests
             800, startTime: startTime, tagline: "Roof of Indochina");
         var distance = EventDistance.Create(
             race.Id, "Cloud Valley", 21, 500, 900_000, "#F59E0B", type: "21K", routeGeometryJson: "{}");
+        distance.SetBibConfig("BIB-", 1, 500);
         race.ReplaceDistances([distance]);
         race.ReplaceDocuments([
             EventDocument.Create(race.Id, "official-letter", "Official letter", "official-letter.pdf", "/official-letter.pdf", true),
@@ -76,7 +77,7 @@ public class EventHandlerWorkflowTests
 
         var distance = Assert.Single(result);
         Assert.Equal(race.Distances.First().Id, distance.Id);
-        Assert.Equal("21K", distance.Type);
+        Assert.Equal("HM", distance.Type);
         Assert.Equal(21, distance.DistanceKm);
     }
 
@@ -158,10 +159,10 @@ public class EventHandlerWorkflowTests
                 Substitute.For<IEventBus>(),
                 Substitute.For<IEmailSender>(),
                 Substitute.For<Microsoft.Extensions.Logging.ILogger<ApproveRegistrationCommandHandler>>())
-            .Handle(new ApproveRegistrationCommand(reg.Id, "BIB-1"), CancellationToken.None);
+            .Handle(new ApproveRegistrationCommand(reg.Id, "BIB-0001"), CancellationToken.None);
 
         Assert.Equal("confirmed", result.Status);
-        Assert.Equal("BIB-1", result.BibNumber);
+        Assert.Equal("BIB-0001", result.BibNumber);
     }
 
     [Fact]

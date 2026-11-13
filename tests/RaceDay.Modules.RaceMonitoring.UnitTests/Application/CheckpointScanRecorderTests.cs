@@ -8,6 +8,8 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.RaceMonitoring.UnitTests.Application;
 
+[Trait("Workflow", "WF-02")]
+[Trait("Feature", "MF-07")]
 public class CheckpointScanRecorderTests
 {
     [Fact]
@@ -149,7 +151,7 @@ public class CheckpointScanRecorderTests
             .Returns(new EventRegistrationRaceInfo(RegistrationId, EventId, DistanceId, "1024", status));
         var checkpoints = Substitute.For<IEventCheckpointQuery>();
         checkpoints.GetAsync(CheckpointId, Arg.Any<CancellationToken>())
-            .Returns(new EventCheckpointInfo(CheckpointId, EventId, checkpointDistanceId ?? DistanceId));
+            .Returns(new EventCheckpointInfo(CheckpointId, EventId, checkpointDistanceId ?? DistanceId, "Checkpoint"));
         var scans = Substitute.For<ICheckpointScanRepository>();
         var logs = Substitute.For<IRaceEventLogRepository>();
         var unitOfWork = Substitute.For<IRaceMonitoringUnitOfWork>();

@@ -488,6 +488,25 @@ public sealed class EventRegistration : AggregateRoot
             throw new DomainException("VĐV đã có trạng thái DNS/DNF/DQ; không thể tiếp tục hoặc đổi quyết định.");
     }
 
+    /// <summary>Simulation starts are held in memory, so the persisted registration is still NotStarted.</summary>
+    public RaceStatusChange ApplySimulationDecision(RaceStatus target, string reason, Guid actorId,
+        DateTime changedAtUtc, Guid runId, string checkpointId)
+    {
+        if (Status != RegistrationStatus.Confirmed || RaceStatus != RaceStatus.NotStarted
+            || StartedAtUtc.HasValue || FinishedAtUtc.HasValue || ResultSeconds.HasValue)
+            throw new DomainException("Đăng ký không còn đủ điều kiện ghi kết quả giả lập.");
+        if (target is not (RaceStatus.DNS or RaceStatus.DNF or RaceStatus.DQ)
+            || string.IsNullOrWhiteSpace(reason) || reason.Trim().Length > 1000
+            || actorId == Guid.Empty || runId == Guid.Empty || changedAtUtc.Kind != DateTimeKind.Utc
+            || string.IsNullOrWhiteSpace(checkpointId) || checkpointId.Length > 120)
+            throw new DomainException("Quyết định giả lập không hợp lệ.");
+        var change = RaceStatusChange.Create(Id, RaceStatus, target, reason.Trim(), actorId, changedAtUtc);
+        change.SetSimulationSource(runId, checkpointId);
+        RaceStatus = target;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return change;
+    }
+
     private void Touch() => UpdatedAtUtc = DateTime.UtcNow;
 }
 
