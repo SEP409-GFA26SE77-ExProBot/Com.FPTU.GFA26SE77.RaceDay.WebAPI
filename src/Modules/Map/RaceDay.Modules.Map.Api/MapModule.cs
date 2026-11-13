@@ -29,9 +29,6 @@ public static class MapModule
             .WithTags(ApiTags.Map)
             .RequireRateLimiting("public");
 
-        api.MapGet("/status", () => Results.Ok(new { module = "map", status = "ready" }))
-            .WithSummary("Trạng thái module Map");
-
         api.MapGet("/geocode", async (
             string? q,
             IGeocodeService geocode,
@@ -57,7 +54,7 @@ public static class MapModule
             Results.Ok(await mediator.Send(new GetCourseQuery(eventId, distanceId), ct)))
             .WithSummary("GET course theo (event, distance) — FE organizer setup map + simulator")
             .WithDescription(
-                "Chưa có course → trả empty (polyline []). Organizer/Admin luôn được đọc; "
+                "Chưa có course → trả empty (polyline []). Organizer/Admin/Manager luôn được đọc; "
                 + "Active event staff (Coordinator/Volunteer/Photographer) được đọc kể cả draft; "
                 + "caller khác chỉ khi giải Approved / RegistrationOpen / Closed / Completed.");
 

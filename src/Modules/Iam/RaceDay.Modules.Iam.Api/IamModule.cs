@@ -256,9 +256,6 @@ public static class IamModule
         })
         .WithSummary("Xóa user");
 
-        adminApi.MapGet("/health", () => Results.Ok(new { module = "iam", status = "ok" }))
-            .WithSummary("Health module IAM");
-
         return app;
     }
 }

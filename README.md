@@ -21,10 +21,11 @@ SEP_WebAPI/
 │   └── _gen_api_guide_docx.py          # Regenerate: python docs/_gen_api_guide_docx.py
 │
 ├── deploy/                      # ★ Hạ tầng local (+ optional API container)
-│   ├── docker-compose.yml       # Postgres, MongoDB, Redis, RabbitMQ, profile `api`
+│   ├── docker-compose.yml       # Postgres, Redis, RabbitMQ, profile `api`
 │   ├── Dockerfile               # RaceDay.Api image (compose profile api)
+│   ├── clear-and-seed.ps1       # Truncate + seed demo
 │   └── sql/
-│       └── raceday_init.sql     # ★ Schema + seed IAM/Event/Payment (1 file)
+│       └── clear_and_seed.sql   # ★ Demo data (ONE FILE)
 │
 ├── src/
 │   ├── Shared/                  # Cross-cutting (Domain/Application/Infrastructure/Web)
@@ -32,8 +33,8 @@ SEP_WebAPI/
 │   │   ├── Iam/                 # Auth — PostgreSQL schema `iam`
 │   │   ├── Event/               # Giải + đăng ký — schema `event`
 │   │   ├── Payment/             # PayOS checkout — schema `payment`
-│   │   ├── AuditLog/            # Audit — MongoDB
-│   │   ├── RaceMonitoring/      # Giám sát giải — scaffold, chưa có schema
+│   │   ├── AuditLog/            # Audit — PostgreSQL schema `audit` (append-only)
+│   │   ├── RaceMonitoring/      # Giám sát giải
 │   │   └── _Template/           # Copy khi tạo module mới
 │   ├── Hosts/RaceDay.Api/       # Composition root (chạy API :5080)
 │   └── Gateways/RaceDay.ApiGateway/  # YARP public edge (:5000)
@@ -110,21 +111,14 @@ Tất cả cấu hình qua **`.env`** ở root (ASP.NET: `Section__Key`). Host �
 | `ConnectionStrings__Postgres` | `Host=localhost;Port=5433;Database=postgres;Username=postgres;Password=postgres` |
 
 - Docker compose: user/password/db = `postgres` / `postgres` / `postgres`, **host port `5433`** (tránh đụng PostgreSQL Windows trên `5432`).
-- Schemas: `iam`, `event`, `payment`.
-- Schema + seed: **một file** [`deploy/sql/raceday_init.sql`](deploy/sql/raceday_init.sql).
-- App cũng `MigrateAsync` khi start; file SQL đã stamp `__EFMigrationsHistory` để không tạo trùng.
+- Schemas: `iam`, `event`, `payment`, `finance`, `map`, `photo`, `device`, `audit`, …
+- Schema: API `MigrateAsync` khi start. Demo data: [`deploy/clear-and-seed.ps1`](deploy/clear-and-seed.ps1) → [`deploy/sql/clear_and_seed.sql`](deploy/sql/clear_and_seed.sql).
 
-Re-seed Event/Payment sạch (giữ user IAM): xem comment `TRUNCATE` trong đầu file `raceday_init.sql`.
+### 2. AuditLog (Postgres schema `audit`)
 
-### 2. MongoDB (AuditLog)
-
-| Key | Ví dụ |
-|-----|--------|
-| `ConnectionStrings__MongoDb` | `mongodb://localhost:27017` |
-| `MongoDb__Database` | `raceday` |
-
-- Docker: port `27017`. Không cần SQL init — AuditLog tạo collection khi ghi.
-- OTP / login / approve… emit integration events → ghi audit Mongo.
+- Append-only bảng `audit.audit_entries` (EF, không classic UoW).
+- OTP / login / approve… emit integration events → ghi audit Postgres.
+- Admin FE: `GET /api/v1/audit-logs?page=&pageSize=` (không đổi path).
 
 ### 3. Redis (cache)
 
@@ -223,8 +217,8 @@ Flow FE: **upload trước** → lấy `fileUrl` → mới gọi create event / 
 | IAM | PostgreSQL + EF + UoW | `iam` |
 | Event | PostgreSQL + EF + UoW | `event` |
 | Payment | PostgreSQL + EF + UoW | `payment` |
-| AuditLog | MongoDB | database `raceday` |
-| RaceMonitoring | PostgreSQL packages sẵn, chưa gắn DbContext | schema chưa tạo |
+| AuditLog | PostgreSQL + EF (append-only, no UoW) | `audit` |
+| RaceMonitoring | PostgreSQL + EF | `race_monitoring` (module schema) |
 | Cache | Redis | — |
 | Bus | RabbitMQ (+ MediatR in-process) | — |
 
@@ -234,8 +228,8 @@ Flow FE: **upload trước** → lấy `fileUrl` → mới gọi create event / 
 
 | Area | What |
 |------|------|
-| Repository + UoW | Postgres modules |
-| Mongo repo | AuditLog (không classic UoW) |
+| Repository + UoW | Postgres transactional modules |
+| Append-only repo | AuditLog Postgres (SaveChanges on insert) |
 | CQRS-lite | MediatR |
 | Rate limiting | Shared.Web + Gateway |
 | Auth | JWT policies `PublicUser`, `AdminOnly` |

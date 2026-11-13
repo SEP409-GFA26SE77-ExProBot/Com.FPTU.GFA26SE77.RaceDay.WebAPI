@@ -4,13 +4,10 @@
 
 .EXAMPLE
   .\deploy\clear-and-seed.ps1
-  .\deploy\clear-and-seed.ps1 -SkipMongo
 #>
 
 [CmdletBinding()]
-param(
-    [switch]$SkipMongo
-)
+param()
 
 $ErrorActionPreference = "Stop"
 $DeployDir = $PSScriptRoot
@@ -40,7 +37,7 @@ function Resolve-ComposeService([string]$service, [string]$ancestorFilter) {
 }
 
 if (-not (Test-Path $SqlFile)) {
-    throw "Missing $SqlFile - run: python deploy/sql/generate_seed_demo.py"
+    throw "Missing $SqlFile"
 }
 
 Write-Step "Resolve containers"
@@ -54,13 +51,6 @@ if (-not $pg) {
     throw "Postgres not found. Start: docker compose -f deploy/docker-compose.yml up -d postgres"
 }
 Write-Host "    postgres: $pg"
-
-$mongo = $null
-if (-not $SkipMongo) {
-    $mongo = Resolve-ComposeService "mongodb" "mongo:7"
-    if ($mongo) { Write-Host "    mongodb:  $mongo" }
-    else { Write-Host "    mongodb:  (skip)" -ForegroundColor DarkYellow }
-}
 
 Write-Step "Wait pg_isready"
 $ok = $false
@@ -84,11 +74,6 @@ if ($LASTEXITCODE -ne 0) { throw "psql failed (exit $LASTEXITCODE)" }
 
 docker exec $pg rm -f $remoteSql 2>$null | Out-Null
 
-if ($mongo) {
-    Write-Step "Clear Mongo audit_entries"
-    docker exec $mongo mongosh --quiet --eval "db.getSiblingDB('raceday').audit_entries.deleteMany({})" | Out-Host
-}
-
 Write-Step "Done"
 Write-Host ""
 Write-Host 'Password ALL: MatKhau@123 (email verified, no OTP)' -ForegroundColor Green
@@ -98,5 +83,5 @@ Write-Host '  cuong.le / cuong.le@raceday.vn     (organizer Grand Marathon)'
 Write-Host '  binh.tran                       (5KM Finished + certificate)'
 Write-Host '  an.nguyen .. uyen.mai           (runners; 5KM published / 10KM sim pool)'
 Write-Host '  coord1,coord2,vol1,vol2,photo1,photo2  (staff Invited on Grand)'
-Write-Host 'Seed file: deploy/sql/clear_and_seed.sql (ONE FILE)'
+Write-Host 'Seed file: deploy/sql/clear_and_seed.sql (ONE FILE) — audit schema truncated with others'
 Write-Host ""

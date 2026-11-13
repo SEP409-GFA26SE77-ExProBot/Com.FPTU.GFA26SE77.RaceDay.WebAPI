@@ -649,8 +649,8 @@ public static class EventModule
         .Produces(StatusCodes.Status401Unauthorized);
 
         // Manager: duyệt/từ chối giải + catalog gói (promo / duration / capacity). Admin giữ IAM + hệ thống.
-        var managerApi = app.MapGroup("/api/v1/event/admin")
-            .WithTags(ApiTags.EventAdmin)
+        var managerApi = app.MapGroup("/api/v1/event/manager")
+            .WithTags(ApiTags.EventManager)
             .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
@@ -675,8 +675,8 @@ public static class EventModule
             Results.Ok(await mediator.Send(new RejectRaceEventCommand(eventId, body.Reason), ct)))
             .WithSummary("Từ chối giải (Manager; cần reason)");
 
-        var promoApi = app.MapGroup("/api/v1/event/admin/promos")
-            .WithTags(ApiTags.EventAdmin)
+        var promoApi = app.MapGroup("/api/v1/event/manager/promos")
+            .WithTags(ApiTags.EventManager)
             .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
@@ -688,7 +688,7 @@ public static class EventModule
         {
             var result = await mediator.Send(
                 new CreatePromoCodeCommand(body.Code, body.PercentOff, body.ExpiresAtUtc, body.MaxRedemptions), ct);
-            return Results.Created($"/api/v1/event/admin/promos/{result.Id}", result);
+            return Results.Created($"/api/v1/event/manager/promos/{result.Id}", result);
         })
         .WithSummary("Tạo promo code mới (Manager)")
         .Produces<PromoCodeDto>(StatusCodes.Status201Created);
@@ -706,8 +706,8 @@ public static class EventModule
         })
         .WithSummary("Cập nhật promo code (Manager)");
 
-        var durationApi = app.MapGroup("/api/v1/event/admin/package-durations")
-            .WithTags(ApiTags.EventAdmin)
+        var durationApi = app.MapGroup("/api/v1/event/manager/package-durations")
+            .WithTags(ApiTags.EventManager)
             .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
@@ -719,7 +719,7 @@ public static class EventModule
         {
             var result = await mediator.Send(
                 new CreatePackageDurationCommand(body.Name, body.Months, body.Price, body.SortOrder), ct);
-            return Results.Created($"/api/v1/event/admin/package-durations/{result.Id}", result);
+            return Results.Created($"/api/v1/event/manager/package-durations/{result.Id}", result);
         })
         .WithSummary("Tạo thời hạn gói (Manager)")
         .Produces<PackageDurationOptionDto>(StatusCodes.Status201Created);
@@ -729,8 +729,8 @@ public static class EventModule
                 id, body.Name, body.Price, body.SortOrder, body.Active), ct)))
             .WithSummary("Cập nhật thời hạn gói (Manager)");
 
-        var capacityApi = app.MapGroup("/api/v1/event/admin/package-capacities")
-            .WithTags(ApiTags.EventAdmin)
+        var capacityApi = app.MapGroup("/api/v1/event/manager/package-capacities")
+            .WithTags(ApiTags.EventManager)
             .RequireAuthorization(AuthPolicies.ManagerOnly)
             .RequireRateLimiting("admin");
 
@@ -742,7 +742,7 @@ public static class EventModule
         {
             var result = await mediator.Send(
                 new CreatePackageCapacityCommand(body.Name, body.MaxParticipants, body.AddOnFee, body.SortOrder), ct);
-            return Results.Created($"/api/v1/event/admin/package-capacities/{result.Id}", result);
+            return Results.Created($"/api/v1/event/manager/package-capacities/{result.Id}", result);
         })
         .WithSummary("Tạo quy mô VĐV gói (Manager)")
         .Produces<PackageCapacityOptionDto>(StatusCodes.Status201Created);

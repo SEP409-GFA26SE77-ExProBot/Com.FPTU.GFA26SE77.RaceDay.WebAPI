@@ -22,7 +22,7 @@ BEGIN
   FOR r IN
     SELECT format('%I.%I', schemaname, tablename) AS fq
     FROM pg_tables
-    WHERE schemaname IN ('iam', 'event', 'payment', 'finance', 'map', 'photo', 'device')
+    WHERE schemaname IN ('iam', 'event', 'payment', 'finance', 'map', 'photo', 'device', 'audit')
       AND tablename <> '__EFMigrationsHistory'
   LOOP
     EXECUTE 'TRUNCATE TABLE ' || r.fq || ' RESTART IDENTITY CASCADE';
@@ -246,18 +246,18 @@ INSERT INTO event.race_events (
 ) VALUES (
   'c0ffeeee-0001-4000-8000-000000000001', 'dddddddd-dddd-dddd-dddd-dddddddddddd',
   'RaceDay Trail Draft 2027',
-  'Bản nháp — chưa gửi duyệt',
+  'Chờ Manager duyệt — demo approvals',
   'https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev/event-banners/20261014050309-e4acb88688834678bb3bcf52b5971454.JPG',
   'Đà Lạt (draft)',
   11.9404, 108.4583,
   DATE '2027-12-01', TIME '06:00:00', DATE '2027-12-01',
-  'Draft',
+  'PendingApproval',
   'Bộ thể thao và du lịch quốc gia', NULL, 'cuong.le@raceday.vn', '0904000004', 'https://raceday.vn', true,
   500,
   '{"currency":"VND"}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
-  'Event nháp seed — dùng để test flow gửi duyệt. Banner tạm lấy từ Grand Marathon.',
+  'Event seed chờ duyệt — Manager mở /approvals để xem xét.',
   TIMESTAMPTZ '2026-10-20 00:00:00+00', TIMESTAMPTZ '2026-10-20 00:00:00+00',
-  NULL, NULL
+  TIMESTAMPTZ '2026-10-21 00:00:00+00', NULL
 ) ON CONFLICT ("Id") DO NOTHING;
 
 INSERT INTO event.event_distances (
@@ -605,31 +605,31 @@ INSERT INTO event.event_staff_members (
   "StationId","StationLabel","StationsJson","CreatedAtUtc","UpdatedAtUtc"
 ) VALUES
 -- 3KM: bỏ trống Xuất phát; gán CP 2.8 / 5.5 / đích
-('s0000001-0001-4000-8000-000000000001','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','RaceStaff','Invited','NV 3KM CP 2.8km','coord1@raceday.vn','0911000001','a1444444-0001-4000-8000-000000000001',
+('50000001-0001-4000-8000-000000000001','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','RaceStaff','Invited','NV 3KM CP 2.8km','coord1@raceday.vn','0911000001','a1444444-0001-4000-8000-000000000001',
  'cp-2.8','3KM Fun Run — CP 2.8km · 2.8km',
  '[{"stationId":"cp-2.8","stationLabel":"3KM Fun Run — CP 2.8km · 2.8km"}]'::jsonb,
  NOW(), NOW()),
-('s0000001-0001-4000-8000-000000000002','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','RaceStaff','Invited','NV 3KM CP 5.5km','coord2@raceday.vn','0911000002','a1444444-0002-4000-8000-000000000002',
+('50000001-0001-4000-8000-000000000002','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','RaceStaff','Invited','NV 3KM CP 5.5km','coord2@raceday.vn','0911000002','a1444444-0002-4000-8000-000000000002',
  'cp-5.5','3KM Fun Run — CP 5.5km · 5.5km',
  '[{"stationId":"cp-5.5","stationLabel":"3KM Fun Run — CP 5.5km · 5.5km"}]'::jsonb,
  NOW(), NOW()),
-('s0000001-0001-4000-8000-000000000003','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','RaceStaff','Invited','NV 3KM đích','vol1@raceday.vn','0913000001','a1666666-0001-4000-8000-000000000001',
+('50000001-0001-4000-8000-000000000003','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','RaceStaff','Invited','NV 3KM đích','vol1@raceday.vn','0913000001','a1666666-0001-4000-8000-000000000001',
  'cp-9.223','3KM Fun Run — Vạch đích · 9.223km',
  '[{"stationId":"cp-9.223","stationLabel":"3KM Fun Run — Vạch đích · 9.223km"}]'::jsonb,
  NOW(), NOW()),
 -- 5KM: bỏ trống Xuất phát + Tiếp tế 1.125km; gán vài CP giữa + đích
-('s0000001-0001-4000-8000-000000000004','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','RaceStaff','Invited','NV 5KM CP 2.419km','vol2@raceday.vn','0913000002','a1666666-0002-4000-8000-000000000002',
+('50000001-0001-4000-8000-000000000004','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','RaceStaff','Invited','NV 5KM CP 2.419km','vol2@raceday.vn','0913000002','a1666666-0002-4000-8000-000000000002',
  'cp-2.419','5KM Community Run — CP 2.419km · 2.419km',
  '[{"stationId":"cp-2.419","stationLabel":"5KM Community Run — CP 2.419km · 2.419km"}]'::jsonb,
  NOW(), NOW()),
-('s0000001-0001-4000-8000-000000000005','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','RaceStaff','Invited','NV 5KM đích','staff.5km.finish@raceday.vn','0913000099',NULL,
+('50000001-0001-4000-8000-000000000005','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','RaceStaff','Invited','NV 5KM đích','staff.5km.finish@raceday.vn','0913000099',NULL,
  'cp-11.199','5KM Community Run — Vạch đích · 11.199km',
  '[{"stationId":"cp-11.199","stationLabel":"5KM Community Run — Vạch đích · 11.199km"}]'::jsonb,
  NOW(), NOW()),
 -- Photographer (email riêng theo Role — unique EventId+Role+Email)
-('s0000001-0001-4000-8000-000000000006','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','Photographer','Invited','Photo Grand 1','photo1@raceday.vn','0912000001','a1555555-0001-4000-8000-000000000001',
+('50000001-0001-4000-8000-000000000006','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','Photographer','Invited','Photo Grand 1','photo1@raceday.vn','0912000001','a1555555-0001-4000-8000-000000000001',
  NULL, NULL, '[]'::jsonb, NOW(), NOW()),
-('s0000001-0001-4000-8000-000000000007','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','Photographer','Invited','Photo Grand 2','photo2@raceday.vn','0912000002','a1555555-0002-4000-8000-000000000002',
+('50000001-0001-4000-8000-000000000007','b8fdd6c9-c6a6-44d9-9958-a98c8094fba8','Photographer','Invited','Photo Grand 2','photo2@raceday.vn','0912000002','a1555555-0002-4000-8000-000000000002',
  NULL, NULL, '[]'::jsonb, NOW(), NOW())
 ON CONFLICT ("Id") DO NOTHING;
 

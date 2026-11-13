@@ -30,9 +30,6 @@ public static class DeviceModule
             .WithTags(ApiTags.Device)
             .RequireRateLimiting("public");
 
-        api.MapGet("/status", () => Results.Ok(new { module = "device", status = "ready", mode = "wear-sos" }))
-            .WithSummary("Trạng thái module Device (Wear Device Flow + SOS)");
-
         // —— Watch anonymous (RFC 8628) ——
         var auth = api.MapGroup("/auth");
 

@@ -88,17 +88,18 @@ builder.Services.AddSwaggerGen(options =>
             1. `POST /api/v1/iam/auth/register` → OTP email
             2. `POST /api/v1/iam/auth/verify-email`
             3. `POST /api/v1/iam/auth/login` (username + password) → copy `accessToken` → nút **Authorize**
-            - Seed admin (dev): `admin@raceday.vn` / `MatKhau@123`
+            - Seed (dev): `admin@raceday.vn` / `manager@raceday.vn` / `MatKhau@123`
 
             ### B. Organizer tạo giải (FE wizard 4 bước)
             1. Upload hồ sơ: `POST /api/v1/event/organizer/uploads`
             2. Tạo giải: `POST /api/v1/event/organizer/` (`submitForApproval=true`)
             3. (Tuỳ chọn) `.../submit`, `.../open-registration`
 
-            ### C. Admin duyệt giải (chưa mở ĐK)
-            1. `GET /api/v1/event/admin/pending`
+            ### C. Manager duyệt giải (Bearer Manager — không dùng /event/admin)
+            1. `GET /api/v1/event/manager/pending`
             2. `POST .../approve` → status **approved** (mặc định **không** mở ĐK)
             3. `POST /api/v1/event/organizer/{id}/open-registration` → **registration-open**
+            4. Xem map khi duyệt: `GET /api/v1/map/events/{id}/distances/{distanceId}/course` (Manager được đọc)
 
             ### D. Runner đăng ký + PayOS (registration-open)
             1. `POST /api/v1/event/{eventId}/registrations` → `pending_payment`
@@ -115,7 +116,7 @@ builder.Services.AddSwaggerGen(options =>
             2. Organizer xin rút → Manager (hoặc Admin) `.../finance/manager/payouts/{id}/approve`
             3. Runner: `GET .../refunds/quote` rồi `POST .../runner/refunds` (% theo ≥90d/≥60d/<60d)
             4. Organizer reject đăng ký đã trả → hoàn 100% tự động
-            5. AdminOnly: `/finance/admin/settings` + `/overview` (phí 30/70 + refund policy)
+            5. Phí/refund policy = mặc định DB; duyệt giải ngân + hoàn lỗi HT qua `/finance/manager` (ManagerOrAdmin)
 
             ### G. Device (Wear Device Flow + SOS)
             1. Watch: `POST /api/v1/device/auth/code` → QR

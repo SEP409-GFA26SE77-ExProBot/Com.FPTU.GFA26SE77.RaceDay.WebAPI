@@ -35,9 +35,6 @@ public static class RaceMonitoringModule
             .WithTags(ApiTags.RaceMonitoring)
             .RequireRateLimiting("public");
 
-        api.MapGet("/health", () => Results.Ok(new { module = "race-monitoring", status = "ready" }))
-            .WithSummary("RaceMonitoring module health");
-
         var ops = api.MapGroup("")
             .RequireAuthorization(AuthPolicies.OrganizerOrRaceStaff)
             .RequireRateLimiting("authenticated");
