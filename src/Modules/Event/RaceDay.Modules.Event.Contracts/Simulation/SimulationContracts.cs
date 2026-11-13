@@ -64,7 +64,11 @@ public sealed record SimulationFinishDraft(
     Guid RegistrationId,
     double ElapsedSeconds,
     string Bib,
-    IReadOnlyList<SimulationSplitDraft>? Splits = null);
+    IReadOnlyList<SimulationSplitDraft>? Splits = null,
+    SimulationStatusDraft? Decision = null);
+
+public sealed record SimulationStatusDraft(
+    Guid RunId, string Status, string Reason, Guid ActorId, string CheckpointId, DateTime ChangedAtUtc);
 
 /// <summary>Actor id is taken from the server user, never from this command.</summary>
 public sealed record SimulationCommitCommand(

@@ -8,7 +8,7 @@ namespace RaceDay.Modules.Simulation.Application;
 /// <summary>
 /// One in-memory run per event and distance. Draft state dies with the process.
 /// </summary>
-public sealed class SimulationSessionBook
+public sealed partial class SimulationSessionBook
 {
     public const int MaxAthletes = 2000;
     public const double InitialPlaybackRate = 1;
@@ -218,6 +218,7 @@ public sealed class SimulationSessionBook
                     session.Committed.Clear();
                     session.Unresolved.Clear();
                     session.CommitState = "Idle";
+                    session.Decisions.Clear();
                     _byRun.Remove(previousId);
                     _byRun[session.RunId] = session;
                     snapshot = Build(session);
@@ -287,6 +288,7 @@ public sealed class SimulationSessionBook
                     session.Committed.Clear();
                     session.Unresolved.Clear();
                     session.CommitState = "Idle";
+                    session.Decisions.Clear();
                     _byRun.Remove(previousId);
                     _byRun[session.RunId] = session;
                     snapshot = Build(session);
@@ -329,20 +331,22 @@ public sealed class SimulationSessionBook
                     throw new DomainException("Chỉ ghi nhận kết quả khi lượt giả lập đã kết thúc.");
                 }
 
+                if (session.Decisions.Any(x => x.Resolution == "Pending"))
+                    throw new DomainException("Cần xử lý báo cáo vi phạm trước khi ghi kết quả.");
+
                 drafts = view.Athletes
-                    .Where(athlete => athlete.ValidFinish
-                                      && athlete.Motion != AthleteMotion.Dnf
-                                      && athlete.FinishSimSeconds is not null
+                    .Where(athlete => HasResult(session, athlete)
                                       && !session.Committed.Contains(athlete.RegistrationId))
                     .Select(athlete => new SimulationFinishDraft(
                         athlete.RegistrationId,
-                        athlete.FinishSimSeconds!.Value,
+                        athlete.FinishSimSeconds ?? view.SimulatedSeconds,
                         athlete.Bib,
                         athlete.Splits
                             .Select(split => new SimulationSplitDraft(
                                 split.CheckpointId,
                                 SimulationClockMath.MicrosToSeconds(split.SimMicros)))
-                            .ToList()))
+                            .ToList(),
+                        StatusDraft(session, athlete)))
                     .ToList();
                 if (drafts.Count == 0)
                 {
@@ -416,8 +420,7 @@ public sealed class SimulationSessionBook
                 snapshot = Build(session);
                 var already = alreadyCommitted.ToHashSet();
                 items = view.Athletes
-                    .Where(athlete => athlete.ValidFinish
-                                      && athlete.Motion != AthleteMotion.Dnf
+                    .Where(athlete => HasResult(session, athlete)
                                       && already.Contains(athlete.RegistrationId))
                     .Select(athlete => new SimulationCommitItemDto(
                         athlete.RegistrationId,
@@ -526,6 +529,7 @@ public sealed class SimulationSessionBook
                 throw new DomainException("Không tìm thấy lượt giả lập.");
             }
 
+            if (session.CommitState == "Committing") throw new SimulationBusyException();
             mutate(session);
             session.Version++;
             snapshot = Build(session);
@@ -551,10 +555,9 @@ public sealed class SimulationSessionBook
     private static void EnsureCanDiscard(Session session, bool confirmDiscard)
     {
         var view = session.Engine.Capture();
-        if (view.Phase == SimulationPhase.Finished
-            && view.Athletes.Any(athlete => athlete.ValidFinish
-                                            && athlete.Motion != AthleteMotion.Dnf
-                                            && !session.Committed.Contains(athlete.RegistrationId))
+        if ((session.Decisions.Count > 0 || view.Phase == SimulationPhase.Finished
+            && view.Athletes.Any(athlete => HasResult(session, athlete)
+                                            && !session.Committed.Contains(athlete.RegistrationId)))
             && !confirmDiscard)
         {
             throw new DomainException("Lượt đã có kết quả nháp chưa ghi nhận. Gửi confirmDiscard=true để bỏ lượt này.");
@@ -591,10 +594,22 @@ public sealed class SimulationSessionBook
         return eligible.Take(count).ToList();
     }
 
+    private static bool HasResult(Session session, SimulationAthleteView athlete)
+        => (athlete.ValidFinish && athlete.Motion == AthleteMotion.Finished)
+            || session.Decisions.Any(x => x.RegistrationId == athlete.RegistrationId && x.Resolution == "Approved");
+
+    private static SimulationStatusDraft? StatusDraft(Session session, SimulationAthleteView athlete)
+    {
+        var decision = session.Decisions.LastOrDefault(x => x.RegistrationId == athlete.RegistrationId && x.Resolution == "Approved");
+        return decision is null ? null : new SimulationStatusDraft(session.RunId, decision.Status,
+            decision.ReviewReason ?? decision.Reason, decision.ReviewedBy ?? decision.ActorId,
+            decision.CheckpointId, decision.ReviewedAtUtc ?? decision.CreatedAtUtc);
+    }
+
     private static string ComputeCommitState(Session session, SimulationEngineView view)
     {
         var valid = view.Athletes
-            .Where(athlete => athlete.ValidFinish && athlete.Motion != AthleteMotion.Dnf)
+            .Where(athlete => HasResult(session, athlete))
             .Select(athlete => athlete.RegistrationId)
             .ToList();
         if (valid.Count == 0)
@@ -614,14 +629,13 @@ public sealed class SimulationSessionBook
     private static List<SimulationCommitItemDto> CommittedItems(Session session, SimulationEngineView view)
     {
         return view.Athletes
-            .Where(athlete => athlete.ValidFinish
-                              && athlete.Motion != AthleteMotion.Dnf
+            .Where(athlete => HasResult(session, athlete)
                               && session.Committed.Contains(athlete.RegistrationId))
             .Select(athlete => new SimulationCommitItemDto(
                 athlete.RegistrationId,
                 SimulationCommitOutcomes.CommittedThisRun,
                 null,
-                athlete.FinishSimSeconds is double seconds ? SimulationClockMath.RoundSeconds(seconds) : null))
+                athlete.ValidFinish && athlete.FinishSimSeconds is double seconds ? SimulationClockMath.RoundSeconds(seconds) : null))
             .ToList();
     }
 
@@ -651,8 +665,8 @@ public sealed class SimulationSessionBook
             athlete.CourseKm,
             athlete.Motion.ToString(),
             athlete.Sos,
-            athlete.ValidFinish && athlete.Motion != AthleteMotion.Dnf,
-            athlete.ValidFinish && athlete.Motion != AthleteMotion.Dnf && athlete.FinishSimSeconds is double seconds
+            athlete.ValidFinish && athlete.Motion is not (AthleteMotion.Dnf or AthleteMotion.Dns or AthleteMotion.Dq),
+            athlete.ValidFinish && athlete.Motion is not (AthleteMotion.Dnf or AthleteMotion.Dns or AthleteMotion.Dq) && athlete.FinishSimSeconds is double seconds
                 ? SimulationClockMath.RoundSeconds(seconds)
                 : null,
             athlete.FinishSimSeconds,
@@ -697,9 +711,8 @@ public sealed class SimulationSessionBook
                 SimulationClockMath.MicrosToSeconds(best.split.SimMicros)));
         }
 
-        var discard = view.Phase == SimulationPhase.Finished
-                      && view.Athletes.Any(athlete => athlete.ValidFinish
-                                                      && athlete.Motion != AthleteMotion.Dnf
+        var discard = session.Decisions.Count > 0 || view.Phase == SimulationPhase.Finished
+                      && view.Athletes.Any(athlete => HasResult(session, athlete)
                                                       && !session.Committed.Contains(athlete.RegistrationId));
 
         return new SimulationSnapshotDto(
@@ -722,7 +735,8 @@ public sealed class SimulationSessionBook
             athletes,
             ranking,
             leaders,
-            view.Log.TakeLast(100).Select(op => new SimulationLogDto(op.Sequence, op.SimSeconds, op.Kind, op.Subject)).ToList());
+            view.Log.TakeLast(100).Select(op => new SimulationLogDto(op.Sequence, op.SimSeconds, op.Kind, op.Subject)).ToList(),
+            session.Decisions.ToArray());
     }
 
     private static SimulationCheckpointDto ToCheckpoint(SimulationCourseCheckpoint checkpoint)
@@ -746,6 +760,7 @@ public sealed class SimulationSessionBook
         public HashSet<Guid> Unresolved { get; } = [];
         public List<SimulationCoursePoint> Polyline { get; set; } = [];
         public List<SimulationCourseCheckpoint> Checkpoints { get; set; } = [];
+        public List<SimulationDecisionDto> Decisions { get; } = [];
         public List<SimulationAthleteSeed> Athletes { get; private set; } = [];
         public RaceSimulationEngine Engine { get; private set; } = null!;
 

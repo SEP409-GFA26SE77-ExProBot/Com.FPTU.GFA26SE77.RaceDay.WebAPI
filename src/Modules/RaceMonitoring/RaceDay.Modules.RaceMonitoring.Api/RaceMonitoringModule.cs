@@ -245,6 +245,40 @@ public static class RaceMonitoringModule
                 + "Body: { count?: 1..20 }, mặc định 5. Mỗi dòng là log thật, append-only, có thể hiện trên SSE. "
                 + "Không tạo RaceStarted và không ghi passage của module Event.");
 
+        ops.MapGet("/events/{eventId:guid}/distances/{distanceId:guid}/stats", async (
+            Guid eventId,
+            Guid distanceId,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetCheckpointMonitoringStatsQuery(eventId, distanceId), ct)))
+            .WithSummary("Thống kê số VĐV hoàn thành và chưa hoàn thành cự ly")
+            .WithDescription(
+                "Không cần body. Trả tổng VĐV đủ điều kiện trên cự ly, "
+                + "số đã Finished và số chưa Finished.");
+
+        ops.MapGet("/events/{eventId:guid}/distances/{distanceId:guid}/runners", async (
+            Guid eventId,
+            Guid distanceId,
+            string? status,
+            string? search,
+            int? page,
+            int? pageSize,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new GetCheckpointMonitoringRunnersQuery(
+                    eventId,
+                    distanceId,
+                    status,
+                    search,
+                    page ?? 1,
+                    pageSize ?? 20),
+                ct)))
+            .WithSummary("Danh sách VĐV theo trạng thái hoàn thành cự ly")
+            .WithDescription(
+                "Không cần body. Query: status=Passed|NotPassed|All, search theo BIB hoặc tên, "
+                + "phân trang page/pageSize. Trả một danh sách chung có status và thời điểm finish nếu có.");
+
         ops.MapGet("/events/{eventId:guid}/race-logs", async (
             Guid eventId,
             Guid? eventDistanceId,

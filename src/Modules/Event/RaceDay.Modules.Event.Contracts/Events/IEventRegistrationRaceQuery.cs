@@ -24,4 +24,7 @@ public sealed record EventRegistrationRaceCandidate(
     Guid RegistrationId,
     Guid EventId,
     Guid DistanceId,
-    string BibNumber);
+    string BibNumber,
+    string RunnerName,
+    string Status,
+    DateTime? FinishedAtUtc);

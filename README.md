@@ -50,6 +50,7 @@ SEP_WebAPI/
 | Biến môi trường | [`.env.example`](.env.example) → copy thành `.env` |
 | Chạy API | `src/Hosts/RaceDay.Api` |
 | Gateway | `src/Gateways/RaceDay.ApiGateway` |
+| Workspace staff checkpoint / simulation | [`docs/staff-checkpoint-workspace.md`](docs/staff-checkpoint-workspace.md) |
 
 ---
 
@@ -68,6 +69,9 @@ docker compose -f deploy/docker-compose.yml up -d
 
 # 3a) API local (dev thường)
 dotnet run --project src/Hosts/RaceDay.Api --launch-profile http
+
+# Bộ dữ liệu test staff checkpoint + 12 runner (Postgres localhost:5433)
+powershell -NoProfile -ExecutionPolicy Bypass -File deploy/seed-staff-workspace.ps1
 
 # 3b) API trong Docker (cùng file compose, profile api)
 # docker compose -f deploy/docker-compose.yml --profile api up -d --build

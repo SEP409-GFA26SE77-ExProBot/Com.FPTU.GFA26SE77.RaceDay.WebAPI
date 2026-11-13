@@ -40,7 +40,7 @@ public static class ApiTags
         (Photo, "Photographer bulk-upload + OCR async (SEP_Service_Photo); runner search theo BIB; dispute. Auth: Active staff Photographer của event (JWT role không đủ)."),
         (Host, "Health / hạ tầng host."),
         (RaceMonitoring, "Phản hồi khẩn cấp theo giải. Prefix /api/v1/race-monitoring. JWT Admin | Organizer | Coordinator và quyền trên giải."),
-        (Simulation, "Demo giả lập. Chỉ map khi Simulation__Enabled=true. Prefix /api/v1/simulation. Chủ giải hoặc Coordinator Active.")
+        (Simulation, "Demo giả lập. Chỉ map khi Simulation__Enabled=true. Prefix /api/v1/simulation. Chủ giải điều khiển lượt; RaceStaff Active theo dõi và ghi nhận tại checkpoint được giao.")
     ];
 
     public static string SortKey(string tag) => tag switch

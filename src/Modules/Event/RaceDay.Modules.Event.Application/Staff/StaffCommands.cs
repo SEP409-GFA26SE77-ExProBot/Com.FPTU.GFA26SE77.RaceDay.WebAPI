@@ -1,3 +1,4 @@
+using RaceDay.Modules.Map.Contracts.Courses;
 using FluentValidation;
 using MediatR;
 using RaceDay.Modules.Event.Application.Abstractions;
@@ -241,6 +242,7 @@ public sealed class ListEventStaffQueryHandler(
 }
 
 public sealed class InviteEventStaffCommandHandler(
+    IRaceCourseReadQuery courses,
     IRaceEventRepository events,
     IEventStaffMemberRepository staff,
     IEventUnitOfWork uow,
@@ -251,6 +253,7 @@ public sealed class InviteEventStaffCommandHandler(
     {
         await ListEventStaffQueryHandler.EnsureOrganizerAsync(events, currentUser, request.EventId, cancellationToken);
         var role = EventStaffMapper.ParseRole(request.Body.Role);
+        await StaffStationValidation.ValidateAsync(courses, request.EventId, role, request.Body.StationId, cancellationToken);
         var email = string.IsNullOrWhiteSpace(request.Body.Email)
             ? null
             : request.Body.Email.Trim().ToLowerInvariant();
@@ -315,6 +318,7 @@ public sealed class InviteEventStaffCommandHandler(
 }
 
 public sealed class AddEventStaffCommandHandler(
+    IRaceCourseReadQuery courses,
     IRaceEventRepository events,
     IEventStaffMemberRepository staff,
     IEventUnitOfWork uow,
@@ -324,6 +328,7 @@ public sealed class AddEventStaffCommandHandler(
     {
         await ListEventStaffQueryHandler.EnsureOrganizerAsync(events, currentUser, request.EventId, cancellationToken);
         var role = EventStaffMapper.ParseRole(request.Body.Role);
+        await StaffStationValidation.ValidateAsync(courses, request.EventId, role, request.Body.StationId, cancellationToken);
         if (!string.IsNullOrWhiteSpace(request.Body.Email))
         {
             var email = request.Body.Email.Trim().ToLowerInvariant();
@@ -410,6 +415,7 @@ public sealed class UpdateEventStaffCommandHandler(
 }
 
 public sealed class AssignEventStaffStationCommandHandler(
+    IRaceCourseReadQuery courses,
     IRaceEventRepository events,
     IEventStaffMemberRepository staff,
     IEventUnitOfWork uow,
@@ -426,6 +432,8 @@ public sealed class AssignEventStaffStationCommandHandler(
             throw new DomainException("Nhân sự không thuộc giải này.");
         }
 
+        await StaffStationValidation.ValidateAsync(
+            courses, request.EventId, member.Role, request.Body.StationId, cancellationToken);
         member.AssignStations(
             EventStaffMapper.ResolveStations(
                 request.Body.Stations,
@@ -529,5 +537,31 @@ public sealed class RevokeEventStaffCommandHandler(
         member.Revoke();
         staff.Update(member);
         await uow.SaveChangesAsync(cancellationToken);
+    }
+}
+
+internal static class StaffStationValidation
+{
+    public static async Task ValidateAsync(IRaceCourseReadQuery courses, Guid eventId, EventStaffRole role,
+        string? stationId, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(stationId)) return;
+        if (stationId.Length > 120) throw new DomainException("Mã vị trí quá dài.");
+        var station = stationId.Trim();
+        if (station.StartsWith("duty:"))
+        {
+            var valid = role == EventStaffRole.RaceStaff
+                ? station is "duty:ops" or "duty:checkin" or "duty:kit"
+                : station is "duty:float" or "duty:static";
+            if (!valid) throw new DomainException("Nhiệm vụ không phù hợp với vai trò nhân sự.");
+            return;
+        }
+        var parts = station.Split(':', 3);
+        if (parts.Length != 3 || parts[0] != "map" || !Guid.TryParse(parts[1], out var distanceId))
+            throw new DomainException("Vị trí phải là checkpoint hoặc nhiệm vụ hợp lệ.");
+        var course = await courses.GetAsync(eventId, distanceId, ct);
+        var checkpoint = course?.Checkpoints.SingleOrDefault(x => x.Id == parts[2]);
+        if (checkpoint is null || (role == EventStaffRole.Photographer && checkpoint.Type == "aid"))
+            throw new DomainException("Checkpoint không thuộc giải/cự ly hoặc không phù hợp vai trò.");
     }
 }
