@@ -1,9 +1,8 @@
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.RegularExpressions;
 using FluentValidation;
-using MediatR;
 using Microsoft.Extensions.Configuration;
+using MediatR;
 using RaceDay.Modules.Iam.Application.Abstractions;
 using RaceDay.Modules.Iam.Contracts.Events;
 using RaceDay.Modules.Iam.Domain.Users;
@@ -14,20 +13,22 @@ namespace RaceDay.Modules.Iam.Application.Users.ProvisionStaff;
 
 /// <summary>
 /// Cấp account staff tách biệt Runner: IAM email/username được gen (đã verify sẵn, không OTP).
-/// <paramref name="NotifyEmail"/> chỉ để SMTP gửi username + mật khẩu mặc định.
+/// <paramref name="NotifyEmail"/> chỉ để SMTP (tuỳ chọn). <paramref name="InitialPassword"/> ghi đè mật khẩu gốc.
 /// </summary>
 public sealed record ProvisionStaffAccountCommand(
-    string NotifyEmail,
+    string? NotifyEmail,
     string FullName,
     string StaffRoleName,
     string? Phone,
     string? EventName,
-    string? StationLabel) : IRequest<ProvisionStaffAccountResult>;
+    string? StationLabel,
+    string? InitialPassword = null) : IRequest<ProvisionStaffAccountResult>;
 
 public sealed record ProvisionStaffAccountResult(
     Guid UserId,
     string Username,
     string AccountEmail,
+    string PlainPassword,
     bool CreatedNew,
     bool PasswordSentByEmail);
 
@@ -35,10 +36,17 @@ public sealed class ProvisionStaffAccountCommandValidator : AbstractValidator<Pr
 {
     public ProvisionStaffAccountCommandValidator()
     {
-        RuleFor(x => x.NotifyEmail).NotEmpty().EmailAddress().MaximumLength(100);
+        RuleFor(x => x.NotifyEmail)
+            .EmailAddress()
+            .MaximumLength(100)
+            .When(x => !string.IsNullOrWhiteSpace(x.NotifyEmail));
         RuleFor(x => x.FullName).NotEmpty().MaximumLength(100);
         RuleFor(x => x.StaffRoleName).NotEmpty();
         RuleFor(x => x.Phone).MaximumLength(20);
+        RuleFor(x => x.InitialPassword)
+            .MinimumLength(8)
+            .MaximumLength(100)
+            .When(x => !string.IsNullOrWhiteSpace(x.InitialPassword));
     }
 }
 
@@ -76,7 +84,9 @@ public sealed class ProvisionStaffAccountCommandHandler(
         var role = await roles.GetByNameAsync(roleName, cancellationToken)
             ?? throw new DomainException($"Role {roleName} chưa được seed.");
 
-        var notifyEmail = request.NotifyEmail.Trim().ToLowerInvariant();
+        var notifyEmail = string.IsNullOrWhiteSpace(request.NotifyEmail)
+            ? null
+            : request.NotifyEmail.Trim().ToLowerInvariant();
         var rolePrefix = roleName.Equals("Race-staff", StringComparison.OrdinalIgnoreCase)
             ? "racestaff"
             : "photographer";
@@ -84,7 +94,9 @@ public sealed class ProvisionStaffAccountCommandHandler(
         // Email IAM gen sẵn — không dùng Gmail cá nhân (tránh đụng account Runner)
         var accountEmail = await AllocateAccountEmailAsync(rolePrefix, username, cancellationToken);
 
-        var plainPassword = GenerateTempPassword();
+        var plainPassword = string.IsNullOrWhiteSpace(request.InitialPassword)
+            ? StaffCredentialDefaults.ResolveDefaultPassword(configuration)
+            : request.InitialPassword.Trim();
         var user = User.Create(
             accountEmail,
             username,
@@ -105,44 +117,50 @@ public sealed class ProvisionStaffAccountCommandHandler(
             cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        var loginUrl = configuration["Frontend:AdminAppUrl"]?.TrimEnd('/')
-            ?? configuration["Frontend:UserAppUrl"]?.TrimEnd('/')
-            ?? "http://localhost:3001";
+        var passwordSent = false;
+        if (notifyEmail is not null)
+        {
+            var loginUrl = configuration["Frontend:AdminAppUrl"]?.TrimEnd('/')
+                ?? configuration["Frontend:UserAppUrl"]?.TrimEnd('/')
+                ?? "http://localhost:3001";
 
-        var eventLine = string.IsNullOrWhiteSpace(request.EventName)
-            ? ""
-            : $"<p>Giải: <strong>{Escape(request.EventName)}</strong></p>";
-        var stationLine = string.IsNullOrWhiteSpace(request.StationLabel)
-            ? ""
-            : $"<p>Nhiệm vụ / điểm: <strong>{Escape(request.StationLabel)}</strong></p>";
+            var eventLine = string.IsNullOrWhiteSpace(request.EventName)
+                ? ""
+                : $"<p>Giải: <strong>{Escape(request.EventName)}</strong></p>";
+            var stationLine = string.IsNullOrWhiteSpace(request.StationLabel)
+                ? ""
+                : $"<p>Nhiệm vụ / điểm: <strong>{Escape(request.StationLabel)}</strong></p>";
 
-        await emailSender.SendAsync(
-            new EmailMessage(
-                notifyEmail,
-                $"[RaceDay] Tài khoản {roleName} — kích hoạt nhân sự",
-                $"""
-                <p>Xin chào <strong>{Escape(request.FullName)}</strong>,</p>
-                <p>Bạn được cấp tài khoản <strong>{Escape(roleName)}</strong> trên RaceDay
-                (không cần đăng ký / không nhập OTP).</p>
-                {eventLine}{stationLine}
-                <p>Đăng nhập tại: <a href="{Escape(loginUrl)}">{Escape(loginUrl)}</a></p>
-                <ul>
-                  <li>Tên đăng nhập: <code>{Escape(username)}</code></li>
-                  <li>Mật khẩu mặc định: <code>{Escape(plainPassword)}</code></li>
-                </ul>
-                <p class="muted">Email hệ thống của tài khoản: <code>{Escape(accountEmail)}</code>
-                (chỉ dùng nội bộ — đăng nhập bằng username ở trên).</p>
-                <p>Sau khi đăng nhập thành công, hãy đổi mật khẩu mặc định.</p>
-                """,
-                $"Username: {username}\nPassword: {plainPassword}\nLogin: {loginUrl}\nAccountEmail: {accountEmail}"),
-            cancellationToken);
+            await emailSender.SendAsync(
+                new EmailMessage(
+                    notifyEmail,
+                    $"[RaceDay] Tài khoản {roleName} — kích hoạt nhân sự",
+                    $"""
+                    <p>Xin chào <strong>{Escape(request.FullName)}</strong>,</p>
+                    <p>Bạn được cấp tài khoản <strong>{Escape(roleName)}</strong> trên RaceDay
+                    (không cần đăng ký / không nhập OTP).</p>
+                    {eventLine}{stationLine}
+                    <p>Đăng nhập tại: <a href="{Escape(loginUrl)}">{Escape(loginUrl)}</a></p>
+                    <ul>
+                      <li>Tên đăng nhập: <code>{Escape(username)}</code></li>
+                      <li>Mật khẩu: <code>{Escape(plainPassword)}</code></li>
+                    </ul>
+                    <p class="muted">Email hệ thống của tài khoản: <code>{Escape(accountEmail)}</code>
+                    (chỉ dùng nội bộ — đăng nhập bằng username ở trên).</p>
+                    <p>Sau khi đăng nhập thành công, hãy đổi mật khẩu mặc định.</p>
+                    """,
+                    $"Username: {username}\nPassword: {plainPassword}\nLogin: {loginUrl}\nAccountEmail: {accountEmail}"),
+                cancellationToken);
+            passwordSent = true;
+        }
 
         return new ProvisionStaffAccountResult(
             user.Id,
             username,
             accountEmail,
+            plainPassword,
             CreatedNew: true,
-            PasswordSentByEmail: true);
+            PasswordSentByEmail: passwordSent);
     }
 
     private async Task<string> AllocateUsernameAsync(string rolePrefix, CancellationToken ct)
@@ -190,20 +208,6 @@ public sealed class ProvisionStaffAccountCommandHandler(
         }
 
         return $"{Guid.NewGuid():N}@staff.raceday.local";
-    }
-
-    private static string GenerateTempPassword()
-    {
-        const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-        var bytes = new byte[10];
-        RandomNumberGenerator.Fill(bytes);
-        var sb = new StringBuilder("Rd@");
-        foreach (var b in bytes)
-        {
-            sb.Append(alphabet[b % alphabet.Length]);
-        }
-
-        return sb.ToString();
     }
 
     private static string Escape(string value) =>

@@ -8,6 +8,8 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Application.Staff;
 
+public sealed record StaffStationItemDto(string StationId, string? StationLabel);
+
 public sealed record EventStaffMemberDto(
     Guid Id,
     Guid EventId,
@@ -18,15 +20,26 @@ public sealed record EventStaffMemberDto(
     string Status,
     string? StationId,
     string? StationLabel,
-    DateTime CreatedAt);
+    IReadOnlyList<StaffStationItemDto> Stations,
+    DateTime CreatedAt,
+    Guid? UserId,
+    bool AccountLocked);
 
 public sealed record InviteEventStaffRequest(
     string Role,
-    string Email,
+    string? Email,
     string FullName,
     string? Phone,
     string? StationId,
-    string? StationLabel);
+    string? StationLabel,
+    IReadOnlyList<StaffStationItemDto>? Stations = null,
+    string? Password = null);
+
+public sealed record InviteEventStaffResult(
+    EventStaffMemberDto Member,
+    string? Username,
+    string Password,
+    bool PasswordSentByEmail);
 
 public sealed record AddEventStaffRequest(
     string Role,
@@ -34,30 +47,83 @@ public sealed record AddEventStaffRequest(
     string? Email,
     string? Phone,
     string? StationId,
-    string? StationLabel);
+    string? StationLabel,
+    IReadOnlyList<StaffStationItemDto>? Stations = null);
 
-public sealed record AssignEventStaffStationRequest(string? StationId, string? StationLabel);
+public sealed record AssignEventStaffStationRequest(
+    string? StationId,
+    string? StationLabel,
+    IReadOnlyList<StaffStationItemDto>? Stations = null);
+
+public sealed record UpdateEventStaffRequest(
+    string FullName,
+    string? Email,
+    string? Phone,
+    string? StationId,
+    string? StationLabel,
+    IReadOnlyList<StaffStationItemDto>? Stations = null);
+
+public sealed record ResetEventStaffPasswordResult(
+    string Username,
+    string Password,
+    bool PasswordSentByEmail);
+
+public sealed record SetEventStaffLockRequest(bool Locked);
 
 public sealed record ListEventStaffQuery(Guid EventId, string? Role) : IRequest<IReadOnlyList<EventStaffMemberDto>>;
-public sealed record InviteEventStaffCommand(Guid EventId, InviteEventStaffRequest Body) : IRequest<EventStaffMemberDto>;
+public sealed record InviteEventStaffCommand(Guid EventId, InviteEventStaffRequest Body) : IRequest<InviteEventStaffResult>;
 public sealed record AddEventStaffCommand(Guid EventId, AddEventStaffRequest Body) : IRequest<EventStaffMemberDto>;
+public sealed record UpdateEventStaffCommand(Guid EventId, Guid MemberId, UpdateEventStaffRequest Body)
+    : IRequest<EventStaffMemberDto>;
 public sealed record AssignEventStaffStationCommand(Guid EventId, Guid MemberId, AssignEventStaffStationRequest Body)
     : IRequest<EventStaffMemberDto>;
+public sealed record ResetEventStaffPasswordCommand(Guid EventId, Guid MemberId) : IRequest<ResetEventStaffPasswordResult>;
+public sealed record SetEventStaffLockCommand(Guid EventId, Guid MemberId, SetEventStaffLockRequest Body) : IRequest;
 public sealed record RevokeEventStaffCommand(Guid EventId, Guid MemberId) : IRequest;
 
 internal static class EventStaffMapper
 {
-    public static EventStaffMemberDto ToDto(EventStaffMember m) => new(
-        m.Id,
-        m.EventId,
-        ToRoleApi(m.Role),
-        m.FullName,
-        m.Email,
-        m.Phone,
-        ToStatusApi(m.Status),
-        m.StationId,
-        m.StationLabel,
-        m.CreatedAtUtc);
+    public static EventStaffMemberDto ToDto(EventStaffMember m, bool accountLocked = false)
+    {
+        var stations = m.GetStations()
+            .Select(s => new StaffStationItemDto(s.StationId, s.StationLabel))
+            .ToList();
+        return new(
+            m.Id,
+            m.EventId,
+            ToRoleApi(m.Role),
+            m.FullName,
+            m.Email,
+            m.Phone,
+            ToStatusApi(m.Status),
+            m.StationId,
+            m.StationLabel,
+            stations,
+            m.CreatedAtUtc,
+            m.UserId,
+            accountLocked);
+    }
+
+    public static IReadOnlyList<StaffStationAssignment> ResolveStations(
+        IReadOnlyList<StaffStationItemDto>? stations,
+        string? stationId,
+        string? stationLabel)
+    {
+        if (stations is { Count: > 0 })
+        {
+            return stations
+                .Where(s => !string.IsNullOrWhiteSpace(s.StationId))
+                .Select(s => new StaffStationAssignment(s.StationId.Trim(), s.StationLabel))
+                .ToList();
+        }
+
+        if (string.IsNullOrWhiteSpace(stationId))
+        {
+            return [];
+        }
+
+        return [new StaffStationAssignment(stationId.Trim(), stationLabel)];
+    }
 
     public static EventStaffRole ParseRole(string? role) => (role ?? string.Empty).Trim().ToLowerInvariant() switch
     {
@@ -81,6 +147,22 @@ internal static class EventStaffMapper
         EventStaffStatus.Revoked => "revoked",
         _ => status.ToString().ToLowerInvariant()
     };
+
+    public static async Task<EventStaffMemberDto> ToDtoWithLockAsync(
+        EventStaffMember m,
+        IMediator mediator,
+        CancellationToken cancellationToken)
+    {
+        var locked = false;
+        if (m.UserId is { } uid)
+        {
+            locked = await mediator.Send(
+                new RaceDay.Modules.Iam.Application.Users.Queries.IsUserLockedQuery(uid),
+                cancellationToken);
+        }
+
+        return ToDto(m, locked);
+    }
 }
 
 public sealed class InviteEventStaffCommandValidator : AbstractValidator<InviteEventStaffCommand>
@@ -88,9 +170,24 @@ public sealed class InviteEventStaffCommandValidator : AbstractValidator<InviteE
     public InviteEventStaffCommandValidator()
     {
         RuleFor(x => x.EventId).NotEmpty();
-        RuleFor(x => x.Body.Email).NotEmpty().EmailAddress();
+        RuleFor(x => x.Body).NotNull();
+        RuleFor(x => x.Body.FullName).NotEmpty().MaximumLength(100);
+        // Email liên hệ là tuỳ chọn — chỉ validate format khi có giá trị.
+        RuleFor(x => x.Body.Email)
+            .Cascade(CascadeMode.Stop)
+            .Must(e => string.IsNullOrWhiteSpace(e) || IsEmail(e!))
+            .WithMessage("Email không hợp lệ.")
+            .MaximumLength(100)
+            .When(x => !string.IsNullOrWhiteSpace(x.Body.Email));
+        RuleFor(x => x.Body.Password)
+            .MinimumLength(8)
+            .MaximumLength(100)
+            .When(x => !string.IsNullOrWhiteSpace(x.Body.Password));
         RuleFor(x => x.Body.Role).NotEmpty();
     }
+
+    private static bool IsEmail(string value)
+        => new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(value);
 }
 
 public sealed class AddEventStaffCommandValidator : AbstractValidator<AddEventStaffCommand>
@@ -106,6 +203,7 @@ public sealed class AddEventStaffCommandValidator : AbstractValidator<AddEventSt
 public sealed class ListEventStaffQueryHandler(
     IRaceEventRepository events,
     IEventStaffMemberRepository staff,
+    IMediator mediator,
     ICurrentUserAccessor currentUser) : IRequestHandler<ListEventStaffQuery, IReadOnlyList<EventStaffMemberDto>>
 {
     public async Task<IReadOnlyList<EventStaffMemberDto>> Handle(ListEventStaffQuery request, CancellationToken cancellationToken)
@@ -118,7 +216,13 @@ public sealed class ListEventStaffQueryHandler(
         }
 
         var list = await staff.ListByEventAsync(request.EventId, role, cancellationToken);
-        return list.Select(EventStaffMapper.ToDto).ToList();
+        var result = new List<EventStaffMemberDto>(list.Count);
+        foreach (var m in list)
+        {
+            result.Add(await EventStaffMapper.ToDtoWithLockAsync(m, mediator, cancellationToken));
+        }
+
+        return result;
     }
 
     internal static async Task EnsureOrganizerAsync(
@@ -143,15 +247,19 @@ public sealed class InviteEventStaffCommandHandler(
     IEventStaffMemberRepository staff,
     IEventUnitOfWork uow,
     ICurrentUserAccessor currentUser,
-    IMediator mediator) : IRequestHandler<InviteEventStaffCommand, EventStaffMemberDto>
+    IMediator mediator) : IRequestHandler<InviteEventStaffCommand, InviteEventStaffResult>
 {
-    public async Task<EventStaffMemberDto> Handle(InviteEventStaffCommand request, CancellationToken cancellationToken)
+    public async Task<InviteEventStaffResult> Handle(InviteEventStaffCommand request, CancellationToken cancellationToken)
     {
         await ListEventStaffQueryHandler.EnsureOrganizerAsync(events, currentUser, request.EventId, cancellationToken);
         var role = EventStaffMapper.ParseRole(request.Body.Role);
         await StaffStationValidation.ValidateAsync(courses, request.EventId, role, request.Body.StationId, cancellationToken);
-        var email = request.Body.Email.Trim().ToLowerInvariant();
-        if (await staff.ExistsActiveEmailRoleAsync(request.EventId, role, email, cancellationToken))
+        var email = string.IsNullOrWhiteSpace(request.Body.Email)
+            ? null
+            : request.Body.Email.Trim().ToLowerInvariant();
+        if (email is not null
+            && await staff.ExistsActiveEmailRoleAsync(
+                request.EventId, role, email, cancellationToken: cancellationToken))
         {
             throw new DomainException("Email đã có trong danh sách role này.");
         }
@@ -166,7 +274,14 @@ public sealed class InviteEventStaffCommandHandler(
             _ => throw new DomainException("Role nhân sự không hợp lệ.")
         };
 
-        // NotifyEmail = hộp thư nhận SMTP; IAM email/username được gen (không đụng Runner)
+        var stationLabel = EventStaffMapper.ResolveStations(
+                request.Body.Stations,
+                request.Body.StationId,
+                request.Body.StationLabel)
+            .FirstOrDefault()?.StationLabel
+            ?? request.Body.StationLabel;
+
+        // NotifyEmail = hộp thư nhận SMTP (tuỳ chọn); IAM email/username được gen
         var provisioned = await mediator.Send(
             new RaceDay.Modules.Iam.Application.Users.ProvisionStaff.ProvisionStaffAccountCommand(
                 email,
@@ -174,10 +289,10 @@ public sealed class InviteEventStaffCommandHandler(
                 iamRole,
                 request.Body.Phone,
                 race.Name,
-                request.Body.StationLabel),
+                stationLabel,
+                request.Body.Password),
             cancellationToken);
 
-        // Lưu email liên hệ (SMTP) trên hồ sơ nhân sự — login dùng username gen trong mail
         var member = EventStaffMember.Invite(
             request.EventId,
             role,
@@ -186,10 +301,19 @@ public sealed class InviteEventStaffCommandHandler(
             request.Body.Phone,
             request.Body.StationId,
             request.Body.StationLabel);
+        member.AssignStations(
+            EventStaffMapper.ResolveStations(
+                request.Body.Stations,
+                request.Body.StationId,
+                request.Body.StationLabel));
         member.LinkUser(provisioned.UserId);
         await staff.AddAsync(member, cancellationToken);
         await uow.SaveChangesAsync(cancellationToken);
-        return EventStaffMapper.ToDto(member);
+        return new InviteEventStaffResult(
+            EventStaffMapper.ToDto(member),
+            provisioned.Username,
+            provisioned.PlainPassword,
+            provisioned.PasswordSentByEmail);
     }
 }
 
@@ -208,7 +332,8 @@ public sealed class AddEventStaffCommandHandler(
         if (!string.IsNullOrWhiteSpace(request.Body.Email))
         {
             var email = request.Body.Email.Trim().ToLowerInvariant();
-            if (await staff.ExistsActiveEmailRoleAsync(request.EventId, role, email, cancellationToken))
+            if (await staff.ExistsActiveEmailRoleAsync(
+                    request.EventId, role, email, cancellationToken: cancellationToken))
             {
                 throw new DomainException("Email đã có trong danh sách role này.");
             }
@@ -222,9 +347,70 @@ public sealed class AddEventStaffCommandHandler(
             request.Body.Phone,
             request.Body.StationId,
             request.Body.StationLabel);
+        member.AssignStations(
+            EventStaffMapper.ResolveStations(
+                request.Body.Stations,
+                request.Body.StationId,
+                request.Body.StationLabel));
         await staff.AddAsync(member, cancellationToken);
         await uow.SaveChangesAsync(cancellationToken);
         return EventStaffMapper.ToDto(member);
+    }
+}
+
+public sealed class UpdateEventStaffCommandValidator : AbstractValidator<UpdateEventStaffCommand>
+{
+    public UpdateEventStaffCommandValidator()
+    {
+        RuleFor(x => x.EventId).NotEmpty();
+        RuleFor(x => x.MemberId).NotEmpty();
+        RuleFor(x => x.Body.FullName).NotEmpty().MaximumLength(100);
+        RuleFor(x => x.Body.Email)
+            .EmailAddress()
+            .MaximumLength(100)
+            .When(x => !string.IsNullOrWhiteSpace(x.Body.Email));
+    }
+}
+
+public sealed class UpdateEventStaffCommandHandler(
+    IRaceEventRepository events,
+    IEventStaffMemberRepository staff,
+    IEventUnitOfWork uow,
+    IMediator mediator,
+    ICurrentUserAccessor currentUser) : IRequestHandler<UpdateEventStaffCommand, EventStaffMemberDto>
+{
+    public async Task<EventStaffMemberDto> Handle(UpdateEventStaffCommand request, CancellationToken cancellationToken)
+    {
+        await ListEventStaffQueryHandler.EnsureOrganizerAsync(events, currentUser, request.EventId, cancellationToken);
+        var member = await staff.GetByIdAsync(request.MemberId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy nhân sự.");
+        if (member.EventId != request.EventId)
+        {
+            throw new DomainException("Nhân sự không thuộc giải này.");
+        }
+
+        var nextEmail = request.Body.Email?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(nextEmail)
+            && !string.Equals(nextEmail, member.Email, StringComparison.OrdinalIgnoreCase)
+            && await staff.ExistsActiveEmailRoleAsync(
+                request.EventId,
+                member.Role,
+                nextEmail,
+                excludeMemberId: request.MemberId,
+                cancellationToken: cancellationToken))
+        {
+            throw new DomainException("Email đã có trong danh sách role này.");
+        }
+
+        member.UpdateProfile(request.Body.FullName, request.Body.Phone, request.Body.Email);
+        member.AssignStations(
+            EventStaffMapper.ResolveStations(
+                request.Body.Stations,
+                request.Body.StationId,
+                request.Body.StationLabel));
+        staff.Update(member);
+        await uow.SaveChangesAsync(cancellationToken);
+        return await EventStaffMapper.ToDtoWithLockAsync(member, mediator, cancellationToken);
     }
 }
 
@@ -233,6 +419,7 @@ public sealed class AssignEventStaffStationCommandHandler(
     IRaceEventRepository events,
     IEventStaffMemberRepository staff,
     IEventUnitOfWork uow,
+    IMediator mediator,
     ICurrentUserAccessor currentUser) : IRequestHandler<AssignEventStaffStationCommand, EventStaffMemberDto>
 {
     public async Task<EventStaffMemberDto> Handle(AssignEventStaffStationCommand request, CancellationToken cancellationToken)
@@ -245,11 +432,89 @@ public sealed class AssignEventStaffStationCommandHandler(
             throw new DomainException("Nhân sự không thuộc giải này.");
         }
 
-        await StaffStationValidation.ValidateAsync(courses, request.EventId, member.Role, request.Body.StationId, cancellationToken);
-        member.AssignStation(request.Body.StationId, request.Body.StationLabel);
+        await StaffStationValidation.ValidateAsync(
+            courses, request.EventId, member.Role, request.Body.StationId, cancellationToken);
+        member.AssignStations(
+            EventStaffMapper.ResolveStations(
+                request.Body.Stations,
+                request.Body.StationId,
+                request.Body.StationLabel));
         staff.Update(member);
         await uow.SaveChangesAsync(cancellationToken);
-        return EventStaffMapper.ToDto(member);
+        return await EventStaffMapper.ToDtoWithLockAsync(member, mediator, cancellationToken);
+    }
+}
+
+public sealed class ResetEventStaffPasswordCommandHandler(
+    IRaceEventRepository events,
+    IEventStaffMemberRepository staff,
+    ICurrentUserAccessor currentUser,
+    IMediator mediator) : IRequestHandler<ResetEventStaffPasswordCommand, ResetEventStaffPasswordResult>
+{
+    public async Task<ResetEventStaffPasswordResult> Handle(
+        ResetEventStaffPasswordCommand request,
+        CancellationToken cancellationToken)
+    {
+        await ListEventStaffQueryHandler.EnsureOrganizerAsync(events, currentUser, request.EventId, cancellationToken);
+        var member = await staff.GetByIdAsync(request.MemberId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy nhân sự.");
+        if (member.EventId != request.EventId)
+        {
+            throw new DomainException("Nhân sự không thuộc giải này.");
+        }
+
+        if (member.UserId is not { } userId)
+        {
+            throw new DomainException("Nhân sự chưa có tài khoản đăng nhập.");
+        }
+
+        var race = await events.GetByIdAsync(request.EventId, cancellationToken);
+        var notify = member.Email.EndsWith("@staff.raceday.local", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : member.Email;
+        var reset = await mediator.Send(
+            new RaceDay.Modules.Iam.Application.Users.ProvisionStaff.ResetStaffCredentialsCommand(
+                userId,
+                notify,
+                member.FullName,
+                race?.Name),
+            cancellationToken);
+        return new ResetEventStaffPasswordResult(
+            reset.Username,
+            reset.PlainPassword,
+            reset.PasswordSentByEmail);
+    }
+}
+
+public sealed class SetEventStaffLockCommandHandler(
+    IRaceEventRepository events,
+    IEventStaffMemberRepository staff,
+    ICurrentUserAccessor currentUser,
+    IMediator mediator) : IRequestHandler<SetEventStaffLockCommand>
+{
+    public async Task Handle(SetEventStaffLockCommand request, CancellationToken cancellationToken)
+    {
+        await ListEventStaffQueryHandler.EnsureOrganizerAsync(events, currentUser, request.EventId, cancellationToken);
+        var member = await staff.GetByIdAsync(request.MemberId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy nhân sự.");
+        if (member.EventId != request.EventId)
+        {
+            throw new DomainException("Nhân sự không thuộc giải này.");
+        }
+
+        if (member.UserId is not { } userId)
+        {
+            throw new DomainException("Nhân sự chưa có tài khoản đăng nhập.");
+        }
+
+        if (request.Body.Locked)
+        {
+            await mediator.Send(new RaceDay.Modules.Iam.Application.Users.LockUser.LockUserCommand(userId), cancellationToken);
+        }
+        else
+        {
+            await mediator.Send(new RaceDay.Modules.Iam.Application.Users.UnlockUser.UnlockUserCommand(userId), cancellationToken);
+        }
     }
 }
 

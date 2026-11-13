@@ -345,6 +345,9 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
             entity.Property(x => x.StartedAtUtc);
             entity.Property(x => x.FinishedAtUtc);
             entity.Property(x => x.ResultSeconds);
+            entity.Property(x => x.SlotHeldUntilUtc);
+
+            entity.HasIndex(x => new { x.Status, x.SlotHeldUntilUtc });
 
             entity.HasIndex(x => new { x.EventId, x.DistanceId, x.UserId })
                 .IsUnique()
@@ -551,6 +554,10 @@ public sealed class EventDbContext(DbContextOptions<EventDbContext> options)
             entity.Property(x => x.Phone).HasMaxLength(30);
             entity.Property(x => x.StationId).HasMaxLength(120);
             entity.Property(x => x.StationLabel).HasMaxLength(300);
+            entity.Property(x => x.StationsJson)
+                .HasColumnType("jsonb")
+                .HasDefaultValueSql("'[]'::jsonb")
+                .IsRequired();
 
             entity.HasIndex(x => x.EventId);
 

@@ -727,6 +727,9 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
+                    b.Property<DateTime?>("SlotHeldUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("StartedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -747,6 +750,8 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("EventId");
+
+                    b.HasIndex("Status", "SlotHeldUntilUtc");
 
                     b.HasIndex("EventId", "DistanceId", "UserId")
                         .IsUnique()
@@ -873,6 +878,12 @@ namespace RaceDay.Modules.Event.Infrastructure.Persistence.Migrations
                     b.Property<string>("StationLabel")
                         .HasMaxLength(300)
                         .HasColumnType("character varying(300)");
+
+                    b.Property<string>("StationsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValueSql("'[]'::jsonb");
 
                     b.Property<string>("Status")
                         .IsRequired()

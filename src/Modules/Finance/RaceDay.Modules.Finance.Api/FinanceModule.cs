@@ -30,15 +30,6 @@ public static class FinanceModule
             .WithTags(ApiTags.Finance)
             .RequireRateLimiting("public");
 
-        api.MapGet("/status", () => Results.Ok(new
-        {
-            module = "finance",
-            status = "ready",
-            policy =
-                "fee 5%; payout advance 30% from T-4w then 70% after race (Manager/Admin approve); " +
-                "refund 100% if ≥90d before event, 85% if ≥60d, 0% if <60d or after start"
-        }));
-
         var organizer = api.MapGroup("/organizer").RequireAuthorization(AuthPolicies.PublicUser);
 
         organizer.MapGet("/wallet", async (IMediator m, CancellationToken ct) =>
@@ -89,15 +80,19 @@ public static class FinanceModule
 
         manager.MapGet("/payouts", async (IMediator m, CancellationToken ct) =>
             Results.Ok(await m.Send(new ListAdminPayoutsQuery(), ct)))
-            .WithSummary("Danh sách yêu cầu giải ngân chờ duyệt");
+            .WithSummary("Danh sách yêu cầu giải ngân (pending / approved / transferred / rejected)");
 
-        manager.MapPost("/payouts/{id:guid}/approve", async (Guid id, ApproveBody? body, IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new ApproveAdminPayoutCommand(id, body?.ReceiptUrl), ct)))
-            .WithSummary("Manager duyệt / xác nhận đã chuyển khoản → transferred");
+        manager.MapPost("/payouts/{id:guid}/approve", async (Guid id, IMediator m, CancellationToken ct) =>
+            Results.Ok(await m.Send(new ApproveAdminPayoutCommand(id), ct)))
+            .WithSummary("Bước 1: duyệt lệnh rút (chưa chuyển khoản)");
+
+        manager.MapPost("/payouts/{id:guid}/confirm-transfer", async (Guid id, ConfirmTransferBody body, IMediator m, CancellationToken ct) =>
+            Results.Ok(await m.Send(new ConfirmTransferAdminPayoutCommand(id, body.ReceiptUrl), ct)))
+            .WithSummary("Bước 2: xác nhận đã CK ngoài hệ thống + URL biên nhận bắt buộc → transferred");
 
         manager.MapPost("/payouts/{id:guid}/reject", async (Guid id, RejectBody body, IMediator m, CancellationToken ct) =>
             Results.Ok(await m.Send(new RejectAdminPayoutCommand(id, body.Reason), ct)))
-            .WithSummary("Manager từ chối giải ngân → nhả reserve trên ledger");
+            .WithSummary("Từ chối (pending/approved chưa CK) → nhả reserve trên ledger");
 
         manager.MapGet("/system-error-refunds", async (bool? pendingOnly, IMediator m, CancellationToken ct) =>
             Results.Ok(await m.Send(new ListSystemErrorRefundsQuery(pendingOnly != false), ct)))
@@ -111,49 +106,12 @@ public static class FinanceModule
             Results.Ok(await m.Send(new RejectSystemErrorRefundCommand(id, body.Reason), ct)))
             .WithSummary("Từ chối khiếu nại lỗi hệ thống");
 
-        // Alias /admin/payouts* — Manager hoặc Admin (FE cũ).
-        var adminPayouts = app.MapGroup("/api/v1/finance/admin")
-            .WithTags(ApiTags.Finance)
-            .RequireAuthorization(AuthPolicies.ManagerOrAdmin)
-            .RequireRateLimiting("public");
-
-        adminPayouts.MapGet("/payouts", async (IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new ListAdminPayoutsQuery(), ct)));
-
-        adminPayouts.MapPost("/payouts/{id:guid}/approve", async (Guid id, ApproveBody? body, IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new ApproveAdminPayoutCommand(id, body?.ReceiptUrl), ct)));
-
-        adminPayouts.MapPost("/payouts/{id:guid}/reject", async (Guid id, RejectBody body, IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new RejectAdminPayoutCommand(id, body.Reason), ct)));
-
-        adminPayouts.MapGet("/system-error-refunds", async (bool? pendingOnly, IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new ListSystemErrorRefundsQuery(pendingOnly != false), ct)));
-
-        adminPayouts.MapPost("/system-error-refunds/{id:guid}/approve", async (Guid id, IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new ApproveSystemErrorRefundCommand(id), ct)));
-
-        adminPayouts.MapPost("/system-error-refunds/{id:guid}/reject", async (Guid id, RejectBody body, IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new RejectSystemErrorRefundCommand(id, body.Reason), ct)));
-
-        // Settings / overview — chỉ Admin.
-        var adminSettings = app.MapGroup("/api/v1/finance/admin")
-            .WithTags(ApiTags.Finance)
-            .RequireAuthorization(AuthPolicies.AdminOnly)
-            .RequireRateLimiting("public");
-
-        adminSettings.MapGet("/overview", async (IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new GetPlatformOverviewQuery(), ct)));
-
-        adminSettings.MapGet("/settings", async (IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new GetPlatformSettingsQuery(), ct)));
-
-        adminSettings.MapPut("/settings", async (PlatformFeeSettingsDto body, IMediator m, CancellationToken ct) =>
-            Results.Ok(await m.Send(new SavePlatformSettingsCommand(body), ct)))
-            .WithSummary("Phí nền tảng + % rút 2 đợt + trần hoàn tiền (Admin)");
+        // Finance ops UI/API admin đã gỡ — payout + system-error-refunds chỉ /finance/manager.
+        // Platform fee / refund policy = seed mặc định trong DB.
 
         return app;
     }
 
-    private sealed record ApproveBody(string? ReceiptUrl);
+    private sealed record ConfirmTransferBody(string ReceiptUrl);
     private sealed record RejectBody(string Reason);
 }

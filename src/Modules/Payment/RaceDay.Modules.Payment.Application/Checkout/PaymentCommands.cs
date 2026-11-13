@@ -15,6 +15,9 @@ public interface IPaymentRepository
 {
     Task<PaymentOrder?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<PaymentOrder?> GetByOrderCodeAsync(long orderCode, CancellationToken cancellationToken = default);
+    /// <summary>Load payment với row lock (cần transaction đang mở).</summary>
+    Task<PaymentOrder?> GetByIdForUpdateAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<PaymentOrder?> GetByOrderCodeForUpdateAsync(long orderCode, CancellationToken cancellationToken = default);
     Task<PaymentOrder?> GetPendingByRegistrationAsync(Guid registrationId, CancellationToken cancellationToken = default);
     Task<PaymentOrder?> GetPendingByReferenceAsync(PaymentPurpose purpose, Guid referenceId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PaymentOrder>> ListByUserAsync(Guid userId, CancellationToken cancellationToken = default);
@@ -26,6 +29,7 @@ public interface IPaymentRepository
 public interface IPaymentUnitOfWork
 {
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task<T> ExecuteInTransactionAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken cancellationToken = default);
 }
 
 public interface IPayOsGateway
@@ -308,29 +312,32 @@ public sealed class ConfirmPaymentPaidCommandHandler(
 {
     public async Task<PaymentDto> Handle(ConfirmPaymentPaidCommand request, CancellationToken cancellationToken)
     {
-        PaymentOrder? payment = null;
-        if (request.PaymentId is Guid id)
+        var (payment, alreadyPaid) = await unitOfWork.ExecuteInTransactionAsync(async ct =>
         {
-            payment = await payments.GetByIdAsync(id, cancellationToken);
-        }
-        else if (request.OrderCode is long code)
-        {
-            payment = await payments.GetByOrderCodeAsync(code, cancellationToken);
-        }
+            PaymentOrder? locked = null;
+            if (request.PaymentId is Guid id)
+            {
+                locked = await payments.GetByIdForUpdateAsync(id, ct);
+            }
+            else if (request.OrderCode is long code)
+            {
+                locked = await payments.GetByOrderCodeForUpdateAsync(code, ct);
+            }
 
-        if (payment is null)
-        {
-            throw new DomainException("Không tìm thấy payment.");
-        }
+            if (locked is null)
+            {
+                throw new DomainException("Không tìm thấy payment.");
+            }
 
-        var alreadyPaid = payment.Status == PaymentStatus.Paid;
-        var tx = payment.MarkPaid(request.GatewayTransactionId, request.RawJson);
-        if (!alreadyPaid)
-        {
-            payments.AddTransaction(tx);
-        }
+            var wasPaid = locked.Status == PaymentStatus.Paid;
+            var tx = locked.MarkPaid(request.GatewayTransactionId, request.RawJson);
+            if (!wasPaid)
+            {
+                payments.AddTransaction(tx);
+            }
 
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+            return (locked, wasPaid);
+        }, cancellationToken);
 
         if (!alreadyPaid)
         {

@@ -122,7 +122,11 @@ internal static class RaceEventAccessPolicy
         }
 
         var userId = currentUser.UserId;
-        if (userId is null || (race.OrganizerUserId != userId && !currentUser.IsAdmin))
+        // Manager duyệt giải cần xem Pending/Draft/Rejected; Admin tương tự.
+        if (userId is null
+            || (race.OrganizerUserId != userId
+                && !currentUser.IsAdmin
+                && !currentUser.IsManager))
         {
             throw new DomainException("Không tìm thấy giải.");
         }

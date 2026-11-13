@@ -98,7 +98,7 @@ public sealed class GetCourseQueryHandler(
         EventDistanceAccessInfo info,
         CancellationToken cancellationToken)
     {
-        if (currentUser.IsAdmin)
+        if (currentUser.IsAdmin || currentUser.IsManager)
         {
             return;
         }
@@ -269,7 +269,9 @@ public sealed class ListCourseReadyQueryHandler(
         // Authorize using first course's distance
         var probe = await access.GetAsync(request.EventId, saved[0].DistanceId, cancellationToken)
             ?? throw new DomainException("Không tìm thấy giải.");
-        if (!currentUser.IsAdmin && currentUser.UserId != probe.OrganizerUserId)
+        if (!currentUser.IsAdmin
+            && !currentUser.IsManager
+            && currentUser.UserId != probe.OrganizerUserId)
         {
             throw new DomainException("Bạn không có quyền xem course của giải này.");
         }

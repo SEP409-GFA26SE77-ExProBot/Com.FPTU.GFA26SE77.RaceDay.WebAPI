@@ -10,19 +10,13 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql
-      - ./sql/raceday_init.sql:/docker-entrypoint-initdb.d/01_raceday_init.sql:ro
+      # Schema: API EF migrate. Data demo: .\deploy\clear-and-seed.ps1 (sql/clear_and_seed.sql)
+      # Không mount init SQL — file seed cũ đã gỡ; Docker bind file thiếu sẽ tạo thư mục và postgres không lên.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 5s
       timeout: 5s
       retries: 12
-
-  mongodb:
-    image: mongo:7
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodata:/data/db
 
   redis:
     image: redis:7-alpine
@@ -51,7 +45,6 @@ services:
       ASPNETCORE_URLS: http://+:8080
       # Override host .env (localhost) → tên service trong Docker network
       ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=postgres
-      ConnectionStrings__MongoDb: mongodb://mongodb:27017
       ConnectionStrings__Redis: redis:6379
       ConnectionStrings__RabbitMq: amqp://guest:guest@rabbitmq:5672
       # Seed banner/docs/certs dùng absolute R2 URL; PublicBaseUrl chỉ cho upload mới.
@@ -78,8 +71,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      mongodb:
-        condition: service_started
       redis:
         condition: service_started
       rabbitmq:
@@ -87,4 +78,3 @@ services:
 
 volumes:
   pgdata:
-  mongodata:

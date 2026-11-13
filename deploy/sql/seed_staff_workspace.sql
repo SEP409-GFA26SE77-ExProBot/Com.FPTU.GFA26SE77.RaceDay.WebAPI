@@ -1,15 +1,41 @@
 -- Local demo fixture for UserWeb staff checkpoint simulation.
 -- Additive and repeatable: existing registrations and race outcomes are never reset.
--- Run through deploy/seed-staff-workspace.ps1, which only accepts localhost:5433.
+-- Run through deploy/seed-staff-workspace.ps1 (Docker Postgres hoặc localhost:5433).
 \set ON_ERROR_STOP on
 BEGIN;
+
+-- clear_and_seed có coord1/coord2/vol1/vol2; fixture này cần thêm coord3/coord4.
+INSERT INTO iam.users (
+  user_id, email, username, role_id, password_hash, full_name, phone,
+  date_of_birth, gender, status, email_verified, created_at, updated_at,
+  must_change_password, id_number
+) VALUES
+('a1444444-0003-4000-8000-000000000003', 'coord3@raceday.vn', 'coord3', '44444444-4444-4444-4444-444444444444',
+ 'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+ 'Lê Điều Phối Ba', '0911000003', DATE '1995-04-12', 1, 1, true,
+ TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00', false, NULL),
+('a1444444-0004-4000-8000-000000000004', 'coord4@raceday.vn', 'coord4', '44444444-4444-4444-4444-444444444444',
+ 'AQAAAAIAAYagAAAAEL0GU8mB2QMfid3Im8FHe01P0dcyVx1CS8x/iYFvVG+sJSNBQdSG/jVe1lH2rTZSEw==',
+ 'Phạm Điều Phối Bốn', '0911000004', DATE '1992-09-21', 2, 1, true,
+ TIMESTAMPTZ '2026-01-01 00:00:00+00', TIMESTAMPTZ '2026-01-01 00:00:00+00', false, NULL)
+ON CONFLICT (user_id) DO NOTHING;
+
+INSERT INTO iam.profiles (
+  user_id, description, contact_email, contact_phone,
+  verification_status, verified_at, verified_by
+) VALUES
+('a1444444-0003-4000-8000-000000000003', 'Race-staff seed coord3', 'coord3@raceday.vn', '0911000003',
+ 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system'),
+('a1444444-0004-4000-8000-000000000004', 'Race-staff seed coord4', 'coord4@raceday.vn', '0911000004',
+ 2, TIMESTAMPTZ '2026-01-01 00:00:00+00', 'system')
+ON CONFLICT (user_id) DO NOTHING;
 
 DO $check$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM iam.users WHERE username = 'cuong.le' AND status = 1)
      OR (SELECT count(*) FROM iam.users WHERE username IN ('coord1','coord2','coord3','coord4','vol1')
          AND role_id = '44444444-4444-4444-4444-444444444444' AND status = 1) <> 5 THEN
-    RAISE EXCEPTION 'Thiếu tài khoản organizer hoặc Race-staff demo. Cần seed IAM trước.';
+    RAISE EXCEPTION 'Thiếu tài khoản organizer hoặc Race-staff demo. Chạy deploy/clear-and-seed.ps1 trước.';
   END IF;
   IF EXISTS (SELECT 1 FROM event.race_events
       WHERE "Id" = '5aff0000-0000-4000-8000-000000000100'

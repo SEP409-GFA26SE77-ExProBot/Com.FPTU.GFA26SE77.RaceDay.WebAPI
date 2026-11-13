@@ -155,6 +155,9 @@ namespace RaceDay.Modules.Payment.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("PaymentId");
 
+                    b.HasIndex("TransactionCode")
+                        .IsUnique();
+
                     b.ToTable("payment_transactions", "payment");
                 });
 

@@ -60,16 +60,51 @@ public sealed class ListAdminPayoutsQueryHandler(
     }
 }
 
-public sealed record ApproveAdminPayoutCommand(Guid PayoutId, string? ReceiptUrl) : IRequest<AdminPayoutRequestDto>;
+public sealed record ApproveAdminPayoutCommand(Guid PayoutId) : IRequest<AdminPayoutRequestDto>;
 
 public sealed class ApproveAdminPayoutCommandHandler(
     IPayoutRequestRepository payouts,
-    IEventLedgerRepository ledgers,
     IEventFinanceQuery events,
     IFinanceUnitOfWork uow,
     ICurrentUserAccessor currentUser) : IRequestHandler<ApproveAdminPayoutCommand, AdminPayoutRequestDto>
 {
     public async Task<AdminPayoutRequestDto> Handle(ApproveAdminPayoutCommand request, CancellationToken cancellationToken)
+    {
+        ListAdminPayoutsQueryHandler.EnsureManagerOrAdmin(currentUser);
+        var p = await payouts.GetByIdAsync(request.PayoutId, cancellationToken)
+            ?? throw new DomainException("Không tìm thấy yêu cầu.");
+        p.Approve();
+        payouts.Update(p);
+        await uow.SaveChangesAsync(cancellationToken);
+        var ev = await events.GetEventAsync(p.EventId, cancellationToken);
+        return MapAdmin(p, ev);
+    }
+
+    internal static AdminPayoutRequestDto MapAdmin(PayoutRequest p, EventFinanceInfo? ev) => new(
+        p.Id, p.OrganizerUserId, ev?.AccountHolder ?? p.AccountHolderName,
+        p.EventId, p.EventName, p.Amount, p.Note,
+        p.Status.ToString().ToLowerInvariant(), p.RejectReason,
+        new BankAccountDto(p.BankName, p.AccountNumber, p.AccountHolderName, p.Branch, p.TransferNote),
+        p.CreatedAtUtc, p.ReceiptUrl);
+}
+
+/// <summary>Bước 2: xác nhận đã CK ngoài hệ thống + biên nhận bắt buộc → cập nhật ledger.</summary>
+public sealed record ConfirmTransferAdminPayoutCommand(Guid PayoutId, string ReceiptUrl) : IRequest<AdminPayoutRequestDto>;
+
+public sealed class ConfirmTransferAdminPayoutCommandValidator : AbstractValidator<ConfirmTransferAdminPayoutCommand>
+{
+    public ConfirmTransferAdminPayoutCommandValidator()
+        => RuleFor(x => x.ReceiptUrl).NotEmpty().MaximumLength(2000);
+}
+
+public sealed class ConfirmTransferAdminPayoutCommandHandler(
+    IPayoutRequestRepository payouts,
+    IEventLedgerRepository ledgers,
+    IEventFinanceQuery events,
+    IFinanceUnitOfWork uow,
+    ICurrentUserAccessor currentUser) : IRequestHandler<ConfirmTransferAdminPayoutCommand, AdminPayoutRequestDto>
+{
+    public async Task<AdminPayoutRequestDto> Handle(ConfirmTransferAdminPayoutCommand request, CancellationToken cancellationToken)
     {
         ListAdminPayoutsQueryHandler.EnsureManagerOrAdmin(currentUser);
         var p = await payouts.GetByIdAsync(request.PayoutId, cancellationToken)
@@ -86,12 +121,7 @@ public sealed class ApproveAdminPayoutCommandHandler(
 
         await uow.SaveChangesAsync(cancellationToken);
         var ev = await events.GetEventAsync(p.EventId, cancellationToken);
-        return new AdminPayoutRequestDto(
-            p.Id, p.OrganizerUserId, ev?.AccountHolder ?? p.AccountHolderName,
-            p.EventId, p.EventName, p.Amount, p.Note,
-            p.Status.ToString().ToLowerInvariant(), p.RejectReason,
-            new BankAccountDto(p.BankName, p.AccountNumber, p.AccountHolderName, p.Branch, p.TransferNote),
-            p.CreatedAtUtc, p.ReceiptUrl);
+        return ApproveAdminPayoutCommandHandler.MapAdmin(p, ev);
     }
 }
 
@@ -126,86 +156,7 @@ public sealed class RejectAdminPayoutCommandHandler(
 
         await uow.SaveChangesAsync(cancellationToken);
         var ev = await events.GetEventAsync(p.EventId, cancellationToken);
-        return new AdminPayoutRequestDto(
-            p.Id, p.OrganizerUserId, ev?.AccountHolder ?? p.AccountHolderName,
-            p.EventId, p.EventName, p.Amount, p.Note,
-            p.Status.ToString().ToLowerInvariant(), p.RejectReason,
-            new BankAccountDto(p.BankName, p.AccountNumber, p.AccountHolderName, p.Branch, p.TransferNote),
-            p.CreatedAtUtc, p.ReceiptUrl);
+        return ApproveAdminPayoutCommandHandler.MapAdmin(p, ev);
     }
 }
 
-public sealed record GetPlatformOverviewQuery : IRequest<PlatformFinanceOverviewDto>;
-
-public sealed class GetPlatformOverviewQueryHandler(
-    IEventLedgerRepository ledgers,
-    IPayoutRequestRepository payouts,
-    IPlatformFinanceSettingsRepository settingsRepo,
-    ICurrentUserAccessor currentUser) : IRequestHandler<GetPlatformOverviewQuery, PlatformFinanceOverviewDto>
-{
-    public async Task<PlatformFinanceOverviewDto> Handle(GetPlatformOverviewQuery request, CancellationToken cancellationToken)
-    {
-        ListAdminPayoutsQueryHandler.EnsureAdmin(currentUser);
-        var settings = await settingsRepo.GetAsync(cancellationToken);
-        var all = await ledgers.ListAllAsync(cancellationToken);
-        var fee = all.Sum(l => l.PlatformFeeAmount(settings.PlatformFeePercent));
-        var escrow = all.Sum(l => l.EscrowHeld(settings.PlatformFeePercent));
-        var pending = all.Sum(l => l.PayoutPending);
-        var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var transferred = (await payouts.ListAllAsync(cancellationToken))
-            .Where(p => p.Status == PayoutRequestStatus.Transferred && p.TransferredAtUtc >= monthStart)
-            .Sum(p => p.Amount);
-
-        return new PlatformFinanceOverviewDto(escrow, fee, pending, transferred, "VND");
-    }
-}
-
-public sealed record GetPlatformSettingsQuery : IRequest<PlatformFeeSettingsDto>;
-public sealed record SavePlatformSettingsCommand(PlatformFeeSettingsDto Body) : IRequest<PlatformFeeSettingsDto>;
-
-public sealed class GetPlatformSettingsQueryHandler(
-    IPlatformFinanceSettingsRepository settingsRepo,
-    ICurrentUserAccessor currentUser) : IRequestHandler<GetPlatformSettingsQuery, PlatformFeeSettingsDto>
-{
-    public async Task<PlatformFeeSettingsDto> Handle(GetPlatformSettingsQuery request, CancellationToken cancellationToken)
-    {
-        ListAdminPayoutsQueryHandler.EnsureAdmin(currentUser);
-        var s = await settingsRepo.GetAsync(cancellationToken);
-        return Map(s);
-    }
-
-    internal static PlatformFeeSettingsDto Map(Domain.Settings.PlatformFinanceSettings s) => new(
-        s.PlatformFeePercent,
-        s.PreEventWithdrawPercent,
-        s.PostEventWithdrawPercent,
-        s.MinPayoutAmount,
-        s.Notes,
-        s.FullRefundPercent,
-        s.PartialRefundPercent,
-        s.AllowRefundAfterEventStart);
-}
-
-public sealed class SavePlatformSettingsCommandHandler(
-    IPlatformFinanceSettingsRepository settingsRepo,
-    IFinanceUnitOfWork uow,
-    ICurrentUserAccessor currentUser) : IRequestHandler<SavePlatformSettingsCommand, PlatformFeeSettingsDto>
-{
-    public async Task<PlatformFeeSettingsDto> Handle(SavePlatformSettingsCommand request, CancellationToken cancellationToken)
-    {
-        ListAdminPayoutsQueryHandler.EnsureAdmin(currentUser);
-        var s = await settingsRepo.GetAsync(cancellationToken);
-        var b = request.Body;
-        s.Update(
-            b.PlatformFeePercent,
-            b.PreEventWithdrawPercent,
-            b.PostEventWithdrawPercent,
-            b.MinPayoutAmount,
-            b.FullRefundPercent,
-            b.PartialRefundPercent,
-            b.AllowRefundAfterEventStart,
-            b.Notes);
-        settingsRepo.Update(s);
-        await uow.SaveChangesAsync(cancellationToken);
-        return GetPlatformSettingsQueryHandler.Map(s);
-    }
-}

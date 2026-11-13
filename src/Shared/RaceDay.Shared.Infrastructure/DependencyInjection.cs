@@ -1,24 +1,17 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization;
-using MongoDB.Bson.Serialization.Serializers;
-using MongoDB.Driver;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Infrastructure.Caching;
 using RaceDay.Shared.Infrastructure.Email;
 using RaceDay.Shared.Infrastructure.Messaging;
 using RaceDay.Shared.Infrastructure.Messaging.Outbox;
 using RaceDay.Shared.Infrastructure.Messaging.RabbitMq;
-using RaceDay.Shared.Infrastructure.Persistence.Mongo;
 using RaceDay.Shared.Infrastructure.Storage;
 
 namespace RaceDay.Shared.Infrastructure;
 
 public static class DependencyInjection
 {
-    private static int _mongoSerializersConfigured;
-
     public static IServiceCollection AddSharedInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         var redisConnection = configuration.GetConnectionString("Redis");
@@ -73,29 +66,6 @@ public static class DependencyInjection
 
         services.AddHostedService<OutboxDispatcher>();
 
-        var mongoConnection = configuration.GetConnectionString("MongoDb");
-        if (!string.IsNullOrWhiteSpace(mongoConnection))
-        {
-            EnsureMongoSerializers();
-            services.AddSingleton<IMongoClient>(_ => new MongoClient(mongoConnection));
-            services.AddSingleton<IMongoDbContext>(sp =>
-            {
-                var client = sp.GetRequiredService<IMongoClient>();
-                var databaseName = configuration["MongoDb:Database"] ?? "raceday";
-                return new MongoDbContext(client.GetDatabase(databaseName));
-            });
-        }
-
         return services;
-    }
-
-    private static void EnsureMongoSerializers()
-    {
-        if (Interlocked.Exchange(ref _mongoSerializersConfigured, 1) == 1)
-        {
-            return;
-        }
-
-        BsonSerializer.RegisterSerializer(new GuidSerializer(GuidRepresentation.Standard));
     }
 }
