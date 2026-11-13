@@ -50,7 +50,10 @@ public sealed class EventRegistrationRaceQuery(EventDbContext db) : IEventRegist
                 registration.Id,
                 registration.EventId,
                 registration.DistanceId,
-                registration.BibNumber
+                registration.BibNumber,
+                registration.FullName,
+                registration.Status,
+                registration.FinishedAtUtc
             })
             .ToListAsync(cancellationToken);
 
@@ -59,7 +62,10 @@ public sealed class EventRegistrationRaceQuery(EventDbContext db) : IEventRegist
                 row.Id,
                 row.EventId,
                 row.DistanceId,
-                row.BibNumber!.Trim()))
+                row.BibNumber!.Trim(),
+                row.FullName.Trim(),
+                row.Status.ToString(),
+                row.FinishedAtUtc))
             .Where(row => row.BibNumber.Length > 0)
             .ToArray();
     }

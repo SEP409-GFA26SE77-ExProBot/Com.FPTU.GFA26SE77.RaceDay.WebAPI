@@ -21,5 +21,5 @@ public sealed class EventCheckpointQuery(EventDbContext db) : IEventCheckpointQu
            join distance in db.Distances.AsNoTracking() on checkpoint.DistanceId equals distance.Id
            where (checkpointId == null || checkpoint.Id == checkpointId)
                  && (eventId == null || distance.EventId == eventId)
-           select new EventCheckpointInfo(checkpoint.Id, distance.EventId, distance.Id);
+           select new EventCheckpointInfo(checkpoint.Id, distance.EventId, distance.Id, checkpoint.Name);
 }
