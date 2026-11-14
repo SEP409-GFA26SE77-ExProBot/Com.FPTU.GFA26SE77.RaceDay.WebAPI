@@ -58,6 +58,8 @@ public static class DependencyInjection
             RaceDay.Modules.Event.Infrastructure.Events.EventOrganizerAccessQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventStaffAccessQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventStaffAccessQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventPositioningAccessQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventStaffAccessQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventBibRosterQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventBibRosterQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IRunnerRaceDayQuery,

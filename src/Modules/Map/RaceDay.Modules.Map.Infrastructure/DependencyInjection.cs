@@ -23,6 +23,8 @@ public static class DependencyInjection
         services.AddScoped<IRaceCourseRepository, RaceCourseRepository>();
         services.AddScoped<RaceDay.Modules.Map.Contracts.Courses.IRaceCourseReadQuery,
             RaceDay.Modules.Map.Infrastructure.Courses.RaceCourseReadQuery>();
+        services.AddScoped<RaceDay.Modules.Map.Contracts.Courses.IEventCoursesReadQuery,
+            RaceDay.Modules.Map.Infrastructure.Courses.RaceCourseReadQuery>();
         services.AddScoped<IMapUnitOfWork, MapUnitOfWork>();
         // Nominatim OSM DNS hay fail ở VN; Photon (komoot) ổn định hơn, không cần API key.
         services.AddHttpClient(PhotonGeocodeService.HttpClientName, client =>

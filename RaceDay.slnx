@@ -63,6 +63,13 @@
     <Project Path="src/Modules/Photo/RaceDay.Modules.Photo.Domain/RaceDay.Modules.Photo.Domain.csproj" />
     <Project Path="src/Modules/Photo/RaceDay.Modules.Photo.Infrastructure/RaceDay.Modules.Photo.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/src/Modules/Positioning/">
+    <Project Path="src/Modules/Positioning/RaceDay.Modules.Positioning.Api/RaceDay.Modules.Positioning.Api.csproj" />
+    <Project Path="src/Modules/Positioning/RaceDay.Modules.Positioning.Application/RaceDay.Modules.Positioning.Application.csproj" />
+    <Project Path="src/Modules/Positioning/RaceDay.Modules.Positioning.Contracts/RaceDay.Modules.Positioning.Contracts.csproj" />
+    <Project Path="src/Modules/Positioning/RaceDay.Modules.Positioning.Domain/RaceDay.Modules.Positioning.Domain.csproj" />
+    <Project Path="src/Modules/Positioning/RaceDay.Modules.Positioning.Infrastructure/RaceDay.Modules.Positioning.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/src/Modules/RaceMonitoring/">
     <Project Path="src/Modules/RaceMonitoring/RaceDay.Modules.RaceMonitoring.Api/RaceDay.Modules.RaceMonitoring.Api.csproj" />
     <Project Path="src/Modules/RaceMonitoring/RaceDay.Modules.RaceMonitoring.Application/RaceDay.Modules.RaceMonitoring.Application.csproj" />
@@ -97,6 +104,7 @@
     <Project Path="tests/RaceDay.Modules.Iam.UnitTests/RaceDay.Modules.Iam.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Photo.UnitTests/RaceDay.Modules.Photo.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Finance.UnitTests/RaceDay.Modules.Finance.UnitTests.csproj" />
+    <Project Path="tests/RaceDay.Modules.Positioning.UnitTests/RaceDay.Modules.Positioning.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.RaceMonitoring.UnitTests/RaceDay.Modules.RaceMonitoring.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Shared.UnitTests/RaceDay.Shared.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Simulation.UnitTests/RaceDay.Modules.Simulation.UnitTests.csproj" />
