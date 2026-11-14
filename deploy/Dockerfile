@@ -17,6 +17,7 @@ COPY src/Modules/Device ./src/Modules/Device
 COPY src/Modules/Photo ./src/Modules/Photo
 COPY src/Modules/RaceMonitoring ./src/Modules/RaceMonitoring
 COPY src/Modules/Simulation ./src/Modules/Simulation
+COPY src/Modules/Positioning ./src/Modules/Positioning
 COPY src/Hosts/RaceDay.Api ./src/Hosts/RaceDay.Api
 
 RUN dotnet restore src/Hosts/RaceDay.Api/RaceDay.Api.csproj

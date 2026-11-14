@@ -551,7 +551,7 @@ internal static class StaffStationValidation
         if (station.StartsWith("duty:"))
         {
             var valid = role == EventStaffRole.RaceStaff
-                ? station is "duty:ops" or "duty:checkin" or "duty:kit"
+                ? station is "duty:ops" or "duty:checkin" or "duty:kit" or "duty:float"
                 : station is "duty:float" or "duty:static";
             if (!valid) throw new DomainException("Nhiệm vụ không phù hợp với vai trò nhân sự.");
             return;
