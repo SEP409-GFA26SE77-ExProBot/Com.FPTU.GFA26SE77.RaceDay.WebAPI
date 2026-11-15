@@ -8,15 +8,18 @@ using RaceDay.Shared.Domain.Exceptions;
 namespace RaceDay.Modules.Positioning.Application;
 
 public sealed record PositionSample(GeoPoint Point, double AccuracyMeters, DateTimeOffset CapturedAtUtc);
+public sealed record PositionRecordResult(bool Accepted, bool BecameOutside);
 
 public interface IPositionTracker
 {
-    Task<bool> RecordAsync(Guid eventId, Guid userId, PositionSample sample, bool? isOutside, CancellationToken ct);
+    Task<PositionRecordResult> RecordAsync(Guid eventId, Guid userId, PositionSample sample, bool? isOutside, CancellationToken ct);
+    Task<PositionSample?> GetLatestAsync(Guid eventId, Guid userId, CancellationToken ct);
 }
 
-public interface IPositionAlertPublisher
+public interface IPositionEventPublisher
 {
     void Publish(PositionAlert alert);
+    void Publish(Guid eventId, LiveStaffPosition position);
 }
 
 public sealed record ReportPositionCommand(Guid EventId, Guid UserId, ReportPositionBody Body) : IRequest<PositionReceipt?>;
@@ -25,7 +28,7 @@ public sealed class ReportPositionCommandHandler(
     PositioningAccess access,
     IEventCoursesReadQuery courses,
     IPositionTracker tracker,
-    IPositionAlertPublisher alerts,
+    IPositionEventPublisher events,
     TimeProvider clock) : IRequestHandler<ReportPositionCommand, PositionReceipt?>
 {
     public async Task<PositionReceipt?> Handle(ReportPositionCommand request, CancellationToken cancellationToken)
@@ -39,20 +42,21 @@ public sealed class ReportPositionCommandHandler(
             throw new DomainException("Tọa độ, độ chính xác hoặc thời điểm GPS không hợp lệ.");
         }
 
-        var assignments = await access.GetReportingAssignmentsAsync(request.EventId, request.UserId, cancellationToken);
-        if (assignments is null) return null;
+        var reporting = await access.GetReportingAccessAsync(request.EventId, request.UserId, cancellationToken);
+        if (reporting is null) return null;
 
         var point = new GeoPoint(lat, lng);
         var nearestEdge = double.PositiveInfinity;
         PositioningStaffAssignment? nearestAssignment = null;
-        if (assignments.Any(assignment => assignment.StationIds.Any(HasGeometry)))
+        var assignments = reporting.Assignments;
+        if (assignments.Any(assignment => assignment.Stations.Any(station => HasGeometry(station.Id))))
         {
             var routes = await courses.ListAsync(request.EventId, cancellationToken);
             foreach (var assignment in assignments)
             {
-                foreach (var stationId in assignment.StationIds)
+                foreach (var station in assignment.Stations)
                 {
-                    var distance = DistanceFromZone(point, stationId, routes);
+                    var distance = DistanceFromZone(point, station.Id, routes);
                     if (distance >= nearestEdge) continue;
                     nearestEdge = distance;
                     nearestAssignment = assignment;
@@ -64,11 +68,18 @@ public sealed class ReportPositionCommandHandler(
             ? null
             : nearestEdge > 0;
 
-        var becameOutside = await tracker.RecordAsync(request.EventId, request.UserId,
-            new PositionSample(point, accuracy, capturedAt), outside, cancellationToken);
-        if (becameOutside && nearestAssignment is not null)
+        var alertZone = reporting.AlertsStartAt is { } alertsStartAt && now >= alertsStartAt
+            ? outside
+            : null;
+        var sample = new PositionSample(point, accuracy, capturedAt);
+        var recorded = await tracker.RecordAsync(request.EventId, request.UserId, sample, alertZone, cancellationToken);
+        if (recorded.Accepted && assignments.Count > 0 && capturedAt >= now - ListLiveStaffPositionsQueryHandler.LiveSampleAge)
         {
-            alerts.Publish(new PositionAlert(request.EventId, nearestAssignment.Id, nearestAssignment.Name, nearestAssignment.Role, now));
+            events.Publish(request.EventId, ListLiveStaffPositionsQueryHandler.ToPosition(request.UserId, assignments, sample));
+        }
+        if (recorded.BecameOutside && nearestAssignment is not null)
+        {
+            events.Publish(new PositionAlert(request.EventId, nearestAssignment.Id, nearestAssignment.Name, nearestAssignment.Role, now));
         }
 
         return new PositionReceipt(nearestAssignment is null ? "unconfigured" : outside switch

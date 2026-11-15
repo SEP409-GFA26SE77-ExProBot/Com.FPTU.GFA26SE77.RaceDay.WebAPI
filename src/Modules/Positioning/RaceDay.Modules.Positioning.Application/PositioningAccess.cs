@@ -8,13 +8,21 @@ public sealed class PositioningAccess(IEventOrganizerAccessQuery organizers, IEv
         => (await organizers.GetAsync(eventId, ct))?.OrganizerUserId == userId
             || (await staff.ListActiveAsync(eventId, userId, ct)).Count > 0;
 
-    public async Task<IReadOnlyList<PositioningStaffAssignment>?> GetReportingAssignmentsAsync(Guid eventId, Guid userId, CancellationToken ct)
+    public async Task<PositioningReportAccess?> GetReportingAccessAsync(Guid eventId, Guid userId, CancellationToken ct)
     {
+        var race = await organizers.GetAsync(eventId, ct);
+        if (race is null) return null;
+
         var assignments = await staff.ListActiveAsync(eventId, userId, ct);
-        if (assignments.Count > 0 || (await organizers.GetAsync(eventId, ct))?.OrganizerUserId == userId)
+        if (assignments.Count > 0 || race.OrganizerUserId == userId)
         {
-            return assignments;
+            var alertsStartAt = race.Status is "Cancelled" or "Completed" or "Suspended"
+                ? null
+                : race.StartsAtUtc?.AddHours(-1);
+            return new PositioningReportAccess(assignments, alertsStartAt);
         }
         return null;
     }
 }
+
+public sealed record PositioningReportAccess(IReadOnlyList<PositioningStaffAssignment> Assignments, DateTimeOffset? AlertsStartAt);
