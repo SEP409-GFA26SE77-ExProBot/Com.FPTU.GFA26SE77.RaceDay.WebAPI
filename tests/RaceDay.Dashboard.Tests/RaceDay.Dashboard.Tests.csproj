@@ -14,6 +14,7 @@
     <Using Include="Xunit" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="../../src/Hosts/RaceDay.Api/RaceDay.Api.csproj" />
     <ProjectReference Include="../../src/Modules/Iam/RaceDay.Modules.Iam.Api/RaceDay.Modules.Iam.Api.csproj" />
     <ProjectReference Include="../../src/Modules/Event/RaceDay.Modules.Event.Api/RaceDay.Modules.Event.Api.csproj" />
     <ProjectReference Include="../../src/Modules/Finance/RaceDay.Modules.Finance.Api/RaceDay.Modules.Finance.Api.csproj" />

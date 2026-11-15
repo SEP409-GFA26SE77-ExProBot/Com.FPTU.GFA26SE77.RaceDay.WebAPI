@@ -4,6 +4,8 @@ Tài liệu cho 5 API dashboard trong WebAPI. Phạm vi: Admin quản trị tài
 
 ## 1. Danh sách API
 
+Ngoài 5 API JSON dưới đây, có 3 API xuất dashboard Excel/PDF. Xem [luồng xuất, tham số và quyền truy cập](dashboard-export.md).
+
 | Method | Đường dẫn | Mục đích |
 | --- | --- | --- |
 | GET | `/api/v1/iam/admin/dashboard?from=&to=` | Tài khoản hiện tại, phân bố vai trò và tài khoản mới theo ngày |

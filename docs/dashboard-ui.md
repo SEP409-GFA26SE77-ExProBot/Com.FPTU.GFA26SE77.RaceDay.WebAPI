@@ -37,7 +37,8 @@ flowchart TD
 
 | Khối | Dữ liệu | API (tiền tố `/api/v1`) |
 | --- | --- | --- |
-| 4 thẻ tổng quan | Tổng tài khoản, Active, Pending, Locked hiện tại | `GET /iam/admin/dashboard` |
+| 2 thẻ tổng quan | Tổng tài khoản hiện tại và tài khoản mới trong kỳ | `GET /iam/admin/dashboard` |
+| Trạng thái tài khoản | Đã kích hoạt, chờ xác thực email, đã khóa | Cùng API |
 | Biểu đồ tài khoản mới | Tổng mới trong kỳ và số tài khoản tạo theo từng ngày | Cùng API, tham số `from`, `to` |
 | Phân bố vai trò | Số tài khoản theo vai trò hiện tại | Cùng API |
 | Hoạt động gần đây | 6 nhật ký mới nhất; nút mở nhật ký đầy đủ | `GET /audit-logs?page=1&pageSize=6` |
@@ -48,9 +49,9 @@ flowchart TD
 
 | Khối | Dữ liệu | API |
 | --- | --- | --- |
-| Tổng quan | Số giải, đơn chờ duyệt, khiếu nại chờ xử lý | `GET /api/v1/event/organizer/dashboard` |
+| Tổng quan | Giải đang mở đăng ký (kèm tổng giải), đơn chờ duyệt, khiếu nại chờ xử lý | `GET /api/v1/event/organizer/dashboard` |
 | Việc cần xử lý | Danh sách giải, số việc; nút đến duyệt đăng ký / khiếu nại | Cùng API |
-| Trạng thái giải | Phân bố toàn bộ giải đang sở hữu | Cùng API |
+| Trạng thái giải | Gom 6 nhóm; ẩn nhóm 0, có chi tiết mọi trạng thái | Cùng API |
 | Giải sắp diễn ra | Tối đa 5 giải phù hợp, có ngày và liên kết vào giải | Cùng API |
 | Ví ban tổ chức | Có thể rút, ký quỹ, đã rút | `GET /api/v1/finance/organizer/wallet` |
 | Dòng tiền vé | Đã thu, đã hoàn, dòng tiền ròng theo khoảng ngày | `GET /api/v1/finance/organizer/revenue-trend?from=&to=` |
@@ -63,12 +64,12 @@ Giải sắp diễn ra chỉ gồm trạng thái Approved / RegistrationOpen / C
 
 | Khối | Nội dung |
 | --- | --- |
-| KPI | Tổng đơn, số đăng ký đã xác nhận/hoàn thành, check-in, khiếu nại chờ xử lý |
-| Đăng ký | Phân bố trạng thái; đi tới tab duyệt |
+| KPI | Tổng đơn, đăng ký đã xác nhận (Confirmed + Finished), check-in, khiếu nại chờ xử lý |
+| Đăng ký | Gom 4 nhóm; đi tới tab duyệt; mở xem mọi trạng thái khi cần |
 | Thi đấu | Chưa xuất phát, đang chạy, hoàn thành, DNS, DNF, DQ |
 | Sức chứa | Chỗ đang giữ / sức chứa từng cự ly; số đăng ký đã xác nhận/hoàn thành |
 | Chuẩn bị | Cự ly có BIB; tuyến đường; checkpoint; phân công nhân sự; tài liệu còn thiếu |
-| Tài chính | Doanh thu vé, phí nền tảng, đã hoàn, có thể rút và ghi chú chính sách |
+| Tài chính | Tiền vé theo sổ tài chính, phí nền tảng, đã hoàn, có thể rút và ghi chú chính sách |
 | Biểu đồ đăng ký | Tổng đơn tạo theo ngày; chọn tất cả hoặc một cự ly |
 | Dòng tiền vé | Thu/hoàn theo ngày, tách riêng từng loại tiền |
 
@@ -82,6 +83,8 @@ Các API:
 Trang tiếp tục dùng API chi tiết giải hiện có để hiển thị tên, ngày tổ chức, địa điểm, cự ly và tải bảng xếp hạng. Tab duyệt đăng ký và tài chính tiếp tục sử dụng luồng nghiệp vụ cũ.
 
 ## 6. Cách đọc đúng số liệu
+
+Cả ba dashboard có nút **Xuất Excel / Xuất PDF** theo kỳ biểu đồ đã áp dụng; API tải lại số liệu và kiểm tra quyền trước khi tạo file. Xem [luồng xuất báo cáo dashboard](dashboard-export.md) để biết nội dung file, các nhóm trạng thái và phạm vi bộ lọc.
 
 - **Tổng đơn / đăng ký mới:** bao gồm đơn chưa thanh toán, bị từ chối hoặc đã hủy; không gọi đây là vé bán thành công.
 - **Đã xác nhận / hoàn thành:** tổng Confirmed + Finished; là mẫu số check-in và phạm vi thống kê thi đấu.

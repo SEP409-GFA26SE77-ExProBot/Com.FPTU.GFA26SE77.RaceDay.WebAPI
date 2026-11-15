@@ -53,6 +53,7 @@ SEP_WebAPI/
 | Workspace staff checkpoint / simulation | [`docs/staff-checkpoint-workspace.md`](docs/staff-checkpoint-workspace.md) |
 | Dashboard Admin / Organizer — 5 API, luồng gọi và ý nghĩa số liệu | [`docs/dashboard-api.md`](docs/dashboard-api.md) |
 | Giao diện dashboard — đường dẫn, luồng sử dụng, bộ lọc và kiểm thử | [`docs/dashboard-ui.md`](docs/dashboard-ui.md) |
+| Dashboard — nhóm trạng thái và xuất Excel/PDF | [`docs/dashboard-export.md`](docs/dashboard-export.md) |
 
 ---
 
