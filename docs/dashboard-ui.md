@@ -4,7 +4,7 @@
 
 | Người dùng | Web | Đường dẫn | Cách vào |
 | --- | --- | --- | --- |
-| Admin | AdminWeb | `/` (rewrite nội bộ sang `/admin`) | Đăng nhập Admin → Tổng quan trên sidebar |
+| Admin | AdminWeb | `/` (rewrite nội bộ sang `/admin`) | Đăng nhập Admin → Dashboard trên sidebar |
 | Organizer | UserWeb | `/organizer` | Menu tài khoản → Dashboard; hoặc từ Giải của tôi |
 | Organizer, một giải | UserWeb | `/organizer/events/{eventId}` | Chọn giải → tab Tổng quan |
 
@@ -133,7 +133,7 @@ Mặc định AdminWeb ở cổng 3001, UserWeb ở cổng 3000. Không cần mi
 
 Checklist khi nối dữ liệu thật:
 
-1. Đăng nhập Admin: trang đầu là Tổng quan; Người dùng / Nhật ký vẫn hoạt động.
+1. Đăng nhập Admin: trang đầu là Dashboard; Người dùng / Nhật ký vẫn hoạt động.
 2. Đăng nhập Organizer: vào tổng quan từ menu; chỉ thấy giải thuộc tài khoản.
 3. Mở một giải, xem KPI, chọn cự ly và đổi khoảng ngày của biểu đồ.
 4. Đi đến tab duyệt, khiếu nại, BIB, hồ sơ, nhân sự và ví qua liên kết.
