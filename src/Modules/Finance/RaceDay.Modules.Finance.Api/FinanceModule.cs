@@ -32,6 +32,12 @@ public static class FinanceModule
 
         var organizer = api.MapGroup("/organizer").RequireAuthorization(AuthPolicies.PublicUser);
 
+        organizer.MapGet("/revenue-trend", async (Guid? eventId, DateOnly? from, DateOnly? to, IMediator m, CancellationToken ct) =>
+            Results.Ok(await m.Send(new RaceDay.Modules.Finance.Application.Dashboard.GetRevenueTrendQuery(eventId, from, to), ct)))
+            .Produces<RaceDay.Modules.Finance.Application.Dashboard.RevenueTrendDto>()
+            .RequireAuthorization(AuthPolicies.HumanUser)
+            .WithSummary("Tiền vé đã thu và đã hoàn theo ngày Việt Nam, chỉ các giải của Organizer");
+
         organizer.MapGet("/wallet", async (IMediator m, CancellationToken ct) =>
             Results.Ok(await m.Send(new GetOrganizerWalletQuery(), ct)))
             .WithSummary("Kho ví organizer — ledger từng giải + phase giải ngân (too_early/advance/final)");

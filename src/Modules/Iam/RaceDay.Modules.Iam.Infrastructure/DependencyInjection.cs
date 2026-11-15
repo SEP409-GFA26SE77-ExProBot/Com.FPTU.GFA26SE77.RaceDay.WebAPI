@@ -20,6 +20,7 @@ public static class DependencyInjection
                 configuration.GetConnectionString("Postgres"),
                 npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "iam")));
 
+        services.AddScoped<RaceDay.Modules.Iam.Application.Dashboard.IAdminDashboardReader, AdminDashboardReader>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IEmailOtpRepository, EmailOtpRepository>();

@@ -27,6 +27,9 @@ public static class DependencyInjection
                 configuration.GetConnectionString("Postgres"),
                 npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "event")));
 
+        services.AddScoped<RaceDay.Modules.Event.Application.Dashboard.IOrganizerDashboardReader, OrganizerDashboardReader>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IOrganizerRegistrationScopeQuery,
+            RaceDay.Modules.Event.Infrastructure.Finance.OrganizerRegistrationScopeQuery>();
         services.AddScoped<IRaceEventRepository, RaceEventRepository>();
         services.AddScoped<IEventRegistrationRepository, EventRegistrationRepository>();
         services.AddScoped<IRaceStatusChangeRepository, RaceStatusChangeRepository>();

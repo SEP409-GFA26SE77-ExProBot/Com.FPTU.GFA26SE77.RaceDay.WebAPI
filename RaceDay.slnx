@@ -98,6 +98,7 @@
     <Project Path="src/Shared/RaceDay.Shared.Web/RaceDay.Shared.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/RaceDay.Dashboard.Tests/RaceDay.Dashboard.Tests.csproj" />
     <Project Path="tests/RaceDay.Modules.Event.IntegrationTests/RaceDay.Modules.Event.IntegrationTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Payment.UnitTests/RaceDay.Modules.Payment.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Event.UnitTests/RaceDay.Modules.Event.UnitTests.csproj" />

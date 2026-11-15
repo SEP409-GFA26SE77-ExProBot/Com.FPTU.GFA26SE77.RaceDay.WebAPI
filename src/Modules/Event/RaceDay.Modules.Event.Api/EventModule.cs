@@ -84,6 +84,25 @@ public static class EventModule
             .RequireAuthorization(AuthPolicies.PublicUser)
             .RequireRateLimiting("authenticated");
 
+        organizerApi.MapGet("/dashboard", async (IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new RaceDay.Modules.Event.Application.Dashboard.GetOrganizerDashboardQuery(), ct)))
+            .Produces<RaceDay.Modules.Event.Application.Dashboard.OrganizerDashboardDto>()
+            .RequireAuthorization(AuthPolicies.HumanUser)
+            .WithSummary("Dashboard tổng quan các giải thuộc Organizer hiện tại");
+
+        organizerApi.MapGet("/{eventId:guid}/dashboard", async (Guid eventId, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new RaceDay.Modules.Event.Application.Dashboard.GetEventDashboardQuery(eventId), ct)))
+            .Produces<RaceDay.Modules.Event.Application.Dashboard.EventDashboardDto>()
+            .RequireAuthorization(AuthPolicies.HumanUser)
+            .WithSummary("Dashboard một giải: đăng ký, check-in, thi đấu và chuẩn bị");
+
+        organizerApi.MapGet("/{eventId:guid}/dashboard/registrations-trend", async (
+            Guid eventId, DateOnly? from, DateOnly? to, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new RaceDay.Modules.Event.Application.Dashboard.GetRegistrationTrendQuery(eventId, from, to), ct)))
+            .Produces<RaceDay.Modules.Event.Application.Dashboard.RegistrationTrendDto>()
+            .RequireAuthorization(AuthPolicies.HumanUser)
+            .WithSummary("Đăng ký mới theo ngày Việt Nam và cự ly, không phải vé đã thanh toán");
+
         organizerApi.MapGet("/mine", async (IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new ListOrganizerEventsQuery(), ct)))
             .WithSummary("Danh sách giải của tôi (organizer)");
