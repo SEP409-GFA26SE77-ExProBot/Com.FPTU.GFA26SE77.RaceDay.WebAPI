@@ -15,7 +15,7 @@ public partial class StaffCheckpointTests
         await book.StartAsync(run.RunId);
         await book.AdvanceRunningAsync(1);
         var operation = Guid.NewGuid();
-        var result = await book.RecordDecisionAsync(run.RunId, _a, "DNF", " Injury ", null, _staff, "start",
+        var result = await book.RecordDecisionAsync(run.RunId, _a, "DNF", " Injury ", null, _staff, "cp",
             operationId: operation, actorName: "Staff A");
         var entry = Assert.Single(journal.Entries);
         Assert.Equal("Staff A", entry.ActorName);
@@ -26,10 +26,10 @@ public partial class StaffCheckpointTests
         Assert.Equal("Injury", entry.Reason);
         Assert.Equal(entry.SimSeconds, Assert.Single(result.Decisions!).CreatedAtSimSeconds);
         Assert.Equal("Staff A", Assert.Single(result.Decisions!).ActorName);
-        await book.RecordDecisionAsync(run.RunId, _a, "DNF", "Injury", null, _staff, "start", operationId: operation);
+        await book.RecordDecisionAsync(run.RunId, _a, "DNF", "Injury", null, _staff, "cp", operationId: operation);
         Assert.Single(journal.Entries);
         Assert.Single(book.SnapshotOf(run.RunId)!.Decisions!);
-        await Assert.ThrowsAsync<DomainException>(() => book.RecordDecisionAsync(run.RunId, _a, "DNF", "Changed", null, _staff, "start", operationId: operation));
+        await Assert.ThrowsAsync<DomainException>(() => book.RecordDecisionAsync(run.RunId, _a, "DNF", "Changed", null, _staff, "cp", operationId: operation));
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public partial class StaffCheckpointTests
         Assert.False(athlete.CanReport);
         Assert.Empty(cp.Decisions);
         Assert.Equal(0, cp.SegmentFromKm);
-        Assert.Equal(0.05, cp.SegmentToKm);
+        Assert.Equal(0.025, cp.SegmentToKm);
     }
 
     [Fact]

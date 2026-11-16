@@ -43,7 +43,9 @@ Nếu đang chạy API local, chỉ cần chạy lại `dotnet run --project src
 | DNF | VĐV đang Racing tại chặng, khi Running/Paused | VĐV đang Racing sau xuất phát |
 | DQ | Gửi báo cáo Pending, chưa đổi kết quả | Duyệt/từ chối hoặc ghi DQ trực tiếp |
 
-- Chặng của checkpoint được tính từ mốc liền trước (bao gồm) tới mốc liền sau (không bao gồm). Start chỉ đến mốc kế tiếp; Finish từ mốc trước đến hết đường đua. Hai checkpoint liền kề có thể cùng hỗ trợ đoạn nối giữa chúng.
+- Chặng của checkpoint là `(km CP trước, km CP được giao]`: sau mốc trước đến hết mốc của mình, không chồng chéo. Ví dụ CP1 km 3, CP2 km 5: đúng km 3 thuộc CP1; `3 < km ≤ 5` thuộc CP2; qua km 5 thuộc trạm tiếp theo. Start phụ trách vị trí xuất phát; Finish phụ trách sau CP cuối đến hết vạch đích. Khi Ready, chỉ Start có VĐV trong phạm vi.
+- DNF chỉ được ghi khi VĐV đang Racing trong chặng tại thời điểm gửi, lượt Running/Paused; tại Start chỉ khi VĐV còn ở vị trí xuất phát. VĐV đã Finished không được ghi DNF. Nếu VĐV rời chặng trong lúc nhập, form giữ lý do nhưng khóa gửi.
+- Staff được báo DQ nếu VĐV đang trong chặng hoặc đã có ghi nhận qua đúng checkpoint trong lượt, kể cả đã về đích. Chỉ báo sự việc thuộc chặng/trạm mình; organizer xem xét bằng chứng. Sau khi qua trạm, tìm VĐV bằng bộ lọc **Đã qua** hoặc **Tất cả VĐV**. Quyền này kết thúc khi checkpoint đã chốt hoặc lượt khóa/reset; Pending vẫn chưa đổi kết quả.
 - DNS/DNF/DQ yêu cầu lý do (tối đa 1000 ký tự); báo cáo có mô tả/URL bằng chứng tùy chọn (2000 ký tự). Không cho gửi thêm quyết định khi VĐV có báo cáo Pending hoặc đã DNF/DNS/DQ.
 - VĐV đã DNF/DNS/DQ dừng di chuyển, không nhận thêm passage và không được xếp hạng.
 - Commit chỉ khi lượt Finished và không còn Pending. Quyết định bị khóa khi đang commit, đã ghi một phần hoặc có kết quả chưa xác định cần đối soát.
@@ -80,6 +82,10 @@ Bản kết quả checkpoint đã gửi được lưu nguyên theo `(runId, chec
 Các lệnh nghiệp vụ dùng chung khóa bất đồng bộ theo lượt với tick/reset/commit/export. Backend kiểm tra trước, lưu nhật ký rồi mới áp dụng engine và phát snapshot; lỗi ghi log không làm thay đổi quyết định. Client có thể gửi `operationId`; retry cùng ID/nội dung trả kết quả đã ghi, cùng ID/nội dung khác bị từ chối. Client cũ không gửi ID vẫn được hỗ trợ.
 
 Màn có ba tab: Vận động viên (mặc định chặng phụ trách), Diễn biến checkpoint (nguồn hệ thống giả lập), Nhật ký thao tác (lọc người thực hiện/BIB/tên/hành động/lượt). Snapshot trả phạm vi chặng, `isInAssignedSegment`, cờ DQ Pending, trạng thái gửi báo cáo, quyền gửi và `historyVersion`. Chi tiết DQ checkpoint khác không được trả cho staff. Client tải trang nhật ký đầu khi phiên bản thay đổi, không tải toàn bộ nhật ký theo từng tick.
+
+`segmentFromKm` là km CP trước, `segmentToKm` là km CP được giao (Start có hai đầu bằng km xuất phát; Finish có đầu cuối là km đích). `isInAssignedSegment` dùng khoảng trên; `canReport` có thể đúng dù VĐV đã ra khỏi chặng nhờ ghi nhận qua trạm. Frontend dùng quyền backend, không tự tính phạm vi. Không cần migration cho thay đổi này; triển khai backend và AdminWeb cùng đợt. Báo cáo/nhật ký cũ giữ nguyên checkpoint và nội dung lúc ghi.
+
+Test phạm vi: đăng nhập `coord2` (CP 1.25 km), tạo lượt rồi xuất phát. Sau khi VĐV rời Start và trước/đúng km 1.25, staff có thể ghi DNF. Qua km 1.25, DNF bị khóa nhưng vẫn báo DQ từ danh sách Đã qua; organizer duyệt/từ chối, staff gửi báo cáo khi Finished và hết Pending. Sau chốt, mọi thao tác ghi tại CP đó bị khóa. Đúng km 1.25 chỉ thuộc coord2, ngay sau đó thuộc coord3.
 
 Thời gian tạo/duyệt quyết định do engine ghi bằng `createdAtSimSeconds`/`reviewedAtSimSeconds`, cùng UTC thực tế. Dữ liệu thiếu thời gian giữ `null`, không chuyển thành 00:00:00. Khi mất mạng, màn giữ dữ liệu cuối và nội dung đang nhập nhưng khóa thao tác cho đến khi có snapshot mới; mất quyền thì xóa dữ liệu riêng tư. `CHECKPOINT_ACCESS_DENIED:` là mã nhận diện lỗi phân công trên REST/SignalR.
 
