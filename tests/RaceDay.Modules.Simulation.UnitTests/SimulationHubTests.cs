@@ -42,6 +42,7 @@ public class SimulationHubTests
         builder.Services.AddSingleton<ISimulationFieldSource>(new FixedField(Field(eventId, distanceId, Guid.NewGuid())));
         builder.Services.AddSingleton<ISimulationCommitGateway, RecordingGateway>();
         builder.Services.AddSingleton<ISimulationBroadcaster, NoopSimulationBroadcaster>();
+        builder.Services.AddSingleton<ISimulationJournalGateway, TestSimulationJournal>();
         builder.Services.AddSingleton<SimulationSessionBook>();
         builder.Services.AddSingleton<ISimulationAuthorizer, DenyAuthorizer>();
         builder.Services.AddSingleton<IStaffCheckpointWorkspace>(workspace);
@@ -105,6 +106,7 @@ public class SimulationHubTests
         builder.Services.AddSingleton<ISimulationFieldSource>(new FixedField(Field(eventId, distanceId, athleteId)));
         builder.Services.AddSingleton<ISimulationCommitGateway, RecordingGateway>();
         builder.Services.AddSingleton<ISimulationBroadcaster, SignalRSimulationBroadcaster>();
+        builder.Services.AddSingleton<ISimulationJournalGateway, TestSimulationJournal>();
         builder.Services.AddSingleton<SimulationSessionBook>();
         builder.Services.AddSingleton<IEventOrganizerAccessQuery>(new AllowUser(userId));
         builder.Services.AddScoped<ISimulationAuthorizer, SimulationAuthorizer>();
@@ -174,7 +176,7 @@ public class SimulationHubTests
         var book = new SimulationSessionBook(
             new FixedField(Field(eventId, distanceId, athleteId)),
             new RecordingGateway(),
-            new NoopSimulationBroadcaster());
+            new NoopSimulationBroadcaster(), new TestSimulationJournal());
         var created = await book.CreateAsync(eventId, distanceId, null, 11);
         var started = await book.StartAsync(created.RunId);
 
@@ -200,7 +202,7 @@ public class SimulationHubTests
         var book = new SimulationSessionBook(
             new FixedField(Field(eventId, distanceId, athleteId)),
             new RecordingGateway(),
-            new NoopSimulationBroadcaster());
+            new NoopSimulationBroadcaster(), new TestSimulationJournal());
         var created = await book.CreateAsync(eventId, distanceId, null, 11);
 
         var joined = false;
@@ -244,6 +246,7 @@ public class SimulationHubTests
             Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"))));
         builder.Services.AddSingleton<ISimulationCommitGateway, RecordingGateway>();
         builder.Services.AddSingleton<ISimulationBroadcaster, NoopSimulationBroadcaster>();
+        builder.Services.AddSingleton<ISimulationJournalGateway, TestSimulationJournal>();
         builder.Services.AddSingleton<SimulationSessionBook>();
         builder.Services.AddSingleton<ISimulationAuthorizer, AllowAll>();
         var app = builder.Build();

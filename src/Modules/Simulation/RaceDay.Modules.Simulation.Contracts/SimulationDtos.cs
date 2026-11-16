@@ -88,24 +88,29 @@ public sealed record SimulationSnapshotDto(
     IReadOnlyList<SimulationRankDto> Ranking,
     IReadOnlyList<SimulationCheckpointLeaderDto> CheckpointLeaders,
     IReadOnlyList<SimulationLogDto> Log,
-    IReadOnlyList<SimulationDecisionDto>? Decisions = null);
+    IReadOnlyList<SimulationDecisionDto>? Decisions = null, bool DecisionsEditable = true);
 
 public sealed record SimulationDecisionDto(
     Guid Id, Guid RegistrationId, string Bib, string PreviousStatus, string Status,
     string Reason, string? Evidence, Guid ActorId, string CheckpointId, DateTime CreatedAtUtc,
-    string Resolution, Guid? ReviewedBy = null, DateTime? ReviewedAtUtc = null, string? ReviewReason = null);
+    string Resolution, Guid? ReviewedBy = null, DateTime? ReviewedAtUtc = null, string? ReviewReason = null,
+    double? CreatedAtSimSeconds = null, double? ReviewedAtSimSeconds = null);
 
 public sealed record StaffCheckpointAthleteDto(
     Guid RegistrationId, string Bib, string FullName, string Motion, bool Sos,
     double CourseKm, double SpeedKmh, double? PassedAtSeconds, double RemainingKm,
-    bool CanDnf, bool CanDns, bool CanReport);
+    bool CanDnf, bool CanDns, bool CanReport, bool IsInAssignedSegment = false,
+    SimulationDecisionDto? PendingDq = null, bool HasPendingDq = false);
 
 public sealed record StaffCheckpointSnapshotDto(
     Guid EventId, string EventName, Guid DistanceId, string Title,
     SimulationCheckpointDto Checkpoint, IReadOnlyList<SimulationPointDto> Polyline, double DistanceKm,
     Guid? RunId, int Generation, long Version, string? Phase, double SimulatedSeconds,
     double PlaybackRate, string? CommitState,
-    IReadOnlyList<StaffCheckpointAthleteDto> Athletes, IReadOnlyList<SimulationDecisionDto> Decisions);
+    IReadOnlyList<StaffCheckpointAthleteDto> Athletes, IReadOnlyList<SimulationDecisionDto> Decisions,
+    double SegmentFromKm = 0, double? SegmentToKm = null, long HistoryVersion = 0,
+    bool CanSubmitExport = false, string? ExportBlockedReason = null,
+    DateTime? SubmittedAtUtc = null, Guid? SubmittedBy = null, string? SubmittedByName = null);
 
 public sealed record SimulationCommitItemDto(
     Guid RegistrationId,

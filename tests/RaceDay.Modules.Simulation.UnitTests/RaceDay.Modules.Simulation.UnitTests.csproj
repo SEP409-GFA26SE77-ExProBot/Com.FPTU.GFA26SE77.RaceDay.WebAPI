@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
@@ -22,6 +23,7 @@
     <ProjectReference Include="..\..\src\Modules\Simulation\RaceDay.Modules.Simulation.Api\RaceDay.Modules.Simulation.Api.csproj" />
     <ProjectReference Include="..\..\src\Modules\Simulation\RaceDay.Modules.Simulation.Application\RaceDay.Modules.Simulation.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Simulation\RaceDay.Modules.Simulation.Domain\RaceDay.Modules.Simulation.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Event\RaceDay.Modules.Event.Infrastructure\RaceDay.Modules.Event.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Event\RaceDay.Modules.Event.Domain\RaceDay.Modules.Event.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Event\RaceDay.Modules.Event.Contracts\RaceDay.Modules.Event.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Shared\RaceDay.Shared.Web\RaceDay.Shared.Web.csproj" />
