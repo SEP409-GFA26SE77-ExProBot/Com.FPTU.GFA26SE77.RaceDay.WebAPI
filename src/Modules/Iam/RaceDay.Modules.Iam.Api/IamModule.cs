@@ -187,6 +187,11 @@ public static class IamModule
             .RequireAuthorization(AuthPolicies.AdminOnly)
             .RequireRateLimiting("admin");
 
+        adminApi.MapGet("/dashboard", async (DateOnly? from, DateOnly? to, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new RaceDay.Modules.Iam.Application.Dashboard.GetAdminDashboardQuery(from, to), ct)))
+            .Produces<RaceDay.Modules.Iam.Application.Dashboard.AdminDashboardDto>()
+            .WithSummary("Dashboard Admin: tài khoản hiện tại và tài khoản mới theo ngày Việt Nam");
+
         adminApi.MapGet("/users", async (int? page, int? pageSize, IMediator mediator, CancellationToken ct) =>
         {
             var result = await mediator.Send(new ListUsersQuery(page ?? 1, pageSize ?? 20), ct);

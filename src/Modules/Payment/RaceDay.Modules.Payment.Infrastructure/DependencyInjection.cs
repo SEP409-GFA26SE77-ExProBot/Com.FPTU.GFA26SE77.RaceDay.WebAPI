@@ -18,6 +18,8 @@ public static class DependencyInjection
                 configuration.GetConnectionString("Postgres"),
                 npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "payment")));
 
+        services.AddScoped<RaceDay.Modules.Payment.Contracts.Payments.IPaymentRevenueQuery,
+            RaceDay.Modules.Payment.Infrastructure.Finance.PaymentRevenueQuery>();
         services.AddScoped<IPaymentRepository, PaymentRepository>();
         services.AddScoped<IPaymentUnitOfWork, PaymentUnitOfWork>();
         services.AddScoped<RaceDay.Modules.Payment.Contracts.Payments.IPaymentFinancePort,

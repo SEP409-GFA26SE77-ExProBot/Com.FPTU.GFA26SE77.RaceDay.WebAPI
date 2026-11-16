@@ -1,4 +1,5 @@
 using MediatR;
+using RaceDay.Api.Dashboard;
 using Microsoft.OpenApi;
 using RaceDay.Modules.AuditLog.Api;
 using RaceDay.Modules.AuditLog.Application.EventHandlers;
@@ -212,6 +213,7 @@ app.MapAuditLogEndpoints();
 app.MapPaymentEndpoints();
 app.MapMapEndpoints();
 app.MapFinanceEndpoints();
+app.MapDashboardExportEndpoints();
 app.MapDeviceEndpoints();
 app.MapPhotoEndpoints();
 app.MapRaceMonitoringEndpoints();
