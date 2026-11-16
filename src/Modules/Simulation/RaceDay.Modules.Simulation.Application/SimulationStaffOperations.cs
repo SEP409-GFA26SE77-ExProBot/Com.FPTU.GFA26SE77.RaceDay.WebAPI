@@ -62,7 +62,8 @@ public sealed partial class SimulationSessionBook
                 decision = new(previous?.DecisionId ?? Guid.NewGuid(), registrationId, athlete.Bib,
                     athlete.Motion.ToString(), target, reason, evidence, actorId, checkpointId,
                     previous?.OccurredAtUtc ?? DateTime.UtcNow, target == "DQ" && !organizer ? "Pending" : "Approved",
-                    CreatedAtSimSeconds: previous?.SimSeconds ?? view.SimulatedSeconds);
+                    CreatedAtSimSeconds: previous?.SimSeconds ?? view.SimulatedSeconds,
+                    ActorName: previous?.ActorName ?? actorName);
             }
             if (previous is null)
             {
@@ -119,7 +120,8 @@ public sealed partial class SimulationSessionBook
                 if (approve) session.Engine.ValidateRaceStatus(decision.RegistrationId, AthleteMotion.Dq);
                 reviewed = decision with { Resolution = approve ? "Approved" : "Rejected", ReviewedBy = actorId,
                     ReviewedAtUtc = previous?.OccurredAtUtc ?? DateTime.UtcNow, ReviewReason = reason,
-                    ReviewedAtSimSeconds = previous?.SimSeconds ?? session.Engine.SimulatedSeconds };
+                    ReviewedAtSimSeconds = previous?.SimSeconds ?? session.Engine.SimulatedSeconds,
+                    ReviewedByName = previous?.ActorName ?? actorName };
             }
             if (previous is null)
             {

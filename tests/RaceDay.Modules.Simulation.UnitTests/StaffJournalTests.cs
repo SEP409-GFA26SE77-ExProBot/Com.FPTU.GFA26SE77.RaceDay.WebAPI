@@ -25,6 +25,7 @@ public partial class StaffCheckpointTests
         Assert.Equal("DNF", entry.Status);
         Assert.Equal("Injury", entry.Reason);
         Assert.Equal(entry.SimSeconds, Assert.Single(result.Decisions!).CreatedAtSimSeconds);
+        Assert.Equal("Staff A", Assert.Single(result.Decisions!).ActorName);
         await book.RecordDecisionAsync(run.RunId, _a, "DNF", "Injury", null, _staff, "start", operationId: operation);
         Assert.Single(journal.Entries);
         Assert.Single(book.SnapshotOf(run.RunId)!.Decisions!);
@@ -68,6 +69,7 @@ public partial class StaffCheckpointTests
         Assert.Equal(decision.Id, journal.Entries[1].DecisionId);
         Assert.Equal("Organizer B", journal.Entries[1].ActorName);
         Assert.Equal(2, reviewed.Decisions![0].ReviewedAtSimSeconds);
+        Assert.Equal("Organizer B", reviewed.Decisions![0].ReviewedByName);
         await book.ReviewDecisionAsync(run.RunId, decision.Id, false, "No violation", reviewer, operationId: operation);
         Assert.Equal(2, journal.Entries.Count);
     }

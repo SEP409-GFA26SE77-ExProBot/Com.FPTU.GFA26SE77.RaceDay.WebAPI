@@ -94,7 +94,8 @@ public sealed record SimulationDecisionDto(
     Guid Id, Guid RegistrationId, string Bib, string PreviousStatus, string Status,
     string Reason, string? Evidence, Guid ActorId, string CheckpointId, DateTime CreatedAtUtc,
     string Resolution, Guid? ReviewedBy = null, DateTime? ReviewedAtUtc = null, string? ReviewReason = null,
-    double? CreatedAtSimSeconds = null, double? ReviewedAtSimSeconds = null);
+    double? CreatedAtSimSeconds = null, double? ReviewedAtSimSeconds = null,
+    string? ActorName = null, string? ReviewedByName = null);
 
 public sealed record StaffCheckpointAthleteDto(
     Guid RegistrationId, string Bib, string FullName, string Motion, bool Sos,

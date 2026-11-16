@@ -4,10 +4,13 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Shared.Domain.Exceptions;
@@ -22,6 +25,27 @@ namespace RaceDay.Modules.Simulation.UnitTests;
 
 public class SimulationHubTests
 {
+    [Theory]
+    [InlineData(null, "http://localhost:3001")]
+    [InlineData(" http://localhost:3005, http://localhost:3006 ", "http://localhost:3006")]
+    public void Shared_cors_allows_configured_frontends_without_allowing_arbitrary_origins(string? configured, string origin)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Jwt:SigningKey"] = new string('k', 48), ["ALLOWS_CORS"] = configured,
+        }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSharedWeb(configuration);
+        using var provider = services.BuildServiceProvider();
+        var policy = provider.GetRequiredService<IOptions<CorsOptions>>().Value.GetPolicy("fe-dev")!;
+        Assert.Contains(origin, policy.Origins);
+        Assert.DoesNotContain("https://untrusted.example", policy.Origins);
+        Assert.False(policy.AllowAnyOrigin);
+        Assert.True(policy.SupportsCredentials);
+        if (configured is not null) Assert.Equal(2, policy.Origins.Count);
+    }
+
     [Fact]
     public async Task Staff_stream_uses_authenticated_identity_and_stops_after_revocation()
     {
