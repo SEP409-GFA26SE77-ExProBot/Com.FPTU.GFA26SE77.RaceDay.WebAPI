@@ -26,6 +26,7 @@ public static class SimulationModule
         services.AddSingleton<ISimulationFieldSource, ScopedSimulationFieldSource>();
         services.AddSingleton<ISimulationCommitGateway, ScopedSimulationCommitGateway>();
         services.AddSingleton<ISimulationBroadcaster, SignalRSimulationBroadcaster>();
+        services.AddSingleton<ISimulationJournalGateway, ScopedSimulationJournalGateway>();
         services.AddSingleton<SimulationSessionBook>();
         services.AddScoped<ISimulationAuthorizer, SimulationAuthorizer>();
         services.AddScoped<IStaffCheckpointWorkspace, StaffCheckpointWorkspace>();

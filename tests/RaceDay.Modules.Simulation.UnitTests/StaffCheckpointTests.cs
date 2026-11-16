@@ -9,7 +9,7 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Simulation.UnitTests;
 
-public class StaffCheckpointTests
+public partial class StaffCheckpointTests
 {
     private readonly Guid _eventId = Guid.NewGuid();
     private readonly Guid _distanceId = Guid.NewGuid();
@@ -102,7 +102,7 @@ public class StaffCheckpointTests
     {
         var (book, _) = CreateBook();
         var assignments = new Assignments(new(Guid.NewGuid(), _eventId, "Race", $"map:{_distanceId}:cp"));
-        var workspace = new StaffCheckpointWorkspace(assignments, new Courses(Field()), book);
+        var workspace = new StaffCheckpointWorkspace(assignments, new Courses(Field()), book, new TestSimulationJournal());
         var waiting = await workspace.ReadAsync(_eventId, _staff);
         Assert.Null(waiting.RunId);
         var run = await book.CreateAsync(_eventId, _distanceId, null, 4);
@@ -112,9 +112,9 @@ public class StaffCheckpointTests
         var replacement = await book.ResetAsync(run.RunId, true);
         Assert.Equal(replacement.RunId, (await workspace.ReadAsync(_eventId, _staff)).RunId);
         assignments.Member = assignments.Member! with { StationId = $"map:{_distanceId}:missing" };
-        await Assert.ThrowsAsync<DomainException>(() => workspace.ReadAsync(_eventId, _staff));
+        await Assert.ThrowsAsync<StaffCheckpointAccessException>(() => workspace.ReadAsync(_eventId, _staff));
         assignments.Member = null;
-        await Assert.ThrowsAsync<DomainException>(() => workspace.ReadAsync(_eventId, _staff));
+        await Assert.ThrowsAsync<StaffCheckpointAccessException>(() => workspace.ReadAsync(_eventId, _staff));
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class StaffCheckpointTests
         var run = await book.CreateAsync(_eventId, _distanceId, null, 4);
         await book.RecordDecisionAsync(run.RunId, _a, "DQ", "Review", null, _staff, "start");
         await book.StartAsync(run.RunId);
-        var workspace = new StaffCheckpointWorkspace(new Assignments(new(Guid.NewGuid(), _eventId, "Race", $"map:{_distanceId}:cp")), new Courses(Field()), book);
+        var workspace = new StaffCheckpointWorkspace(new Assignments(new(Guid.NewGuid(), _eventId, "Race", $"map:{_distanceId}:cp")), new Courses(Field()), book, new TestSimulationJournal());
         var cp = await workspace.ReadAsync(_eventId, _staff);
         Assert.Empty(cp.Decisions);
         Assert.All(cp.Athletes, a => Assert.Null(a.PassedAtSeconds));
@@ -157,7 +157,7 @@ public class StaffCheckpointTests
     private (SimulationSessionBook, Gateway) CreateBook()
     {
         var gateway = new Gateway();
-        return (new(new Fields(Field()), gateway, new NoopSimulationBroadcaster()), gateway);
+        return (new(new Fields(Field()), gateway, new NoopSimulationBroadcaster(), new TestSimulationJournal()), gateway);
     }
     private SimulationField Field() => new()
     {

@@ -373,7 +373,7 @@ public class SimulationSessionBookTests
     {
         var fields = new MutableFields(ValidField());
         var gateway = new RecordingGateway();
-        var book = new SimulationSessionBook(fields, gateway, broadcaster ?? new NoopSimulationBroadcaster());
+        var book = new SimulationSessionBook(fields, gateway, broadcaster ?? new NoopSimulationBroadcaster(), new TestSimulationJournal());
         return (book, fields, gateway);
     }
 

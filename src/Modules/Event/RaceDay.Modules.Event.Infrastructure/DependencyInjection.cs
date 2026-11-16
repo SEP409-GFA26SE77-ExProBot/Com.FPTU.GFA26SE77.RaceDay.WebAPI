@@ -22,6 +22,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddEventInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Simulation.ISimulationJournalStore,
+            RaceDay.Modules.Event.Infrastructure.Simulation.EfSimulationJournalStore>();
         services.AddDbContext<EventDbContext>(options =>
             options.UseNpgsql(
                 configuration.GetConnectionString("Postgres"),
