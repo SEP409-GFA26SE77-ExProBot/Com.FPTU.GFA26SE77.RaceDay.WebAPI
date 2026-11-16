@@ -106,6 +106,15 @@ dotnet test RaceDay.slnx
 
 ## Setup từng thành phần
 
+### Positioning
+
+- `POST /api/v1/positioning/events/{eventId}/positions` nhận `latitude`, `longitude`, `accuracyMeters` và `capturedAtUtc` từ tài khoản đang có phân công Active hoặc organizer của giải. Phản hồi `zoneStatus` là `inside`, `outside`, `uncertain` (sai số GPS chồng lên ranh giới) hoặc `unconfigured`.
+- `GET /api/v1/positioning/events/{eventId}/alerts` mở stream SSE xác thực. Sự kiện `outside` chứa tên, vai trò và mã phân công của nhân sự rời vùng. Người xem phải là organizer của giải hoặc nhân sự có phân công Active tại giải.
+- `GET /api/v1/positioning/events/{eventId}/positions` trả vị trí của Staff và Photographer có mẫu GPS trong 20 giây gần nhất. Quyền xem giống stream cảnh báo. Dùng `nextOffset` để đọc trang tiếp theo nếu có.
+- `GET /api/v1/positioning/events/{eventId}/positions/live` mở SSE với danh sách ban đầu (`snapshot`), theo sau bởi vị trí mới (`position`) và cảnh báo rời vùng (`outside`). Khi kết nối lại, client nhận danh sách mới nhất.
+- Phân công **Di động** dùng vùng đệm 100 m dọc các tuyến của giải. Checkpoint dùng bán kính 500 m quanh tọa độ đã lưu. Với nhiều checkpoint được giao, nhân sự có thể hoạt động trong bất kỳ vùng nào trong số đó. Nhiệm vụ chưa có tọa độ chỉ báo vị trí, chưa phát cảnh báo.
+- Mẫu mới nhất hết hạn sau 2 phút. Cảnh báo chỉ bắt đầu từ một giờ trước giờ xuất phát và vẫn gửi trong lúc giải diễn ra. Lấy giờ xuất phát của giải hoặc giờ sớm nhất trong các cự ly nếu giải chưa đặt giờ. Cảnh báo realtime được phát đến các kết nối trên cùng instance WebAPI.
+
 Tất cả cấu hình qua **`.env`** ở root (ASP.NET: `Section__Key`). Host đọc `.env` khi start.
 
 ### 1. PostgreSQL (IAM + Event + Payment)

@@ -19,6 +19,8 @@ using RaceDay.Modules.Payment.Application;
 using RaceDay.Modules.RaceMonitoring.Api;
 using RaceDay.Modules.RaceMonitoring.Application;
 using RaceDay.Modules.Simulation.Api;
+using RaceDay.Modules.Positioning.Api;
+using RaceDay.Modules.Positioning.Application;
 using RaceDay.Shared.Infrastructure;
 using RaceDay.Shared.Web;
 using RaceDay.Shared.Web.OpenApi;
@@ -41,6 +43,7 @@ builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(RequestDeviceCodeCommand).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(BulkUploadPhotosCommand).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(RaceMonitoringApplicationMarker).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(ReportPositionCommand).Assembly);
 });
 
 builder.Services.AddCors(options =>
@@ -67,6 +70,7 @@ builder.Services.AddFinanceModule(builder.Configuration);
 builder.Services.AddDeviceModule(builder.Configuration);
 builder.Services.AddPhotoModule(builder.Configuration);
 builder.Services.AddRaceMonitoringModule(builder.Configuration);
+builder.Services.AddPositioningModule(builder.Configuration);
 var simulationEnabled = bool.TryParse(builder.Configuration["Simulation:Enabled"], out var simulationOn) && simulationOn;
 if (simulationEnabled)
 {
@@ -211,6 +215,7 @@ app.MapFinanceEndpoints();
 app.MapDeviceEndpoints();
 app.MapPhotoEndpoints();
 app.MapRaceMonitoringEndpoints();
+app.MapPositioningEndpoints();
 if (simulationEnabled)
 {
     app.MapSimulationEndpoints();
