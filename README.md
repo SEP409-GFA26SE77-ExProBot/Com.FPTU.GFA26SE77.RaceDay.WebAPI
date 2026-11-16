@@ -55,6 +55,8 @@ SEP_WebAPI/
 | Giao diện dashboard — đường dẫn, luồng sử dụng, bộ lọc và kiểm thử | [`docs/dashboard-ui.md`](docs/dashboard-ui.md) |
 | Dashboard — nhóm trạng thái và xuất Excel/PDF | [`docs/dashboard-export.md`](docs/dashboard-export.md) |
 
+Trong simulation, staff phụ trách **sau CP trước đến hết CP của mình**: `(km CP trước, km CP được giao]`; Start phụ trách vị trí xuất phát. DNF theo chặng hiện tại; DQ được báo trong chặng hoặc khi đã có ghi nhận qua trạm trong lượt, kể cả đã về đích, trước khi checkpoint chốt/lượt khóa. Ví dụ CP1 km 3 và CP2 km 5: `(3, 5]` thuộc CP2. Xem tài liệu checkpoint để test trên AdminWeb. Thay đổi phạm vi không cần migration; triển khai backend và AdminWeb cùng đợt.
+
 ---
 
 ## Quick start

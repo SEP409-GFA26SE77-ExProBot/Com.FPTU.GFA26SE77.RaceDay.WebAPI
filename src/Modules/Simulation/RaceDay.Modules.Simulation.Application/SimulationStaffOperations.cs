@@ -56,8 +56,12 @@ public sealed partial class SimulationSessionBook
                     throw new DomainException("VĐV đã có quyết định DNF/DNS/DQ.");
                 if (!organizer && target == "DNS" && !checkpoint.Type.Equals("start", StringComparison.OrdinalIgnoreCase))
                     throw new DomainException("Chỉ staff tại Start được ghi DNS.");
-                if (!organizer && target != "DNS" && !IsAtCheckpoint(view, athlete, checkpoint, session.Checkpoints))
-                    throw new DomainException("VĐV chưa ở chặng thuộc checkpoint được giao.");
+                var scope = CheckpointScope(checkpoint, session.Checkpoints);
+                if (!organizer && target == "DNF" && !scope.Contains(athlete.CourseKm, view.Phase == SimulationPhase.Ready))
+                    throw new DomainException("VĐV không còn ở chặng thuộc checkpoint được giao; không thể ghi DNF.");
+                if (!organizer && target == "DQ" && !scope.CanReport(athlete.CourseKm, view.Phase == SimulationPhase.Ready,
+                        athlete.Splits.Any(s => s.CheckpointId == checkpoint.Id)))
+                    throw new DomainException("VĐV chưa thuộc chặng và chưa có ghi nhận qua checkpoint được giao.");
                 if (target != "DQ" || organizer) session.Engine.ValidateRaceStatus(registrationId, Motion(target));
                 decision = new(previous?.DecisionId ?? Guid.NewGuid(), registrationId, athlete.Bib,
                     athlete.Motion.ToString(), target, reason, evidence, actorId, checkpointId,
@@ -167,13 +171,11 @@ public sealed partial class SimulationSessionBook
             throw new DomainException("Lượt đang ghi hoặc đã ghi kết quả; không được thay đổi quyết định.");
     }
 
-    public static bool IsAtCheckpoint(SimulationEngineView view, SimulationAthleteView athlete,
-        SimulationCourseCheckpoint checkpoint, IReadOnlyList<SimulationCourseCheckpoint> checkpoints)
+    private static StaffCheckpointScope CheckpointScope(SimulationCourseCheckpoint checkpoint,
+        IReadOnlyList<SimulationCourseCheckpoint> checkpoints)
     {
-        if (view.Phase == SimulationPhase.Ready) return checkpoint.Type.Equals("start", StringComparison.OrdinalIgnoreCase);
         var index = checkpoints.ToList().FindIndex(x => x.Id == checkpoint.Id);
-        var lower = index > 0 ? checkpoints[index - 1].Km : 0;
-        var upper = index + 1 < checkpoints.Count ? checkpoints[index + 1].Km : double.PositiveInfinity;
-        return athlete.CourseKm >= lower && athlete.CourseKm < upper;
+        var isStart = checkpoint.Type.Equals("start", StringComparison.OrdinalIgnoreCase);
+        return new(isStart ? checkpoint.Km : checkpoints[index - 1].Km, checkpoint.Km, isStart);
     }
 }
