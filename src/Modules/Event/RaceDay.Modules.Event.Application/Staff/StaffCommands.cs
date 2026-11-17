@@ -253,7 +253,8 @@ public sealed class InviteEventStaffCommandHandler(
     {
         await ListEventStaffQueryHandler.EnsureOrganizerAsync(events, currentUser, request.EventId, cancellationToken);
         var role = EventStaffMapper.ParseRole(request.Body.Role);
-        await StaffStationValidation.ValidateAsync(courses, request.EventId, role, request.Body.StationId, cancellationToken);
+        var stations = EventStaffMapper.ResolveStations(request.Body.Stations, request.Body.StationId, request.Body.StationLabel);
+        await StaffStationValidation.ValidateAsync(courses, request.EventId, role, stations, cancellationToken);
         var email = string.IsNullOrWhiteSpace(request.Body.Email)
             ? null
             : request.Body.Email.Trim().ToLowerInvariant();
@@ -274,12 +275,9 @@ public sealed class InviteEventStaffCommandHandler(
             _ => throw new DomainException("Role nhân sự không hợp lệ.")
         };
 
-        var stationLabel = EventStaffMapper.ResolveStations(
-                request.Body.Stations,
-                request.Body.StationId,
-                request.Body.StationLabel)
-            .FirstOrDefault()?.StationLabel
-            ?? request.Body.StationLabel;
+        var member = EventStaffMember.Invite(request.EventId, role, email, request.Body.FullName,
+            request.Body.Phone, stationId: null, stationLabel: null);
+        member.AssignStations(stations);
 
         // NotifyEmail = hộp thư nhận SMTP (tuỳ chọn); IAM email/username được gen
         var provisioned = await mediator.Send(
@@ -289,23 +287,10 @@ public sealed class InviteEventStaffCommandHandler(
                 iamRole,
                 request.Body.Phone,
                 race.Name,
-                stationLabel,
+                member.StationLabel,
                 request.Body.Password),
             cancellationToken);
 
-        var member = EventStaffMember.Invite(
-            request.EventId,
-            role,
-            email,
-            request.Body.FullName,
-            request.Body.Phone,
-            request.Body.StationId,
-            request.Body.StationLabel);
-        member.AssignStations(
-            EventStaffMapper.ResolveStations(
-                request.Body.Stations,
-                request.Body.StationId,
-                request.Body.StationLabel));
         member.LinkUser(provisioned.UserId);
         await staff.AddAsync(member, cancellationToken);
         await uow.SaveChangesAsync(cancellationToken);
@@ -328,7 +313,8 @@ public sealed class AddEventStaffCommandHandler(
     {
         await ListEventStaffQueryHandler.EnsureOrganizerAsync(events, currentUser, request.EventId, cancellationToken);
         var role = EventStaffMapper.ParseRole(request.Body.Role);
-        await StaffStationValidation.ValidateAsync(courses, request.EventId, role, request.Body.StationId, cancellationToken);
+        var stations = EventStaffMapper.ResolveStations(request.Body.Stations, request.Body.StationId, request.Body.StationLabel);
+        await StaffStationValidation.ValidateAsync(courses, request.EventId, role, stations, cancellationToken);
         if (!string.IsNullOrWhiteSpace(request.Body.Email))
         {
             var email = request.Body.Email.Trim().ToLowerInvariant();
@@ -345,13 +331,9 @@ public sealed class AddEventStaffCommandHandler(
             request.Body.FullName,
             request.Body.Email,
             request.Body.Phone,
-            request.Body.StationId,
-            request.Body.StationLabel);
-        member.AssignStations(
-            EventStaffMapper.ResolveStations(
-                request.Body.Stations,
-                request.Body.StationId,
-                request.Body.StationLabel));
+            stationId: null,
+            stationLabel: null);
+        member.AssignStations(stations);
         await staff.AddAsync(member, cancellationToken);
         await uow.SaveChangesAsync(cancellationToken);
         return EventStaffMapper.ToDto(member);
@@ -373,6 +355,7 @@ public sealed class UpdateEventStaffCommandValidator : AbstractValidator<UpdateE
 }
 
 public sealed class UpdateEventStaffCommandHandler(
+    IRaceCourseReadQuery courses,
     IRaceEventRepository events,
     IEventStaffMemberRepository staff,
     IEventUnitOfWork uow,
@@ -402,12 +385,19 @@ public sealed class UpdateEventStaffCommandHandler(
             throw new DomainException("Email đã có trong danh sách role này.");
         }
 
+        var stations = EventStaffMapper.ResolveStations(request.Body.Stations, request.Body.StationId, request.Body.StationLabel);
+        var stationIdsChanged = !stations.Select(station => station.StationId)
+            .SequenceEqual(member.GetStations().Select(station => station.StationId));
+        if (stationIdsChanged)
+        {
+            await StaffStationValidation.ValidateAsync(courses, request.EventId, member.Role, stations, cancellationToken);
+        }
+
         member.UpdateProfile(request.Body.FullName, request.Body.Phone, request.Body.Email);
-        member.AssignStations(
-            EventStaffMapper.ResolveStations(
-                request.Body.Stations,
-                request.Body.StationId,
-                request.Body.StationLabel));
+        if (stationIdsChanged)
+        {
+            member.AssignStations(stations);
+        }
         staff.Update(member);
         await uow.SaveChangesAsync(cancellationToken);
         return await EventStaffMapper.ToDtoWithLockAsync(member, mediator, cancellationToken);
@@ -432,13 +422,9 @@ public sealed class AssignEventStaffStationCommandHandler(
             throw new DomainException("Nhân sự không thuộc giải này.");
         }
 
-        await StaffStationValidation.ValidateAsync(
-            courses, request.EventId, member.Role, request.Body.StationId, cancellationToken);
-        member.AssignStations(
-            EventStaffMapper.ResolveStations(
-                request.Body.Stations,
-                request.Body.StationId,
-                request.Body.StationLabel));
+        var stations = EventStaffMapper.ResolveStations(request.Body.Stations, request.Body.StationId, request.Body.StationLabel);
+        await StaffStationValidation.ValidateAsync(courses, request.EventId, member.Role, stations, cancellationToken);
+        member.AssignStations(stations);
         staff.Update(member);
         await uow.SaveChangesAsync(cancellationToken);
         return await EventStaffMapper.ToDtoWithLockAsync(member, mediator, cancellationToken);
@@ -543,25 +529,40 @@ public sealed class RevokeEventStaffCommandHandler(
 internal static class StaffStationValidation
 {
     public static async Task ValidateAsync(IRaceCourseReadQuery courses, Guid eventId, EventStaffRole role,
-        string? stationId, CancellationToken ct)
+        IReadOnlyList<StaffStationAssignment> stations, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(stationId)) return;
-        if (stationId.Length > 120) throw new DomainException("Mã vị trí quá dài.");
-        var station = stationId.Trim();
-        if (station.StartsWith("duty:"))
+        var coursesByDistance = new Dictionary<Guid, RaceCourseSnapshot?>();
+        foreach (var station in stations)
         {
-            var valid = role == EventStaffRole.RaceStaff
-                ? station is "duty:ops" or "duty:checkin" or "duty:kit" or "duty:float"
-                : station is "duty:float" or "duty:static";
-            if (!valid) throw new DomainException("Nhiệm vụ không phù hợp với vai trò nhân sự.");
-            return;
+            var stationId = station.StationId;
+            if (stationId.Length > 120) throw new DomainException("Mã vị trí quá dài.");
+            if (stationId.StartsWith("duty:", StringComparison.Ordinal))
+            {
+                var valid = role switch
+                {
+                    EventStaffRole.RaceStaff => stationId == "duty:broom",
+                    EventStaffRole.Photographer => stationId == "duty:float",
+                    _ => false
+                };
+                if (!valid) throw new DomainException("Nhiệm vụ không phù hợp với vai trò nhân sự.");
+                continue;
+            }
+
+            var parts = stationId.Split(':', 3);
+            if (parts.Length != 3 || parts[0] != "map" || !Guid.TryParse(parts[1], out var distanceId))
+            {
+                throw new DomainException("Vị trí phải là checkpoint hoặc nhiệm vụ hợp lệ.");
+            }
+            if (!coursesByDistance.TryGetValue(distanceId, out var course))
+            {
+                course = await courses.GetAsync(eventId, distanceId, ct);
+                coursesByDistance.Add(distanceId, course);
+            }
+            if (course?.Checkpoints.Any(checkpoint => checkpoint.Id == parts[2]
+                && checkpoint.Type.Trim().ToLowerInvariant() is "start" or "cp" or "finish") != true)
+            {
+                throw new DomainException("Checkpoint không thuộc giải/cự ly hoặc không phù hợp vai trò.");
+            }
         }
-        var parts = station.Split(':', 3);
-        if (parts.Length != 3 || parts[0] != "map" || !Guid.TryParse(parts[1], out var distanceId))
-            throw new DomainException("Vị trí phải là checkpoint hoặc nhiệm vụ hợp lệ.");
-        var course = await courses.GetAsync(eventId, distanceId, ct);
-        var checkpoint = course?.Checkpoints.SingleOrDefault(x => x.Id == parts[2]);
-        if (checkpoint is null || (role == EventStaffRole.Photographer && checkpoint.Type == "aid"))
-            throw new DomainException("Checkpoint không thuộc giải/cự ly hoặc không phù hợp vai trò.");
     }
 }

@@ -394,7 +394,7 @@ public static class EventModule
         organizerApi.MapPost("/{eventId:guid}/staff/{memberId:guid}/station", async (
             Guid eventId, Guid memberId, AssignEventStaffStationRequest body, IMediator mediator, CancellationToken ct) =>
             Results.Ok(await mediator.Send(new AssignEventStaffStationCommand(eventId, memberId, body), ct)))
-            .WithSummary("Gán checkpoint / điểm tiếp tế / nhiệm vụ");
+            .WithSummary("Gán checkpoint, xe khóa đuôi (Race-staff) hoặc di động (Photographer)");
 
         organizerApi.MapPost("/{eventId:guid}/staff/{memberId:guid}/reset-password", async (
             Guid eventId, Guid memberId, IMediator mediator, CancellationToken ct) =>
