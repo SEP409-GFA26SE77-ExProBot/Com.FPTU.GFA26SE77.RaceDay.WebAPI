@@ -98,6 +98,21 @@ dotnet test RaceDay.slnx
 - Public API: `/api/v1/{module}/...`
 - Admin: `/api/v1/{module}/admin/...` hoặc policy `AdminOnly` (Gateway Production chặn `/admin/**`)
 
+### Chạy AdminWeb và UserWeb bằng Docker
+
+Đặt hai repo `admin-fe` và `UserWeb` cạnh repo WebAPI. Từ thư mục gốc WebAPI, chạy API ở cổng 5080 rồi build và chạy hai frontend.
+
+```powershell
+docker compose -f deploy/docker-compose.yml --profile api up -d --build
+docker compose -f deploy/docker-compose.frontends.yml up -d --build
+```
+
+- UserWeb mở tại [localhost:3000](http://localhost:3000).
+- AdminWeb mở tại [localhost:3001](http://localhost:3001).
+- Dừng hai frontend bằng `docker compose -f deploy/docker-compose.frontends.yml down`.
+
+Compose dùng `RACEDAY_BACKEND_API_URL` cho các request từ container đến API, mặc định là `http://host.docker.internal:5080`. Trình duyệt dùng `RACEDAY_PUBLIC_API_URL` cho SignalR và các URL API trực tiếp, mặc định là `http://localhost:5080`. Nếu đổi URL public hoặc CDN qua `RACEDAY_STORAGE_PUBLIC_BASE_URL`, chạy lại `up -d --build` để cập nhật bundle. API cần cho phép các origin `http://localhost:3000` và `http://localhost:3001` trong `ALLOWS_CORS`.
+
 **Seed login** (ưu tiên **username**, password chung Active: `MatKhau@123` — nguồn `deploy/sql/raceday_init.sql` / mục 0 trong `docs/RaceDay_API_Guide.docx`):
 
 | Role | Username | Email |
@@ -131,6 +146,37 @@ Tất cả cấu hình qua **`.env`** ở root (ASP.NET: `Section__Key`). Host �
 - Docker compose: user/password/db = `postgres` / `postgres` / `postgres`, **host port `5433`** (tránh đụng PostgreSQL Windows trên `5432`).
 - Schemas: `iam`, `event`, `payment`, `finance`, `map`, `photo`, `device`, `audit`, …
 - Schema: API `MigrateAsync` khi start. Demo data: [`deploy/clear-and-seed.ps1`](deploy/clear-and-seed.ps1) → [`deploy/sql/clear_and_seed.sql`](deploy/sql/clear_and_seed.sql).
+
+#### Seed riêng cho system test
+
+Khởi động API để chạy migration trước. Từ thư mục WebAPI, chạy lệnh phù hợp với kịch bản test.
+
+```powershell
+# Xóa dữ liệu PostgreSQL của RaceDay ở Docker local và nạp bộ system test mới.
+.\deploy\seed-system-test-event.ps1 -ResetDatabase
+
+# Nạp hoặc đổi lịch giải Bien Dong System Test 5K.
+.\deploy\seed-system-test-event.ps1 -StartAt '2026-11-18T06:30:00+07:00' -DurationMinutes 90
+
+# Đặt giờ xuất phát lùi 30 phút để thử luồng DNS sau giờ xuất phát.
+.\deploy\seed-system-test-event.ps1 -StartAt ([DateTimeOffset]::Now.AddMinutes(-30).ToString('yyyy-MM-ddTHH:mm:sszzz'))
+```
+
+Thay timestamp trong lệnh bằng giờ test cần dùng. Nếu bỏ `-StartAt`, giờ xuất phát mặc định là sau 24 giờ. Seed lưu ngày và giờ theo UTC cho cả sự kiện và cự ly 5K, rồi in giờ UTC và UTC+07:00. Đăng ký đóng 15 phút trước giờ xuất phát. Khi thời gian kết thúc qua ngày UTC kế tiếp, seed lưu ngày kết thúc của giải và để trống giờ cutoff của cự ly.
+
+Chạy lại lệnh import để đổi lịch trên cùng event ID `5eed2026-0000-4000-8000-000000000100`. Các đăng ký, BIB, check-in và kết quả đã có được giữ lại. File [`seed_system_test_event.sql`](deploy/sql/seed_system_test_event.sql) dùng trực tiếp với `psql -f`. Có thể sửa mặc định ở đầu file hoặc truyền `-v event_start=2026-11-18T06:30:00+07:00 -v duration_minutes=90`. File [`clear_and_seed_system_test.sql`](deploy/sql/clear_and_seed_system_test.sql) nạp lại toàn bộ dữ liệu và cần để cùng thư mục với file seed một sự kiện.
+
+Mật khẩu chung của các tài khoản test là `MatKhau@123`.
+
+| Kịch bản | Tài khoản |
+|----------|-----------|
+| Quản lý giải Bien Dong System Test 5K | `systest.organizer` |
+| Checkpoint, check-in và upload ảnh | `systest.staff`, `systest.photo` |
+| VĐV có BIB 50001 và 50002 | `systest.runner1`, `systest.runner2` |
+| VĐV chưa đăng ký | `systest.runner3` |
+| Duyệt Marble Mountains Trail 10K sau khi reset | `manager` |
+| Xem kết quả và chứng nhận Han River Results 5K sau khi reset | `systest.runner1` |
+| Quản trị hệ thống sau khi reset | `systest.admin` |
 
 ### 2. AuditLog (Postgres schema `audit`)
 
