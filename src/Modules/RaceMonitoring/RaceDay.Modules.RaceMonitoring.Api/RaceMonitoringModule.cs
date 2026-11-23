@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.RaceMonitoring.Application;
 using RaceDay.Modules.RaceMonitoring.Application.CheckpointScans;
+using RaceDay.Modules.RaceMonitoring.Application.CutoffWarnings;
 using RaceDay.Modules.RaceMonitoring.Application.EmergencyAssignments;
 using RaceDay.Modules.RaceMonitoring.Application.EmergencyResources;
 using RaceDay.Modules.RaceMonitoring.Application.EmergencyResponses;
@@ -342,6 +343,53 @@ public static class RaceMonitoringModule
             Results.Ok(await mediator.Send(new GetRaceEventLogQuery(eventId, logId), ct)))
             .WithSummary("Chi tiết một dòng timeline")
             .WithDescription("Log phải thuộc đúng eventId. Chủ giải hoặc Race-staff Active.");
+
+        ops.MapGet("/cutoff-warnings", async (
+            Guid? eventId,
+            string? status,
+            string? search,
+            int? page,
+            int? pageSize,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(
+                new ListCutoffWarningsQuery(eventId, status, search, page ?? 1, pageSize ?? 50),
+                ct)))
+            .WithSummary("Danh sách VĐV bị cảnh báo vì quá giờ cut-off")
+            .WithDescription(
+                "Admin thấy mọi giải; còn lại chỉ chủ giải hoặc Race-staff Active. "
+                + "Không truyền eventId thì gộp mọi giải được phép. "
+                + "status: Active (mặc định) | Resolved | Dismissed | All. search theo BIB, tên, checkpoint. "
+                + "Trả kèm events: số cảnh báo theo giải để lọc.");
+
+        ops.MapGet("/cutoff-warnings/stream", (
+            HttpContext httpContext,
+            CutoffWarningAccess access,
+            ICutoffWarningBroker broker,
+            IServiceScopeFactory scopeFactory,
+            CancellationToken ct) =>
+            CutoffWarningSse.Open(httpContext, access, broker, scopeFactory, ct))
+            .WithSummary("Theo dõi cảnh báo cut-off theo SSE")
+            .WithDescription(
+                "text/event-stream cho mọi giải mà user được quản lý. Event: ready, heartbeat (15 giây), "
+                + "CutoffWarningRaised, CutoffWarningResolved, CutoffWarningDismissed. "
+                + "Đóng khi JWT hết hạn; client tự kết nối lại và tải lại danh sách.");
+
+        ops.MapGet("/cutoff-warnings/{id:guid}/passages", async (Guid id, IMediator mediator, CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new GetCutoffWarningPassagesQuery(id), ct)))
+            .WithSummary("Lượt qua checkpoint gần nhất của VĐV bị cảnh báo")
+            .WithDescription("Trả last (lượt mới nhất) và tối đa 50 lượt quét của đăng ký, mới nhất trước.");
+
+        ops.MapPost("/cutoff-warnings/{id:guid}/dismiss", async (
+            Guid id,
+            DismissCutoffWarningRequest? body,
+            IMediator mediator,
+            CancellationToken ct) =>
+            Results.Ok(await mediator.Send(new DismissCutoffWarningCommand(id, body), ct)))
+            .WithSummary("Gỡ VĐV khỏi danh sách cảnh báo")
+            .WithDescription(
+                "Body: { note? } (≤ 500 ký tự). Chỉ đổi trạng thái sang Dismissed, giữ lịch sử. "
+                + "Không xóa đăng ký, lượt quét hay timeline. Cảnh báo đã đóng bị từ chối.");
 
         return app;
     }

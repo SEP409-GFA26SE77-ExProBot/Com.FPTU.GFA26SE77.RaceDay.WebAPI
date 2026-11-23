@@ -30,5 +30,35 @@ public sealed class CheckpointScanRepository(RaceMonitoringDbContext db) : IChec
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<CheckpointFirstPassage>> ListFirstPassagesByCheckpointsAsync(
+        IReadOnlyCollection<Guid> checkpointIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (checkpointIds.Count == 0)
+        {
+            return [];
+        }
+
+        var ids = checkpointIds.Distinct().ToArray();
+        return await db.CheckpointScans.AsNoTracking()
+            .Where(scan => ids.Contains(scan.CheckpointId))
+            .GroupBy(scan => new { scan.RegistrationId, scan.CheckpointId })
+            .Select(group => new CheckpointFirstPassage(
+                group.Key.RegistrationId,
+                group.Key.CheckpointId,
+                group.Min(scan => scan.ScannedAtUtc)))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<CheckpointScan>> ListByRegistrationAsync(
+        Guid registrationId,
+        int take,
+        CancellationToken cancellationToken = default)
+        => await db.CheckpointScans.AsNoTracking()
+            .Where(scan => scan.RegistrationId == registrationId)
+            .OrderByDescending(scan => scan.ScannedAtUtc)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
     public void Add(CheckpointScan scan) => db.CheckpointScans.Add(scan);
 }
