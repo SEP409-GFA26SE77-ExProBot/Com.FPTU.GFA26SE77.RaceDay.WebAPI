@@ -3,6 +3,8 @@ using Npgsql;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Domain;
 using RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination;
+using RaceDay.Modules.RaceMonitoring.Domain.RunnerMonitoring;
+using RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Configurations.RunnerMonitoring;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence;
@@ -34,6 +36,12 @@ public sealed class RaceMonitoringUnitOfWork(RaceMonitoringDbContext dbContext) 
             DetachAdded<CheckpointScan>();
             DetachAdded<RaceEventLog>();
             return 0;
+        }
+        catch (DbUpdateException ex) when (Contains(ex, CutoffWarningConfiguration.UniqueRunnerCheckpointIndex))
+        {
+            // Another monitor instance raised the same warning first. Keep the rest of the batch (resolutions).
+            DetachAdded<CutoffWarning>();
+            return await dbContext.SaveChangesAsync(cancellationToken);
         }
     }
 

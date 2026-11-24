@@ -1,8 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Application.CheckpointScans;
+using RaceDay.Modules.RaceMonitoring.Application.CutoffWarnings;
+using RaceDay.Modules.RaceMonitoring.Infrastructure.CutoffWarnings;
 using RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence;
 using RaceDay.Modules.RaceMonitoring.Infrastructure.RaceEventLogs;
 
@@ -28,6 +32,18 @@ public static class DependencyInjection
         services.AddSingleton<IRaceEventLogPublisher>(sp => sp.GetRequiredService<InMemoryRaceEventLogBroker>());
         services.AddScoped<IRaceMonitoringUnitOfWork, RaceMonitoringUnitOfWork>();
         services.AddHostedService<RaceMonitoringDataSeeder>();
+
+        services.TryAddSingleton(TimeProvider.System);
+        var cutoffMonitoring = new CutoffMonitoringOptions();
+        configuration.GetSection(CutoffMonitoringOptions.SectionName).Bind(cutoffMonitoring);
+        services.AddSingleton(Options.Create(cutoffMonitoring));
+        services.AddScoped<ICutoffWarningRepository, CutoffWarningRepository>();
+        services.AddScoped<ICutoffWarningPassageResolver, CutoffWarningPassageResolver>();
+        services.AddScoped<CutoffWarningAccess>();
+        services.AddSingleton<InMemoryCutoffWarningBroker>();
+        services.AddSingleton<ICutoffWarningBroker>(sp => sp.GetRequiredService<InMemoryCutoffWarningBroker>());
+        services.AddSingleton<ICutoffWarningPublisher>(sp => sp.GetRequiredService<InMemoryCutoffWarningBroker>());
+        services.AddHostedService<CutoffWarningMonitor>();
         return services;
     }
 }
