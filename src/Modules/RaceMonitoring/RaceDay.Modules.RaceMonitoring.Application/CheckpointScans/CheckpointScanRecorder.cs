@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
@@ -108,10 +107,10 @@ public sealed class CheckpointScanRecorder(
             checkpoint.CheckpointId,
             registration.RegistrationId,
             raw.Id,
-            JsonSerializer.Serialize(new Dictionary<string, string>
-            {
-                ["scanMethod"] = raw.ScanMethod.ToString()
-            }));
+            RaceEventLogMapper.SerializeCheckpointMetadata(
+                raw.ScanMethod.ToString(),
+                checkpoint.CheckpointName,
+                registration.RunnerName));
 
         scans.Add(raw);
         logs.Add(log);

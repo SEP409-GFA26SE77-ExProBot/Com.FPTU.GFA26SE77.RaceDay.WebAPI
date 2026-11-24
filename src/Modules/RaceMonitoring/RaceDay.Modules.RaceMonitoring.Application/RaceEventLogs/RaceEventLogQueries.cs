@@ -21,7 +21,9 @@ public sealed record RaceEventLogDto(
     Guid? RegistrationId,
     string? SourceType,
     Guid? SourceId,
-    string? ScanMethod);
+    string? ScanMethod,
+    string? CheckpointName,
+    string? RunnerName);
 
 public sealed record PagedRaceEventLogsResult(
     IReadOnlyList<RaceEventLogDto> Items,
@@ -108,7 +110,9 @@ public sealed class ListRaceEventLogsQueryHandler(
             notification.RegistrationId,
             notification.SourceType,
             notification.SourceId,
-            notification.ScanMethod);
+            notification.ScanMethod,
+            notification.CheckpointName,
+            notification.RunnerName);
     }
 
     internal static RaceEventLogType? ParseEventType(string? value)
