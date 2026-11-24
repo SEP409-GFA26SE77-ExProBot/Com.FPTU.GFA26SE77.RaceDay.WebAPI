@@ -27,6 +27,7 @@ public sealed class RaceMonitoringDbContext(DbContextOptions<RaceMonitoringDbCon
     public DbSet<EmergencyDecision> EmergencyDecisions => Set<EmergencyDecision>();
     public DbSet<BroomWagon> BroomWagons => Set<BroomWagon>();
     public DbSet<BroomWagonCheckpointLog> BroomWagonCheckpointLogs => Set<BroomWagonCheckpointLog>();
+    public DbSet<RfidTagAssignment> RfidTagAssignments => Set<RfidTagAssignment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

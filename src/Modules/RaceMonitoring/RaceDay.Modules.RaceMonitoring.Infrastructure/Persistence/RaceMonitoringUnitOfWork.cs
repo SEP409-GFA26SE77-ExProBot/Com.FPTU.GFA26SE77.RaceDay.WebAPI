@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
+using RaceDay.Modules.RaceMonitoring.Application.Rfid;
 using RaceDay.Modules.RaceMonitoring.Domain;
 using RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination;
+using RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Configurations;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence;
@@ -34,6 +36,11 @@ public sealed class RaceMonitoringUnitOfWork(RaceMonitoringDbContext dbContext) 
             DetachAdded<CheckpointScan>();
             DetachAdded<RaceEventLog>();
             return 0;
+        }
+        catch (DbUpdateException ex) when (IsDuplicateRfidAssignment(ex))
+        {
+            DetachAdded<RfidTagAssignment>();
+            throw new RfidConflictException("EPC hoặc đăng ký đã được gán trong giải này.");
         }
     }
 
@@ -94,6 +101,12 @@ public sealed class RaceMonitoringUnitOfWork(RaceMonitoringDbContext dbContext) 
 
     private static bool IsDuplicateSourceSos(DbUpdateException ex) =>
         Contains(ex, "IX_emergency_responses_SourceSosAlertId");
+
+    private static bool IsDuplicateRfidAssignment(DbUpdateException ex) =>
+        IsUniqueViolation(ex, RfidTagAssignmentConfiguration.TagIndex)
+        || IsUniqueViolation(ex, RfidTagAssignmentConfiguration.RegistrationIndex)
+        || Contains(ex, RfidTagAssignmentConfiguration.TagIndex)
+        || Contains(ex, RfidTagAssignmentConfiguration.RegistrationIndex);
 
     private static bool IsDuplicateCheckpointScan(DbUpdateException ex) =>
         Contains(ex, "PK_checkpoint_scans");

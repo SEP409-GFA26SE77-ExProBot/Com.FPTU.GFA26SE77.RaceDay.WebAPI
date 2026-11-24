@@ -601,6 +601,47 @@ namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Migrations
                     b.ToTable("race_event_logs", "race_monitoring");
                 });
 
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.RfidTagAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AssignedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("AssignedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RegistrationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TagId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("TagScheme")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId", "RegistrationId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_rfid_tag_assignments_Event_Registration");
+
+                    b.HasIndex("EventId", "TagScheme", "TagId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_rfid_tag_assignments_Event_Tag");
+
+                    b.ToTable("rfid_tag_assignments", "race_monitoring");
+                });
+
             modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.RunnerLocation", b =>
                 {
                     b.Property<Guid>("Id")
