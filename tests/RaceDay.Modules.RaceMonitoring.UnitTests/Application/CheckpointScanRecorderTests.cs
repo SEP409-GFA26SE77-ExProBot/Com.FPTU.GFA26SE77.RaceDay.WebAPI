@@ -4,6 +4,7 @@ using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Application.CheckpointScans;
 using RaceDay.Modules.RaceMonitoring.Application.RaceEventLogs;
+using RaceDay.Modules.RaceMonitoring.Application.CutoffWarnings;
 using RaceDay.Modules.RaceMonitoring.Domain;
 using RaceDay.Shared.Domain.Exceptions;
 
@@ -189,6 +190,7 @@ public class CheckpointScanRecorderTests
             logs,
             unitOfWork,
             publisher,
+            Substitute.For<ICutoffWarningPassageResolver>(),
             NullLogger<CheckpointScanRecorder>.Instance);
         return new HarnessState(recorder, scans, logs, unitOfWork, publisher);
     }
