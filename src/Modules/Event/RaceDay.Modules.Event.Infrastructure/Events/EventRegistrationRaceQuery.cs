@@ -19,6 +19,7 @@ public sealed class EventRegistrationRaceQuery(EventDbContext db) : IEventRegist
                 registration.EventId,
                 registration.DistanceId,
                 registration.BibNumber,
+                registration.FullName,
                 registration.Status
             })
             .FirstOrDefaultAsync(cancellationToken);
@@ -32,7 +33,8 @@ public sealed class EventRegistrationRaceQuery(EventDbContext db) : IEventRegist
             row.EventId,
             row.DistanceId,
             row.BibNumber,
-            row.Status.ToString());
+            row.Status.ToString(),
+            string.IsNullOrWhiteSpace(row.FullName) ? null : row.FullName.Trim());
     }
 
     public async Task<IReadOnlyList<EventRegistrationRaceCandidate>> ListEligibleByEventAsync(

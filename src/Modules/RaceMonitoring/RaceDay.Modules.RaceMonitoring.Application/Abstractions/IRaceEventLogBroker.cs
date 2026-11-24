@@ -32,4 +32,6 @@ public sealed record RaceEventLogNotification(
     Guid? RegistrationId,
     string? SourceType,
     Guid? SourceId,
-    string? ScanMethod);
+    string? ScanMethod,
+    string? CheckpointName = null,
+    string? RunnerName = null);
