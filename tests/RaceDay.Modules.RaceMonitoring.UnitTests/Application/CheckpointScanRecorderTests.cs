@@ -190,6 +190,7 @@ public class CheckpointScanRecorderTests
             logs,
             unitOfWork,
             publisher,
+            new RaceEventLogChipStarts(checkpoints, logs),
             Substitute.For<ICutoffWarningPassageResolver>(),
             NullLogger<CheckpointScanRecorder>.Instance);
         return new HarnessState(recorder, scans, logs, unitOfWork, publisher);

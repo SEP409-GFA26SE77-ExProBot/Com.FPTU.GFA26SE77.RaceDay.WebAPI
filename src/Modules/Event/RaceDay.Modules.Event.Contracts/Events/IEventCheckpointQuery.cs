@@ -12,8 +12,15 @@ public interface IEventCheckpointQuery
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// <see cref="ExternalId"/> is the map-course checkpoint id; <see cref="Type"/> is the CheckpointType name
+/// (Start, Finish, Water, Aid, Medical, Cutoff).
+/// </summary>
 public sealed record EventCheckpointInfo(
     Guid CheckpointId,
     Guid EventId,
     Guid DistanceId,
-    string CheckpointName);
+    string CheckpointName,
+    string? ExternalId = null,
+    string? Type = null,
+    double Km = 0);

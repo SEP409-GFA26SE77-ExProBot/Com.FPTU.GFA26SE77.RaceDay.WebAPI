@@ -220,6 +220,9 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
             """,
             cancellationToken);
     }
+
+    public void AddCheckpoints(IEnumerable<EventCheckpoint> checkpoints)
+        => db.Checkpoints.AddRange(checkpoints);
 }
 
 public sealed class EventRegistrationRepository(EventDbContext db) : IEventRegistrationRepository
@@ -402,6 +405,23 @@ public sealed class RegistrationCheckpointPassageRepository(EventDbContext db) :
 
     public async Task AddAsync(RegistrationCheckpointPassage passage, CancellationToken cancellationToken = default)
         => await db.RegistrationCheckpointPassages.AddAsync(passage, cancellationToken);
+
+    public async Task<IReadOnlyCollection<Guid>> ListCheckpointIdsWithPassagesAsync(
+        IReadOnlyCollection<Guid> checkpointIds,
+        CancellationToken cancellationToken = default)
+    {
+        if (checkpointIds.Count == 0)
+        {
+            return [];
+        }
+
+        var ids = checkpointIds.ToList();
+        return await db.RegistrationCheckpointPassages.AsNoTracking()
+            .Where(passage => ids.Contains(passage.CheckpointId))
+            .Select(passage => passage.CheckpointId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+    }
 }
 
 public sealed class EventStaffMemberRepository(EventDbContext db) : IEventStaffMemberRepository
