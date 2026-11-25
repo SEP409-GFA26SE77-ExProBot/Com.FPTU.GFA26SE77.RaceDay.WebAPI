@@ -3,11 +3,12 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using RaceDay.Modules.Map.Contracts.Courses;
+using RaceDay.Modules.Map.Domain.Courses;
 using RaceDay.Modules.Map.Infrastructure.Persistence;
 
 namespace RaceDay.Modules.Map.Infrastructure.Courses;
 
-public sealed class RaceCourseReadQuery(MapDbContext db) : IRaceCourseReadQuery
+public sealed class RaceCourseReadQuery(MapDbContext db) : IRaceCourseReadQuery, IEventCoursesReadQuery
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -23,11 +24,18 @@ public sealed class RaceCourseReadQuery(MapDbContext db) : IRaceCourseReadQuery
     {
         var course = await db.RaceCourses.AsNoTracking()
             .FirstOrDefaultAsync(row => row.EventId == eventId && row.DistanceId == distanceId, cancellationToken);
-        if (course is null)
-        {
-            return null;
-        }
+        return course is null ? null : ToSnapshot(course);
+    }
 
+    public async Task<IReadOnlyList<RaceCourseSnapshot>> ListAsync(Guid eventId, CancellationToken cancellationToken = default)
+    {
+        var courses = await db.RaceCourses.AsNoTracking()
+            .Where(course => course.EventId == eventId).ToListAsync(cancellationToken);
+        return courses.Select(ToSnapshot).ToArray();
+    }
+
+    private static RaceCourseSnapshot ToSnapshot(RaceCourse course)
+    {
         CourseFile? file = null;
         try
         {

@@ -706,7 +706,7 @@ public class EmergencyCoordinationHandlerTests
                     "MED-1", "MedicalTeam", "Đội y tế", "Available", null)),
                 CancellationToken.None));
 
-        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        Assert.Equal("Chỉ organizer của giải hoặc Race-staff Active mới điều phối nguồn lực.", ex.Message);
         await resources.DidNotReceive().ExistsByEventAndCodeAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         resources.DidNotReceive().Add(Arg.Any<EmergencyResource>());
         await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
@@ -726,7 +726,7 @@ public class EmergencyCoordinationHandlerTests
                     "MED-1", "MedicalTeam", "Đội y tế", "Available", null)),
                 CancellationToken.None));
 
-        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        Assert.Equal("Chỉ organizer của giải hoặc Race-staff Active mới điều phối nguồn lực.", ex.Message);
         await resources.DidNotReceive().ExistsByEventAndCodeAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
         resources.DidNotReceive().Add(Arg.Any<EmergencyResource>());
         await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
@@ -863,7 +863,7 @@ public class EmergencyCoordinationHandlerTests
                     "Ambulance", "Xe", null)),
                 CancellationToken.None));
 
-        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        Assert.Equal("Chỉ organizer của giải hoặc Race-staff Active mới điều phối nguồn lực.", ex.Message);
         Assert.Equal(EmergencyResourceType.MedicalTeam, resource.ResourceType);
         Assert.Equal("MED-1", resource.ResourceCode);
         await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
@@ -885,7 +885,7 @@ public class EmergencyCoordinationHandlerTests
                     "Ambulance", "Xe", null)),
                 CancellationToken.None));
 
-        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới điều phối nguồn lực.", ex.Message);
+        Assert.Equal("Chỉ organizer của giải hoặc Race-staff Active mới điều phối nguồn lực.", ex.Message);
         Assert.Equal(EmergencyResourceType.MedicalTeam, resource.ResourceType);
         Assert.Equal("MED-1", resource.ResourceCode);
         await unitOfWork.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());

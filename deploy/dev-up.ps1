@@ -1,5 +1,5 @@
 ﻿# RaceDay local all-in-one:
-#   Docker Desktop → compose (Postgres/Mongo/Redis/Rabbit + API profile)
+#   Docker Desktop → compose (Postgres/Redis/Rabbit + API profile)
 #   → ngrok + PayOS webhook (live) → User FE SEP_UserWeb2 (:3000) → Admin FE (:3001)
 #
 # Run:

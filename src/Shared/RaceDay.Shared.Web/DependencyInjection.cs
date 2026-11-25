@@ -47,16 +47,15 @@ public static class DependencyInjection
                     .RequireClaim("scope", "sos:create")
                     .RequireClaim("token_use", "wear"));
 
+        var corsOrigins = configuration["ALLOWS_CORS"];
         services.AddCors(options =>
         {
             options.AddPolicy("fe-dev", policy =>
             {
                 policy
-                    .WithOrigins(
-                        "http://localhost:3000",
-                        "http://localhost:3001",
-                        "http://127.0.0.1:3000",
-                        "http://127.0.0.1:3001")
+                    .WithOrigins((string.IsNullOrWhiteSpace(corsOrigins)
+                        ? "http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001"
+                        : corsOrigins).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                     .AllowAnyHeader()
                     .AllowAnyMethod()
                     .AllowCredentials();

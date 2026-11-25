@@ -1,0 +1,33 @@
+name: raceday-frontends
+
+x-frontend-build-args: &frontend-build-args
+  NEXT_PUBLIC_API_URL: ${RACEDAY_PUBLIC_API_URL:-http://localhost:5080}
+  NEXT_PUBLIC_STORAGE_PUBLIC_BASE_URL: ${RACEDAY_STORAGE_PUBLIC_BASE_URL-https://pub-36bb0ea536ef493b9c291b1bf1ec2e20.r2.dev}
+
+x-frontend-environment: &frontend-environment
+  BACKEND_API_URL: ${RACEDAY_BACKEND_API_URL:-http://host.docker.internal:5080}
+
+services:
+  user-web:
+    build:
+      context: ../../UserWeb
+      args: *frontend-build-args
+    environment:
+      <<: *frontend-environment
+      AUTH_APP_ORIGIN: http://localhost:3000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  admin-web:
+    build:
+      context: ../../admin-fe
+      args: *frontend-build-args
+    environment:
+      <<: *frontend-environment
+      AUTH_APP_ORIGIN: http://localhost:3001
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:3001:3001"

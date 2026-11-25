@@ -1,6 +1,6 @@
-# Staff checkpoint workspace (UserWeb)
+# Staff checkpoint workspace (AdminWeb)
 
-Workspace `/staff` dành cho tài khoản RaceStaff (Coordinator/Volunteer đã hợp nhất). Bản này phục vụ **simulation**, chưa triển khai StaffMobile hay thay thế quy trình ghi nhận thi đấu thực tế.
+Workspace `/checkpoint` trên AdminWeb (`http://localhost:3001`) dành cho tài khoản RaceStaff (Coordinator/Volunteer đã hợp nhất). Bản này phục vụ **simulation**, chưa triển khai StaffMobile hay thay thế quy trình ghi nhận thi đấu thực tế.
 
 ## Chuẩn bị và sử dụng
 
@@ -20,14 +20,15 @@ Script chỉ thêm những bản ghi chưa có. Nó không xóa đăng ký, pass
 - Staff: `coord1` tại **Start** (`cp-0`, thử DNS), `coord2` tại **1.25 km** (`cp-1.25`), `coord3` tại **tiếp nước 2.5 km** (`cp-2.5`), `coord4` tại **3.75 km** (`cp-3.75`), `vol1` tại **Finish** (`cp-5`). Đây đều là RaceStaff Active, mỗi người chỉ có một phân công trong giải test. Các ID này khớp tuyến đường đã lưu ngày 11/11/2026; nếu sửa/xóa checkpoint và đổi ID lần nữa, cần gán lại staff theo checkpoint mới.
 - Mật khẩu demo của các tài khoản trên: `MatKhau@123` (chỉ dùng môi trường local).
 
-Mở `/organizer/events/5aff0000-0000-4000-8000-000000000100/race-simulation` bằng `cuong.le`, chọn cự ly 5K và tạo lượt **Ready**. Staff đăng nhập UserWeb sẽ thấy giải trong `/staff`; chọn checkpoint được giao. Runner có thể xem đăng ký ở `/my-registrations`. Lượt simulation nằm trong bộ nhớ API, nên sau khi restart cần tạo lượt Ready lại. Bộ seed không đặt lại trạng thái VĐV đã commit; khi thử commit toàn bộ 12 người thì lượt sau không còn đủ 12 runner hợp lệ.
+Mở `/organizer/events/5aff0000-0000-4000-8000-000000000100/race-simulation` bằng `cuong.le`, chọn cự ly 5K và tạo lượt **Ready**. Staff đăng nhập AdminWeb sẽ thấy giải trong `/checkpoint`; chọn checkpoint được giao. Runner có thể xem đăng ký ở `/my-registrations`. Lượt simulation nằm trong bộ nhớ API, nên sau khi restart cần tạo lượt Ready lại. Bộ seed không đặt lại trạng thái VĐV đã commit; khi thử commit toàn bộ 12 người thì lượt sau không còn đủ 12 runner hợp lệ.
 
 1. Bật `Simulation__Enabled=true`, giữ cấu hình giờ xuất phát/time zone theo simulation hiện có.
 2. Chạy lại API. Event startup tự chạy migration `20261111030201_AddSimulationDecisionSource` cho lịch sử trạng thái và `20261111050000_AddSimulationCheckpointExports` cho bản kết quả staff gửi.
 3. Organizer mời tài khoản staff, gán **checkpoint trên bản đồ** của cự ly. Mã vị trí có dạng `map:{distanceId}:{checkpointId}`; API kiểm tra checkpoint thực sự thuộc giải/cự ly. Bản ghi thêm trực tiếp chưa liên kết tài khoản không đủ điều kiện đăng nhập workspace.
-4. Staff đăng nhập UserWeb → `/staff` → chọn phân công → mở checkpoint. Nhiệm vụ `duty:*` chưa có màn hình checkpoint.
+4. Staff đăng nhập AdminWeb → `/checkpoint` → chọn phân công → `/checkpoint/events/{eventId}`. URL cũ có đuôi `/checkpoint` redirect về màn này. Nhiệm vụ `duty:*` chưa có màn hình checkpoint.
 5. Organizer tạo/chạy lượt. Staff nhận dữ liệu realtime, tra BIB/tên, xem lượt qua mốc, bản đồ và ghi nhận tình trạng.
-6. Khi lượt kết thúc, staff bấm **Gửi cho organizer** tại checkpoint. Bản gửi gồm giờ qua mốc, trạng thái từng VĐV và các ghi nhận tại mốc; mỗi mốc gửi một lần cho mỗi lượt. Organizer xem bản gửi ở trang **Kết quả giải** theo cự ly.
+   Organizer mở **Giả lập đua** → **Báo cáo DQ từ staff**, chọn **Duyệt DQ** hoặc **Từ chối**, nhập lý do rồi xác nhận. Tab **Đã xử lý** lưu thông tin người/thời điểm/lý do xử lý của lượt hiện tại; staff xem bản ghi bền vững ở **Nhật ký thao tác**. Mất kết nối khóa duyệt đến khi có dữ liệu mới. Màn giả lập không tự commit khi kết thúc; organizer chủ động bấm **Ghi kết quả** sau khi xử lý hết Pending.
+6. Khi lượt kết thúc và organizer đã xử lý hết DQ Pending tại checkpoint, staff bấm **Gửi cho organizer** tại checkpoint. Bản gửi gồm giờ qua mốc, trạng thái từng VĐV và các ghi nhận tại mốc; mỗi mốc gửi một lần cho mỗi lượt. Sau gửi, quyết định tại mốc đó bị khóa cho cả staff và organizer; checkpoint khác vẫn làm việc theo quyền hiện có. Organizer xem bản gửi ở trang **Kết quả giải** theo cự ly.
 7. Organizer xử lý hết báo cáo DQ rồi **bấm ghi kết quả** ở simulation, đối chiếu bản gửi của staff và công bố bảng xếp hạng khi đã có kết quả được ghi. Bản gửi checkpoint không tự ghi bảng xếp hạng.
 
 Nếu đang chạy API local, chỉ cần chạy lại `dotnet run --project src/Hosts/RaceDay.Api --launch-profile http`; hạ tầng Docker đang chạy không cần tạo lại. Nếu chạy API trong Docker, dùng `docker compose -f deploy/docker-compose.yml --profile api up -d --build`. Không cần `down -v`.
@@ -42,7 +43,9 @@ Nếu đang chạy API local, chỉ cần chạy lại `dotnet run --project src
 | DNF | VĐV đang Racing tại chặng, khi Running/Paused | VĐV đang Racing sau xuất phát |
 | DQ | Gửi báo cáo Pending, chưa đổi kết quả | Duyệt/từ chối hoặc ghi DQ trực tiếp |
 
-- Chặng của checkpoint được tính từ mốc liền trước (bao gồm) tới mốc liền sau (không bao gồm). Start chỉ đến mốc kế tiếp; Finish từ mốc trước đến hết đường đua. Hai checkpoint liền kề có thể cùng hỗ trợ đoạn nối giữa chúng.
+- Chặng của checkpoint là `(km CP trước, km CP được giao]`: sau mốc trước đến hết mốc của mình, không chồng chéo. Ví dụ CP1 km 3, CP2 km 5: đúng km 3 thuộc CP1; `3 < km ≤ 5` thuộc CP2; qua km 5 thuộc trạm tiếp theo. Start phụ trách vị trí xuất phát; Finish phụ trách sau CP cuối đến hết vạch đích. Khi Ready, chỉ Start có VĐV trong phạm vi.
+- DNF chỉ được ghi khi VĐV đang Racing trong chặng tại thời điểm gửi, lượt Running/Paused; tại Start chỉ khi VĐV còn ở vị trí xuất phát. VĐV đã Finished không được ghi DNF. Nếu VĐV rời chặng trong lúc nhập, form giữ lý do nhưng khóa gửi.
+- Staff được báo DQ nếu VĐV đang trong chặng hoặc đã có ghi nhận qua đúng checkpoint trong lượt, kể cả đã về đích. Chỉ báo sự việc thuộc chặng/trạm mình; organizer xem xét bằng chứng. Sau khi qua trạm, tìm VĐV bằng bộ lọc **Đã qua** hoặc **Tất cả VĐV**. Quyền này kết thúc khi checkpoint đã chốt hoặc lượt khóa/reset; Pending vẫn chưa đổi kết quả.
 - DNS/DNF/DQ yêu cầu lý do (tối đa 1000 ký tự); báo cáo có mô tả/URL bằng chứng tùy chọn (2000 ký tự). Không cho gửi thêm quyết định khi VĐV có báo cáo Pending hoặc đã DNF/DNS/DQ.
 - VĐV đã DNF/DNS/DQ dừng di chuyển, không nhận thêm passage và không được xếp hạng.
 - Commit chỉ khi lượt Finished và không còn Pending. Quyết định bị khóa khi đang commit, đã ghi một phần hoặc có kết quả chưa xác định cần đối soát.
@@ -56,12 +59,14 @@ Các đường dẫn dưới đây có prefix `/api/v1/simulation`, yêu cầu t
 | Method | Route | Body |
 | --- | --- | --- |
 | GET | `/staff/events/{eventId}/checkpoint` | — |
-| POST | `/staff/events/{eventId}/runs/{runId}/athletes/{registrationId}/decisions` | `{ "status": "DNF\|DNS\|DQ", "reason": "...", "evidence": "..." }` |
+| POST | `/staff/events/{eventId}/runs/{runId}/athletes/{registrationId}/decisions` | `{ "status": "DNF\|DNS\|DQ", "reason": "...", "evidence": "...", "operationId": "uuid (tùy chọn)" }` |
+| GET | `/staff/events/{eventId}/checkpoint/history/runs` | Các lượt có nhật ký tại checkpoint hiện được giao, kể cả sau restart |
+| GET | `/staff/events/{eventId}/checkpoint/history` | Query `runId` bắt buộc; `kind`, `search`, `mine`, `cursor` tùy chọn; trả `{ items, nextCursor }`, 25 bản ghi mới nhất trước |
 | GET | `/staff/events/{eventId}/checkpoint/export` | Xem bản đã gửi của mốc trong lượt hiện tại |
-| POST | `/staff/events/{eventId}/runs/{runId}/checkpoint/export` | Gửi bản kết quả mốc khi lượt Finished; gọi lại trả bản đã gửi |
+| POST | `/staff/events/{eventId}/runs/{runId}/checkpoint/export` | Gửi khi Finished và hết Pending tại mốc; gọi lại trả bản đã gửi, không ghi thêm log |
 | GET | `/events/{eventId}/distances/{distanceId}/checkpoint-exports` | Organizer xem các bản staff đã gửi, kể cả lượt cũ |
 | POST | `/runs/{runId}/athletes/{registrationId}/decisions` | Organizer: status/reason/evidence |
-| POST | `/runs/{runId}/decisions/{decisionId}/review` | Organizer: `{ "approve": true, "reason": "..." }` |
+| POST | `/runs/{runId}/decisions/{decisionId}/review` | Organizer: `{ "approve": true, "reason": "...", "operationId": "uuid (tùy chọn)" }` |
 | POST | `/runs/{runId}/athletes/{registrationId}/dnf` | Legacy organizer endpoint: nay bắt buộc `{ "reason": "..." }` |
 
 SignalR `/api/v1/simulation/hub`: client gọi **stream** `WatchCheckpoint(eventId)`. Server đọc lại phân công mỗi giây, kể cả khi chưa có lượt hoặc đang pause. Đổi phân công/Reset/New sẽ cập nhật stream; thu hồi phân công kết thúc stream. Staff không được join group `JoinRun` của organizer.
@@ -70,7 +75,19 @@ Snapshot staff chứa checkpoint, trạng thái lượt, danh sách VĐV của c
 
 ## Lưu trữ và giới hạn
 
-Lượt simulation, báo cáo Pending/Rejected, bằng chứng và lịch sử nháp hiện nằm trong bộ nhớ theo kiến trúc simulation hiện có; restart API/Reset sẽ mất chúng. Bản kết quả checkpoint đã gửi được lưu trong PostgreSQL theo run ID và checkpoint ID, giữ nguyên sau restart/Reset và không ghi trùng khi gửi lại. Đây là ảnh chụp tại lúc staff gửi; các quyết định thay đổi sau đó cần organizer đối chiếu với lượt hiện tại. Khi commit, trạng thái DNF/DNS/DQ và audit quyết định cuối (người áp dụng/duyệt, lý do, trạng thái trước/sau, thời điểm, checkpoint, run) được lưu database. Bằng chứng và toàn bộ vòng đời báo cáo chưa được lưu bền vững. Không dùng phần này làm hệ thống trọng tài chính thức.
+Trạng thái engine và quyết định nháp vẫn nằm trong bộ nhớ; restart/Reset không khôi phục lượt để tiếp tục thao tác. Nhật ký nghiệp vụ được lưu PostgreSQL ngay khi ghi DNS/DNF/DQ, gửi DQ, duyệt/từ chối và gửi báo cáo checkpoint. Nhật ký chỉ thêm bản ghi, giữ tên/vai trò người thực hiện, hai đồng hồ, lý do, bằng chứng và liên kết báo cáo. Không lưu từng tick vị trí hay từng passage vào nhật ký này. Lượt cũ chỉ đọc; API lịch sử kiểm tra lại phân công Active hiện tại, không cho xem checkpoint khác hoặc phân công đã thu hồi.
+
+Bản kết quả checkpoint đã gửi được lưu nguyên theo `(runId, checkpointId)`. Báo cáo và log gửi được ghi trong cùng transaction; retry không tạo bản trùng. Bản gửi cũ trước migration vẫn được giữ và xem là đã khóa; không tạo log giả cho dữ liệu cũ. Báo cáo là ảnh chụp tại lúc gửi, không tự cập nhật theo quyết định phát sinh ở checkpoint khác và không tự commit/công bố bảng xếp hạng. Audit trạng thái khi commit tiếp tục dùng transaction hiện có.
+
+Các lệnh nghiệp vụ dùng chung khóa bất đồng bộ theo lượt với tick/reset/commit/export. Backend kiểm tra trước, lưu nhật ký rồi mới áp dụng engine và phát snapshot; lỗi ghi log không làm thay đổi quyết định. Client có thể gửi `operationId`; retry cùng ID/nội dung trả kết quả đã ghi, cùng ID/nội dung khác bị từ chối. Client cũ không gửi ID vẫn được hỗ trợ.
+
+Màn có ba tab: Vận động viên (mặc định chặng phụ trách), Diễn biến checkpoint (nguồn hệ thống giả lập), Nhật ký thao tác (lọc người thực hiện/BIB/tên/hành động/lượt). Snapshot trả phạm vi chặng, `isInAssignedSegment`, cờ DQ Pending, trạng thái gửi báo cáo, quyền gửi và `historyVersion`. Chi tiết DQ checkpoint khác không được trả cho staff. Client tải trang nhật ký đầu khi phiên bản thay đổi, không tải toàn bộ nhật ký theo từng tick.
+
+`segmentFromKm` là km CP trước, `segmentToKm` là km CP được giao (Start có hai đầu bằng km xuất phát; Finish có đầu cuối là km đích). `isInAssignedSegment` dùng khoảng trên; `canReport` có thể đúng dù VĐV đã ra khỏi chặng nhờ ghi nhận qua trạm. Frontend dùng quyền backend, không tự tính phạm vi. Không cần migration cho thay đổi này; triển khai backend và AdminWeb cùng đợt. Báo cáo/nhật ký cũ giữ nguyên checkpoint và nội dung lúc ghi.
+
+Test phạm vi: đăng nhập `coord2` (CP 1.25 km), tạo lượt rồi xuất phát. Sau khi VĐV rời Start và trước/đúng km 1.25, staff có thể ghi DNF. Qua km 1.25, DNF bị khóa nhưng vẫn báo DQ từ danh sách Đã qua; organizer duyệt/từ chối, staff gửi báo cáo khi Finished và hết Pending. Sau chốt, mọi thao tác ghi tại CP đó bị khóa. Đúng km 1.25 chỉ thuộc coord2, ngay sau đó thuộc coord3.
+
+Thời gian tạo/duyệt quyết định do engine ghi bằng `createdAtSimSeconds`/`reviewedAtSimSeconds`, cùng UTC thực tế. Dữ liệu thiếu thời gian giữ `null`, không chuyển thành 00:00:00. Khi mất mạng, màn giữ dữ liệu cuối và nội dung đang nhập nhưng khóa thao tác cho đến khi có snapshot mới; mất quyền thì xóa dữ liệu riêng tư. `CHECKPOINT_ACCESS_DENIED:` là mã nhận diện lỗi phân công trên REST/SignalR.
 
 Mỗi staff cần một phân công RaceStaff Active duy nhất trong giải; nhiều phân công trùng bị từ chối để tránh chọn nhầm checkpoint. Nếu course thay đổi/xóa mốc, organizer cần sửa phân công và tạo lượt phù hợp.
 
@@ -82,3 +99,9 @@ dotnet test tests/RaceDay.Modules.Event.UnitTests --no-restore
 ```
 
 Bao gồm quyền organizer, DNS/DNF/DQ, duyệt/từ chối, chặn commit Pending, audit, thay lượt, phân công bị thu hồi và stream SignalR qua tài khoản thật trong test host. Kiểm tra database thực tế và giao diện trình duyệt cần môi trường chạy ứng dụng.
+
+### Kiểm tra nhật ký với PostgreSQL
+
+`STAFF_JOURNAL_TEST_POSTGRES` là connection string đến PostgreSQL local có quyền tạo database. Test tạo database riêng với tên ngẫu nhiên, áp dụng migration export trước, thêm dữ liệu cũ rồi áp dụng migration journal; kiểm tra phân trang, truy vấn khác checkpoint, mở lại kết nối và transaction rollback. Database tạm được xóa sau test. Khi không cấu hình biến này, chỉ test database được skip.
+
+Triển khai migration/backend trước AdminWeb. Không backfill nhật ký nháp đã mất, không yêu cầu xóa hoặc seed lại database.

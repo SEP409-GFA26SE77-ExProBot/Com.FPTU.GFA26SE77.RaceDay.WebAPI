@@ -9,7 +9,7 @@ public sealed record CheckpointResultDecision(
 public sealed record CheckpointResultExport(
     Guid RunId, Guid EventId, Guid DistanceId, string CheckpointId, string CheckpointName,
     double CheckpointKm, Guid StaffUserId, DateTime SubmittedAtUtc,
-    IReadOnlyList<CheckpointResultRow> Rows, IReadOnlyList<CheckpointResultDecision> Decisions);
+    IReadOnlyList<CheckpointResultRow> Rows, IReadOnlyList<CheckpointResultDecision> Decisions, string? StaffName = null);
 
 public interface ICheckpointResultExportStore
 {

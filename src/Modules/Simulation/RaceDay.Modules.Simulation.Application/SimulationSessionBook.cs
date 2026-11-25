@@ -20,15 +20,18 @@ public sealed partial class SimulationSessionBook
     private readonly ISimulationFieldSource _fields;
     private readonly ISimulationCommitGateway _commits;
     private readonly ISimulationBroadcaster _broadcaster;
+    private readonly ISimulationJournalGateway _journal;
 
     public SimulationSessionBook(
         ISimulationFieldSource fields,
         ISimulationCommitGateway commits,
-        ISimulationBroadcaster broadcaster)
+        ISimulationBroadcaster broadcaster,
+        ISimulationJournalGateway journal)
     {
         _fields = fields;
         _commits = commits;
         _broadcaster = broadcaster;
+        _journal = journal;
     }
 
     public async Task<SimulationPreviewDto> PreviewAsync(
@@ -454,27 +457,20 @@ public sealed partial class SimulationSessionBook
 
         foreach (var session in sessions)
         {
-            SimulationSnapshotDto? snapshot = null;
-            lock (session.Gate)
+            await session.CommitLock.WaitAsync(cancellationToken);
+            try
             {
-                if (session.Engine.Phase != SimulationPhase.Running)
+                SimulationSnapshotDto? snapshot = null;
+                lock (session.Gate)
                 {
-                    continue;
+                    if (session.Engine.Phase != SimulationPhase.Running
+                        || !session.Engine.AdvanceReal(realSeconds, session.PlaybackRate)) continue;
+                    session.Version++;
+                    snapshot = Build(session);
                 }
-
-                if (!session.Engine.AdvanceReal(realSeconds, session.PlaybackRate))
-                {
-                    continue;
-                }
-
-                session.Version++;
-                snapshot = Build(session);
-            }
-
-            if (snapshot is not null)
-            {
                 await _broadcaster.PublishAsync(snapshot, cancellationToken);
             }
+            finally { session.CommitLock.Release(); }
         }
     }
 
@@ -521,22 +517,27 @@ public sealed partial class SimulationSessionBook
         CancellationToken cancellationToken)
     {
         var session = Find(runId);
-        SimulationSnapshotDto snapshot;
-        lock (session.Gate)
+        await session.CommitLock.WaitAsync(cancellationToken);
+        try
         {
-            if (session.RunId != runId)
+            SimulationSnapshotDto snapshot;
+            lock (session.Gate)
             {
-                throw new DomainException("Không tìm thấy lượt giả lập.");
+                EnsureCurrent(session, runId);
+                if (session.CommitState == "Committing") throw new SimulationBusyException();
+                mutate(session);
+                session.Version++;
+                snapshot = Build(session);
             }
-
-            if (session.CommitState == "Committing") throw new SimulationBusyException();
-            mutate(session);
-            session.Version++;
-            snapshot = Build(session);
+            await _broadcaster.PublishAsync(snapshot, cancellationToken);
+            return snapshot;
         }
+        finally { session.CommitLock.Release(); }
+    }
 
-        await _broadcaster.PublishAsync(snapshot, cancellationToken);
-        return snapshot;
+    private static void EnsureCurrent(Session session, Guid runId)
+    {
+        if (session.RunId != runId) throw new DomainException("Lượt đã thay đổi. Tải lại checkpoint.");
     }
 
     private Session Find(Guid runId)
@@ -736,7 +737,8 @@ public sealed partial class SimulationSessionBook
             ranking,
             leaders,
             view.Log.TakeLast(100).Select(op => new SimulationLogDto(op.Sequence, op.SimSeconds, op.Kind, op.Subject)).ToList(),
-            session.Decisions.ToArray());
+            session.Decisions.ToArray(),
+            session.CommitState != "Committing" && session.Committed.Count == 0 && session.Unresolved.Count == 0);
     }
 
     private static SimulationCheckpointDto ToCheckpoint(SimulationCourseCheckpoint checkpoint)

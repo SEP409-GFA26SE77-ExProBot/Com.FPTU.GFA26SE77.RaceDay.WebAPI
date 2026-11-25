@@ -15,4 +15,5 @@ public interface IEventCheckpointQuery
 public sealed record EventCheckpointInfo(
     Guid CheckpointId,
     Guid EventId,
-    Guid DistanceId);
+    Guid DistanceId,
+    string CheckpointName);

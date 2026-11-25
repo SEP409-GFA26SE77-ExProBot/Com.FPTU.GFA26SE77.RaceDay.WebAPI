@@ -41,6 +41,24 @@ public enum RouteDeviationStatus
     Resolved = 2
 }
 
+/// <summary>Active = runner is in Warning status. Resolved and Dismissed are kept for audit.</summary>
+public enum CutoffWarningStatus
+{
+    Active = 0,
+    Resolved = 1,
+    Dismissed = 2
+}
+
+public enum CutoffWarningResolution
+{
+    /// <summary>A scan at the missed checkpoint arrived (possibly delayed RFID sync).</summary>
+    PassedCheckpoint = 0,
+    /// <summary>A scan at a later checkpoint proves the runner went through.</summary>
+    PassedLaterCheckpoint = 1,
+    /// <summary>Event marked the runner finished, DNS, DNF or DQ.</summary>
+    RunnerStatusChanged = 2
+}
+
 public enum EmergencyIncidentType
 {
     Medical = 0,

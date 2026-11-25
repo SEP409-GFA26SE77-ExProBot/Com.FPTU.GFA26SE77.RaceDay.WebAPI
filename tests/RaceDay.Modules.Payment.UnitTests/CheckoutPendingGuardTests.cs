@@ -34,4 +34,18 @@ public class CheckoutPendingGuardTests
     [InlineData("PAID", false)]
     public void Terminal_PayOs_Statuses(string status, bool expected)
         => Assert.Equal(expected, CheckoutPendingGuard.IsTerminalPayOsStatus(status));
+
+    [Fact]
+    public void MarkPaid_Is_Idempotent_Same_TransactionCode()
+    {
+        var order = PaymentOrder.Create(
+            Guid.NewGuid(), Guid.NewGuid(), 100_000, "VND", 555666777);
+        var first = order.MarkPaid("gw-1", "{}");
+        Assert.Equal(PaymentStatus.Paid, order.Status);
+        Assert.Equal($"pay-{order.OrderCode}", first.TransactionCode);
+
+        var second = order.MarkPaid("gw-2", "{}");
+        Assert.Same(first, second);
+        Assert.Single(order.Transactions, t => t.TransactionType == "charge");
+    }
 }

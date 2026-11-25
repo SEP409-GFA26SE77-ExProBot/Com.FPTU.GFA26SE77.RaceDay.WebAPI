@@ -7,6 +7,8 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Simulation.Application;
 
+public interface ISimulationJournalGateway : ISimulationJournalStore { }
+
 public interface ISimulationFieldSource
 {
     Task<SimulationField> LoadAsync(Guid eventId, Guid distanceId, CancellationToken cancellationToken = default);

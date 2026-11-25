@@ -33,6 +33,16 @@ public interface IRaceEventRepository
         Guid eventId,
         IReadOnlyList<EventDocument> documents,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomic +1 RegisteredCount khi còn chỗ. Caller reload aggregate sau khi true.
+    /// </summary>
+    Task<bool> TryReserveDistanceSlotAsync(Guid distanceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomic -1 RegisteredCount (floor 0). Dùng khi nhả hold / refund đồng bộ count.
+    /// </summary>
+    Task ReleaseDistanceSlotAsync(Guid distanceId, CancellationToken cancellationToken = default);
 }
 
 public interface IEventRegistrationRepository
@@ -129,6 +139,7 @@ public interface IEventStaffMemberRepository
         Guid eventId,
         EventStaffRole role,
         string email,
+        Guid? excludeMemberId = null,
         CancellationToken cancellationToken = default);
     Task<bool> ExistsActiveStaffUserAsync(
         Guid eventId,

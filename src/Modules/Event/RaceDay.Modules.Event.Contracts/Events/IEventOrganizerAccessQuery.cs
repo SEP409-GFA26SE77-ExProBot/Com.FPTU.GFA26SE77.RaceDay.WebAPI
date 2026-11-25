@@ -11,4 +11,5 @@ public sealed record EventOrganizerAccessInfo(
     Guid OrganizerUserId,
     /// <summary>RaceEventStatus name (Draft, Approved, RegistrationOpen, …).</summary>
     string Status,
-    string Name);
+    string Name,
+    DateTimeOffset? StartsAtUtc = null);

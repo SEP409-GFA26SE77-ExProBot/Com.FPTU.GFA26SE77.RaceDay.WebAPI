@@ -10,8 +10,13 @@ public sealed class EventOrganizerAccessQuery(EventDbContext db) : IEventOrganiz
         Guid eventId,
         CancellationToken cancellationToken = default)
     {
-        var race = await db.RaceEvents.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == eventId, cancellationToken);
+        var race = await db.RaceEvents.AsNoTracking().Where(x => x.Id == eventId)
+            .Select(x => new
+            {
+                x.Id, x.OrganizerUserId, x.Status, x.Name, x.EventDate,
+                StartTime = x.StartTime ?? x.Distances.Min(distance => distance.StartAt)
+            })
+            .SingleOrDefaultAsync(cancellationToken);
         if (race is null)
         {
             return null;
@@ -21,6 +26,9 @@ public sealed class EventOrganizerAccessQuery(EventDbContext db) : IEventOrganiz
             race.Id,
             race.OrganizerUserId,
             race.Status.ToString(),
-            race.Name);
+            race.Name,
+            race.StartTime is { } startTime
+                ? new DateTimeOffset(race.EventDate.ToDateTime(startTime, DateTimeKind.Utc))
+                : null);
     }
 }

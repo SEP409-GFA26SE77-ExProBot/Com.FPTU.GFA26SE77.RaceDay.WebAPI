@@ -109,16 +109,26 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
                 await db.Database.ExecuteSqlInterpolatedAsync(
                     $"""DELETE FROM map.race_courses WHERE "DistanceId" = {distId}""",
                     cancellationToken);
+            }
 
-                var prefix = $"map:{distId}:%";
-                await db.Database.ExecuteSqlInterpolatedAsync(
-                    $"""
-                    UPDATE event.event_staff_members
-                    SET "StationId" = NULL, "StationLabel" = NULL
-                    WHERE "EventId" = {eventId}
-                      AND "StationId" LIKE {prefix}
-                    """,
-                    cancellationToken);
+            if (removeIds.Count > 0)
+            {
+                var staffRows = await db.StaffMembers
+                    .Where(x => x.EventId == eventId)
+                    .ToListAsync(cancellationToken);
+                foreach (var member in staffRows)
+                {
+                    var changed = false;
+                    foreach (var distId in removeIds)
+                    {
+                        changed |= member.RemoveStationsForDistance(distId);
+                    }
+
+                    if (changed)
+                    {
+                        db.StaffMembers.Update(member);
+                    }
+                }
             }
         }
 
@@ -185,6 +195,30 @@ public sealed class RaceEventRepository(EventDbContext db) : IRaceEventRepositor
             db.Documents.AddRange(documents);
             await db.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    public async Task<bool> TryReserveDistanceSlotAsync(Guid distanceId, CancellationToken cancellationToken = default)
+    {
+        var rows = await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE event.event_distances
+            SET "RegisteredCount" = "RegisteredCount" + 1
+            WHERE "Id" = {distanceId}
+              AND ("Capacity" <= 0 OR "RegisteredCount" < "Capacity")
+            """,
+            cancellationToken);
+        return rows > 0;
+    }
+
+    public async Task ReleaseDistanceSlotAsync(Guid distanceId, CancellationToken cancellationToken = default)
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""
+            UPDATE event.event_distances
+            SET "RegisteredCount" = GREATEST("RegisteredCount" - 1, 0)
+            WHERE "Id" = {distanceId}
+            """,
+            cancellationToken);
     }
 }
 
@@ -393,12 +427,14 @@ public sealed class EventStaffMemberRepository(EventDbContext db) : IEventStaffM
         Guid eventId,
         EventStaffRole role,
         string email,
+        Guid? excludeMemberId = null,
         CancellationToken cancellationToken = default)
         => db.StaffMembers.AnyAsync(
             x => x.EventId == eventId
                  && x.Role == role
                  && x.Email == email
-                 && x.Status != EventStaffStatus.Revoked,
+                 && x.Status != EventStaffStatus.Revoked
+                 && (excludeMemberId == null || x.Id != excludeMemberId),
             cancellationToken);
 
     public Task<bool> ExistsActiveStaffUserAsync(

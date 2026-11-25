@@ -32,9 +32,6 @@ public static class PhotoModule
             .WithTags(ApiTags.Photo)
             .RequireRateLimiting("public");
 
-        api.MapGet("/status", () => Results.Ok(new { module = "photo", status = "ready" }))
-            .WithSummary("Trạng thái module Photo");
-
         MapPhotographerEndpoints(api);
         MapRunnerEndpoints(api);
         MapInternalEndpoints(api);

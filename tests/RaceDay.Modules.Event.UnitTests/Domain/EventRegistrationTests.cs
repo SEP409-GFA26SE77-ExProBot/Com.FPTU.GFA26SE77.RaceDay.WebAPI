@@ -94,4 +94,36 @@ public class EventRegistrationTests
         Assert.Equal(finishedAt, reg.FinishedAtUtc);
         Assert.Equal(1234, reg.ResultSeconds);
     }
+
+    [Fact]
+    public void SlotHold_Reserve_Clear_And_Paid_Flow()
+    {
+        var reg = EventRegistration.Create(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            "H", "h@raceday.vn", "0907777888", null, null, null, null, null, null,
+            null, null, null, null, null, "[]", null, null, true);
+
+        var until = DateTime.UtcNow.AddMinutes(15);
+        reg.ReserveSlotHold(until);
+        Assert.True(reg.HasSlotHold);
+        Assert.True(reg.IsSlotHoldActive(DateTime.UtcNow));
+        Assert.False(reg.IsSlotHoldActive(until.AddSeconds(1)));
+
+        reg.MarkPaidPendingApproval();
+        Assert.False(reg.HasSlotHold);
+        Assert.Equal(RegistrationStatus.PendingApproval, reg.Status);
+    }
+
+    [Fact]
+    public void CancelUnpaid_Clears_SlotHold()
+    {
+        var reg = EventRegistration.Create(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            "X", "x@raceday.vn", "0908888999", null, null, null, null, null, null,
+            null, null, null, null, null, "[]", null, null, true);
+        reg.ReserveSlotHold(DateTime.UtcNow.AddMinutes(10));
+        reg.CancelUnpaid();
+        Assert.Equal(RegistrationStatus.Cancelled, reg.Status);
+        Assert.False(reg.HasSlotHold);
+    }
 }

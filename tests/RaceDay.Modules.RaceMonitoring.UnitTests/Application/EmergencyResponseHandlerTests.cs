@@ -395,7 +395,7 @@ public class EmergencyResponseHandlerTests
                     new ResolveEmergencyResponseCommand(response.Id, new ResolveEmergencyResponseRequest("Đã xong.")),
                     CancellationToken.None));
 
-        Assert.Equal("Chỉ organizer của giải hoặc Coordinator Active mới xử lý phản hồi khẩn cấp.", ex.Message);
+        Assert.Equal("Chỉ organizer của giải hoặc Race-staff Active mới xử lý phản hồi khẩn cấp.", ex.Message);
         Assert.Equal(EmergencyResponseStatus.Assigned, response.Status);
         Assert.Null(response.ResolutionNotes);
         await assignments.DidNotReceive().ListTrackedByResponseAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());

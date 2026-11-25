@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\RaceDay.Modules.Positioning.Domain\RaceDay.Modules.Positioning.Domain.csproj" />
+    <ProjectReference Include="..\RaceDay.Modules.Positioning.Contracts\RaceDay.Modules.Positioning.Contracts.csproj" />
+    <ProjectReference Include="..\..\Event\RaceDay.Modules.Event.Contracts\RaceDay.Modules.Event.Contracts.csproj" />
+    <ProjectReference Include="..\..\Map\RaceDay.Modules.Map.Contracts\RaceDay.Modules.Map.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Application\RaceDay.Shared.Application.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
