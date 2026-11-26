@@ -1,32 +1,25 @@
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-using MongoDB.Driver;
+using Microsoft.EntityFrameworkCore;
 using RaceDay.Modules.AuditLog.Application.Abstractions;
 using RaceDay.Modules.AuditLog.Domain.AuditEntries;
-using RaceDay.Shared.Infrastructure.Persistence.Mongo;
+using RaceDay.Modules.AuditLog.Infrastructure.Persistence;
 
 namespace RaceDay.Modules.AuditLog.Infrastructure.Repositories;
 
-public sealed class AuditEntryRepository(IMongoDbContext mongo) : IAuditEntryRepository
+/// <summary>Append-only Postgres — SaveChanges ngay khi ghi, không classic UoW.</summary>
+public sealed class AuditEntryRepository(AuditDbContext db) : IAuditEntryRepository
 {
-    private const string CollectionName = "audit_entries";
-
     public async Task AddAsync(AuditEntry entry, CancellationToken cancellationToken = default)
     {
-        var document = AuditEntryDocument.FromDomain(entry);
-        await mongo.GetCollection<AuditEntryDocument>(CollectionName)
-            .InsertOneAsync(document, cancellationToken: cancellationToken);
+        db.AuditEntries.Add(entry);
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<AuditEntry>> ListRecentAsync(int take, CancellationToken cancellationToken = default)
     {
-        var docs = await mongo.GetCollection<AuditEntryDocument>(CollectionName)
-            .Find(FilterDefinition<AuditEntryDocument>.Empty)
-            .SortByDescending(x => x.OccurredOnUtc)
-            .Limit(take)
+        return await db.AuditEntries.AsNoTracking()
+            .OrderByDescending(x => x.OccurredOnUtc)
+            .Take(take)
             .ToListAsync(cancellationToken);
-
-        return docs.Select(x => x.ToDomain()).ToList();
     }
 
     public async Task<(IReadOnlyList<AuditEntry> Items, long Total)> ListPagedAsync(
@@ -34,43 +27,13 @@ public sealed class AuditEntryRepository(IMongoDbContext mongo) : IAuditEntryRep
         int pageSize,
         CancellationToken cancellationToken = default)
     {
-        var collection = mongo.GetCollection<AuditEntryDocument>(CollectionName);
-        var filter = FilterDefinition<AuditEntryDocument>.Empty;
-        var total = await collection.CountDocumentsAsync(filter, cancellationToken: cancellationToken);
-        var docs = await collection
-            .Find(filter)
-            .SortByDescending(x => x.OccurredOnUtc)
+        var query = db.AuditEntries.AsNoTracking();
+        var total = await query.LongCountAsync(cancellationToken);
+        var items = await query
+            .OrderByDescending(x => x.OccurredOnUtc)
             .Skip((page - 1) * pageSize)
-            .Limit(pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
-
-        return (docs.Select(x => x.ToDomain()).ToList(), total);
+        return (items, total);
     }
-}
-
-internal sealed class AuditEntryDocument
-{
-    [BsonId]
-    [BsonRepresentation(BsonType.String)]
-    public Guid Id { get; set; }
-    public string Action { get; set; } = string.Empty;
-    public string ActorId { get; set; } = string.Empty;
-    public string ResourceType { get; set; } = string.Empty;
-    public string ResourceId { get; set; } = string.Empty;
-    public string PayloadJson { get; set; } = "{}";
-    public DateTime OccurredOnUtc { get; set; }
-
-    public static AuditEntryDocument FromDomain(AuditEntry entry) => new()
-    {
-        Id = entry.Id,
-        Action = entry.Action,
-        ActorId = entry.ActorId,
-        ResourceType = entry.ResourceType,
-        ResourceId = entry.ResourceId,
-        PayloadJson = entry.PayloadJson,
-        OccurredOnUtc = entry.OccurredOnUtc
-    };
-
-    public AuditEntry ToDomain() => AuditEntry.Restore(
-        Id, Action, ActorId, ResourceType, ResourceId, PayloadJson, OccurredOnUtc);
 }

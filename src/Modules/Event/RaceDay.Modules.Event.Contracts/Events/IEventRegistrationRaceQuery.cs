@@ -18,10 +18,14 @@ public sealed record EventRegistrationRaceInfo(
     Guid EventId,
     Guid DistanceId,
     string? BibNumber,
-    string Status);
+    string Status,
+    string? RunnerName = null);
 
 public sealed record EventRegistrationRaceCandidate(
     Guid RegistrationId,
     Guid EventId,
     Guid DistanceId,
-    string BibNumber);
+    string BibNumber,
+    string RunnerName,
+    string Status,
+    DateTime? FinishedAtUtc);

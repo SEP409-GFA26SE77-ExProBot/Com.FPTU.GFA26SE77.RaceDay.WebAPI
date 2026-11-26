@@ -21,10 +21,11 @@ SEP_WebAPI/
 │   └── _gen_api_guide_docx.py          # Regenerate: python docs/_gen_api_guide_docx.py
 │
 ├── deploy/                      # ★ Hạ tầng local (+ optional API container)
-│   ├── docker-compose.yml       # Postgres, MongoDB, Redis, RabbitMQ, profile `api`
+│   ├── docker-compose.yml       # Postgres, Redis, RabbitMQ, profile `api`
 │   ├── Dockerfile               # RaceDay.Api image (compose profile api)
+│   ├── clear-and-seed.ps1       # Truncate + seed demo
 │   └── sql/
-│       └── raceday_init.sql     # ★ Schema + seed IAM/Event/Payment (1 file)
+│       └── clear_and_seed.sql   # ★ Demo data (ONE FILE)
 │
 ├── src/
 │   ├── Shared/                  # Cross-cutting (Domain/Application/Infrastructure/Web)
@@ -32,8 +33,8 @@ SEP_WebAPI/
 │   │   ├── Iam/                 # Auth — PostgreSQL schema `iam`
 │   │   ├── Event/               # Giải + đăng ký — schema `event`
 │   │   ├── Payment/             # PayOS checkout — schema `payment`
-│   │   ├── AuditLog/            # Audit — MongoDB
-│   │   ├── RaceMonitoring/      # Giám sát giải — scaffold, chưa có schema
+│   │   ├── AuditLog/            # Audit — PostgreSQL schema `audit` (append-only)
+│   │   ├── RaceMonitoring/      # Giám sát giải
 │   │   └── _Template/           # Copy khi tạo module mới
 │   ├── Hosts/RaceDay.Api/       # Composition root (chạy API :5080)
 │   └── Gateways/RaceDay.ApiGateway/  # YARP public edge (:5000)
@@ -49,7 +50,12 @@ SEP_WebAPI/
 | Biến môi trường | [`.env.example`](.env.example) → copy thành `.env` |
 | Chạy API | `src/Hosts/RaceDay.Api` |
 | Gateway | `src/Gateways/RaceDay.ApiGateway` |
-| Workspace staff checkpoint / simulation | [`docs/staff-checkpoint-workspace.md`](docs/staff-checkpoint-workspace.md) |
+| Workspace staff checkpoint / simulation, nhật ký lưu lâu dài và chốt báo cáo | [`docs/staff-checkpoint-workspace.md`](docs/staff-checkpoint-workspace.md) |
+| Dashboard Admin / Organizer — 5 API, luồng gọi và ý nghĩa số liệu | [`docs/dashboard-api.md`](docs/dashboard-api.md) |
+| Giao diện dashboard — đường dẫn, luồng sử dụng, bộ lọc và kiểm thử | [`docs/dashboard-ui.md`](docs/dashboard-ui.md) |
+| Dashboard — nhóm trạng thái và xuất Excel/PDF | [`docs/dashboard-export.md`](docs/dashboard-export.md) |
+
+Trong simulation, staff phụ trách **sau CP trước đến hết CP của mình**: `(km CP trước, km CP được giao]`; Start phụ trách vị trí xuất phát. DNF theo chặng hiện tại; DQ được báo trong chặng hoặc khi đã có ghi nhận qua trạm trong lượt, kể cả đã về đích, trước khi checkpoint chốt/lượt khóa. Ví dụ CP1 km 3 và CP2 km 5: `(3, 5]` thuộc CP2. Xem tài liệu checkpoint để test trên AdminWeb. Thay đổi phạm vi không cần migration; triển khai backend và AdminWeb cùng đợt.
 
 ---
 
@@ -92,6 +98,21 @@ dotnet test RaceDay.slnx
 - Public API: `/api/v1/{module}/...`
 - Admin: `/api/v1/{module}/admin/...` hoặc policy `AdminOnly` (Gateway Production chặn `/admin/**`)
 
+### Chạy AdminWeb và UserWeb bằng Docker
+
+Đặt hai repo `admin-fe` và `UserWeb` cạnh repo WebAPI. Từ thư mục gốc WebAPI, chạy API ở cổng 5080 rồi build và chạy hai frontend.
+
+```powershell
+docker compose -f deploy/docker-compose.yml --profile api up -d --build
+docker compose -f deploy/docker-compose.frontends.yml up -d --build
+```
+
+- UserWeb mở tại [localhost:3000](http://localhost:3000).
+- AdminWeb mở tại [localhost:3001](http://localhost:3001).
+- Dừng hai frontend bằng `docker compose -f deploy/docker-compose.frontends.yml down`.
+
+Compose dùng `RACEDAY_BACKEND_API_URL` cho các request từ container đến API, mặc định là `http://host.docker.internal:5080`. Trình duyệt dùng `RACEDAY_PUBLIC_API_URL` cho SignalR và các URL API trực tiếp, mặc định là `http://localhost:5080`. Nếu đổi URL public hoặc CDN qua `RACEDAY_STORAGE_PUBLIC_BASE_URL`, chạy lại `up -d --build` để cập nhật bundle. API cần cho phép các origin `http://localhost:3000` và `http://localhost:3001` trong `ALLOWS_CORS`.
+
 **Seed login** (ưu tiên **username**, password chung Active: `MatKhau@123` — nguồn `deploy/sql/raceday_init.sql` / mục 0 trong `docs/RaceDay_API_Guide.docx`):
 
 | Role | Username | Email |
@@ -105,6 +126,15 @@ dotnet test RaceDay.slnx
 
 ## Setup từng thành phần
 
+### Positioning
+
+- `POST /api/v1/positioning/events/{eventId}/positions` nhận `latitude`, `longitude`, `accuracyMeters` và `capturedAtUtc` từ tài khoản đang có phân công Active hoặc organizer của giải. Phản hồi `zoneStatus` là `inside`, `outside`, `uncertain` (sai số GPS chồng lên ranh giới) hoặc `unconfigured`.
+- `GET /api/v1/positioning/events/{eventId}/alerts` mở stream SSE xác thực. Sự kiện `outside` chứa tên, vai trò và mã phân công của nhân sự rời vùng. Người xem phải là organizer của giải hoặc nhân sự có phân công Active tại giải.
+- `GET /api/v1/positioning/events/{eventId}/positions` trả vị trí của Staff và Photographer có mẫu GPS trong 20 giây gần nhất. Quyền xem giống stream cảnh báo. Dùng `nextOffset` để đọc trang tiếp theo nếu có.
+- `GET /api/v1/positioning/events/{eventId}/positions/live` mở SSE với danh sách ban đầu (`snapshot`), theo sau bởi vị trí mới (`position`) và cảnh báo rời vùng (`outside`). Khi kết nối lại, client nhận danh sách mới nhất.
+- Phân công **Di động** dùng vùng đệm 100 m dọc các tuyến của giải. Checkpoint dùng bán kính 500 m quanh tọa độ đã lưu. Với nhiều checkpoint được giao, nhân sự có thể hoạt động trong bất kỳ vùng nào trong số đó. Nhiệm vụ chưa có tọa độ chỉ báo vị trí, chưa phát cảnh báo.
+- Mẫu mới nhất hết hạn sau 2 phút. Cảnh báo chỉ bắt đầu từ một giờ trước giờ xuất phát và vẫn gửi trong lúc giải diễn ra. Lấy giờ xuất phát của giải hoặc giờ sớm nhất trong các cự ly nếu giải chưa đặt giờ. Cảnh báo realtime được phát đến các kết nối trên cùng instance WebAPI.
+
 Tất cả cấu hình qua **`.env`** ở root (ASP.NET: `Section__Key`). Host đọc `.env` khi start.
 
 ### 1. PostgreSQL (IAM + Event + Payment)
@@ -114,21 +144,45 @@ Tất cả cấu hình qua **`.env`** ở root (ASP.NET: `Section__Key`). Host �
 | `ConnectionStrings__Postgres` | `Host=localhost;Port=5433;Database=postgres;Username=postgres;Password=postgres` |
 
 - Docker compose: user/password/db = `postgres` / `postgres` / `postgres`, **host port `5433`** (tránh đụng PostgreSQL Windows trên `5432`).
-- Schemas: `iam`, `event`, `payment`.
-- Schema + seed: **một file** [`deploy/sql/raceday_init.sql`](deploy/sql/raceday_init.sql).
-- App cũng `MigrateAsync` khi start; file SQL đã stamp `__EFMigrationsHistory` để không tạo trùng.
+- Schemas: `iam`, `event`, `payment`, `finance`, `map`, `photo`, `device`, `audit`, …
+- Schema: API `MigrateAsync` khi start. Demo data: [`deploy/clear-and-seed.ps1`](deploy/clear-and-seed.ps1) → [`deploy/sql/clear_and_seed.sql`](deploy/sql/clear_and_seed.sql).
 
-Re-seed Event/Payment sạch (giữ user IAM): xem comment `TRUNCATE` trong đầu file `raceday_init.sql`.
+#### Seed riêng cho system test
 
-### 2. MongoDB (AuditLog)
+Khởi động API để chạy migration trước. Từ thư mục WebAPI, chạy lệnh phù hợp với kịch bản test.
 
-| Key | Ví dụ |
-|-----|--------|
-| `ConnectionStrings__MongoDb` | `mongodb://localhost:27017` |
-| `MongoDb__Database` | `raceday` |
+```powershell
+# Xóa dữ liệu PostgreSQL của RaceDay ở Docker local và nạp bộ system test mới.
+.\deploy\seed-system-test-event.ps1 -ResetDatabase
 
-- Docker: port `27017`. Không cần SQL init — AuditLog tạo collection khi ghi.
-- OTP / login / approve… emit integration events → ghi audit Mongo.
+# Nạp hoặc đổi lịch giải Bien Dong System Test 5K.
+.\deploy\seed-system-test-event.ps1 -StartAt '2026-11-18T06:30:00+07:00' -DurationMinutes 90
+
+# Đặt giờ xuất phát lùi 30 phút để thử luồng DNS sau giờ xuất phát.
+.\deploy\seed-system-test-event.ps1 -StartAt ([DateTimeOffset]::Now.AddMinutes(-30).ToString('yyyy-MM-ddTHH:mm:sszzz'))
+```
+
+Thay timestamp trong lệnh bằng giờ test cần dùng. Nếu bỏ `-StartAt`, giờ xuất phát mặc định là sau 24 giờ. Seed lưu ngày và giờ theo UTC cho cả sự kiện và cự ly 5K, rồi in giờ UTC và UTC+07:00. Đăng ký đóng 15 phút trước giờ xuất phát. Khi thời gian kết thúc qua ngày UTC kế tiếp, seed lưu ngày kết thúc của giải và để trống giờ cutoff của cự ly.
+
+Chạy lại lệnh import để đổi lịch trên cùng event ID `5eed2026-0000-4000-8000-000000000100`. Các đăng ký, BIB, check-in và kết quả đã có được giữ lại. File [`seed_system_test_event.sql`](deploy/sql/seed_system_test_event.sql) dùng trực tiếp với `psql -f`. Có thể sửa mặc định ở đầu file hoặc truyền `-v event_start=2026-11-18T06:30:00+07:00 -v duration_minutes=90`. File [`clear_and_seed_system_test.sql`](deploy/sql/clear_and_seed_system_test.sql) nạp lại toàn bộ dữ liệu và cần để cùng thư mục với file seed một sự kiện.
+
+Mật khẩu chung của các tài khoản test là `MatKhau@123`.
+
+| Kịch bản | Tài khoản |
+|----------|-----------|
+| Quản lý giải Bien Dong System Test 5K | `systest.organizer` |
+| Checkpoint, check-in và upload ảnh | `systest.staff`, `systest.photo` |
+| VĐV có BIB 50001 và 50002 | `systest.runner1`, `systest.runner2` |
+| VĐV chưa đăng ký | `systest.runner3` |
+| Duyệt Marble Mountains Trail 10K sau khi reset | `manager` |
+| Xem kết quả và chứng nhận Han River Results 5K sau khi reset | `systest.runner1` |
+| Quản trị hệ thống sau khi reset | `systest.admin` |
+
+### 2. AuditLog (Postgres schema `audit`)
+
+- Append-only bảng `audit.audit_entries` (EF, không classic UoW).
+- OTP / login / approve… emit integration events → ghi audit Postgres.
+- Admin FE: `GET /api/v1/audit-logs?page=&pageSize=` (không đổi path).
 
 ### 3. Redis (cache)
 
@@ -227,8 +281,8 @@ Flow FE: **upload trước** → lấy `fileUrl` → mới gọi create event / 
 | IAM | PostgreSQL + EF + UoW | `iam` |
 | Event | PostgreSQL + EF + UoW | `event` |
 | Payment | PostgreSQL + EF + UoW | `payment` |
-| AuditLog | MongoDB | database `raceday` |
-| RaceMonitoring | PostgreSQL packages sẵn, chưa gắn DbContext | schema chưa tạo |
+| AuditLog | PostgreSQL + EF (append-only, no UoW) | `audit` |
+| RaceMonitoring | PostgreSQL + EF | `race_monitoring` (module schema) |
 | Cache | Redis | — |
 | Bus | RabbitMQ (+ MediatR in-process) | — |
 
@@ -238,8 +292,8 @@ Flow FE: **upload trước** → lấy `fileUrl` → mới gọi create event / 
 
 | Area | What |
 |------|------|
-| Repository + UoW | Postgres modules |
-| Mongo repo | AuditLog (không classic UoW) |
+| Repository + UoW | Postgres transactional modules |
+| Append-only repo | AuditLog Postgres (SaveChanges on insert) |
 | CQRS-lite | MediatR |
 | Rate limiting | Shared.Web + Gateway |
 | Auth | JWT policies `PublicUser`, `AdminOnly` |

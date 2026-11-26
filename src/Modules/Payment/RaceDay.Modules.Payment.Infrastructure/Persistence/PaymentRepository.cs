@@ -1,7 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using RaceDay.Modules.Payment.Application;
 using RaceDay.Modules.Payment.Domain;
-using RaceDay.Modules.Payment.Infrastructure.Persistence;
 
 namespace RaceDay.Modules.Payment.Infrastructure.Persistence;
 
@@ -12,6 +11,24 @@ public sealed class PaymentRepository(PaymentDbContext db) : IPaymentRepository
 
     public Task<PaymentOrder?> GetByOrderCodeAsync(long orderCode, CancellationToken cancellationToken = default)
         => db.PaymentOrders.Include(x => x.Transactions).FirstOrDefaultAsync(x => x.OrderCode == orderCode, cancellationToken);
+
+    public async Task<PaymentOrder?> GetByIdForUpdateAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""SELECT 1 FROM payment.payments WHERE "Id" = {id} FOR UPDATE""",
+            cancellationToken);
+
+        return await GetByIdAsync(id, cancellationToken);
+    }
+
+    public async Task<PaymentOrder?> GetByOrderCodeForUpdateAsync(long orderCode, CancellationToken cancellationToken = default)
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"""SELECT 1 FROM payment.payments WHERE "OrderCode" = {orderCode} FOR UPDATE""",
+            cancellationToken);
+
+        return await GetByOrderCodeAsync(orderCode, cancellationToken);
+    }
 
     public Task<PaymentOrder?> GetPendingByRegistrationAsync(Guid registrationId, CancellationToken cancellationToken = default)
         => db.PaymentOrders
@@ -46,5 +63,30 @@ public sealed class PaymentUnitOfWork(PaymentDbContext db) : IPaymentUnitOfWork
 {
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         => db.SaveChangesAsync(cancellationToken);
-}
 
+    public async Task<T> ExecuteInTransactionAsync<T>(
+        Func<CancellationToken, Task<T>> action,
+        CancellationToken cancellationToken = default)
+    {
+        if (db.Database.CurrentTransaction is not null)
+        {
+            var nested = await action(cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            return nested;
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var result = await action(cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+}

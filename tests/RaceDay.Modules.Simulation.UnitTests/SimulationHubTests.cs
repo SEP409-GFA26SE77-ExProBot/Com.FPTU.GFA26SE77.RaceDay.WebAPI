@@ -4,10 +4,13 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Shared.Domain.Exceptions;
@@ -22,6 +25,27 @@ namespace RaceDay.Modules.Simulation.UnitTests;
 
 public class SimulationHubTests
 {
+    [Theory]
+    [InlineData(null, "http://localhost:3001")]
+    [InlineData(" http://localhost:3005, http://localhost:3006 ", "http://localhost:3006")]
+    public void Shared_cors_allows_configured_frontends_without_allowing_arbitrary_origins(string? configured, string origin)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Jwt:SigningKey"] = new string('k', 48), ["ALLOWS_CORS"] = configured,
+        }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSharedWeb(configuration);
+        using var provider = services.BuildServiceProvider();
+        var policy = provider.GetRequiredService<IOptions<CorsOptions>>().Value.GetPolicy("fe-dev")!;
+        Assert.Contains(origin, policy.Origins);
+        Assert.DoesNotContain("https://untrusted.example", policy.Origins);
+        Assert.False(policy.AllowAnyOrigin);
+        Assert.True(policy.SupportsCredentials);
+        if (configured is not null) Assert.Equal(2, policy.Origins.Count);
+    }
+
     [Fact]
     public async Task Staff_stream_uses_authenticated_identity_and_stops_after_revocation()
     {
@@ -42,6 +66,7 @@ public class SimulationHubTests
         builder.Services.AddSingleton<ISimulationFieldSource>(new FixedField(Field(eventId, distanceId, Guid.NewGuid())));
         builder.Services.AddSingleton<ISimulationCommitGateway, RecordingGateway>();
         builder.Services.AddSingleton<ISimulationBroadcaster, NoopSimulationBroadcaster>();
+        builder.Services.AddSingleton<ISimulationJournalGateway, TestSimulationJournal>();
         builder.Services.AddSingleton<SimulationSessionBook>();
         builder.Services.AddSingleton<ISimulationAuthorizer, DenyAuthorizer>();
         builder.Services.AddSingleton<IStaffCheckpointWorkspace>(workspace);
@@ -105,6 +130,7 @@ public class SimulationHubTests
         builder.Services.AddSingleton<ISimulationFieldSource>(new FixedField(Field(eventId, distanceId, athleteId)));
         builder.Services.AddSingleton<ISimulationCommitGateway, RecordingGateway>();
         builder.Services.AddSingleton<ISimulationBroadcaster, SignalRSimulationBroadcaster>();
+        builder.Services.AddSingleton<ISimulationJournalGateway, TestSimulationJournal>();
         builder.Services.AddSingleton<SimulationSessionBook>();
         builder.Services.AddSingleton<IEventOrganizerAccessQuery>(new AllowUser(userId));
         builder.Services.AddScoped<ISimulationAuthorizer, SimulationAuthorizer>();
@@ -174,7 +200,7 @@ public class SimulationHubTests
         var book = new SimulationSessionBook(
             new FixedField(Field(eventId, distanceId, athleteId)),
             new RecordingGateway(),
-            new NoopSimulationBroadcaster());
+            new NoopSimulationBroadcaster(), new TestSimulationJournal());
         var created = await book.CreateAsync(eventId, distanceId, null, 11);
         var started = await book.StartAsync(created.RunId);
 
@@ -200,7 +226,7 @@ public class SimulationHubTests
         var book = new SimulationSessionBook(
             new FixedField(Field(eventId, distanceId, athleteId)),
             new RecordingGateway(),
-            new NoopSimulationBroadcaster());
+            new NoopSimulationBroadcaster(), new TestSimulationJournal());
         var created = await book.CreateAsync(eventId, distanceId, null, 11);
 
         var joined = false;
@@ -244,6 +270,7 @@ public class SimulationHubTests
             Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1"))));
         builder.Services.AddSingleton<ISimulationCommitGateway, RecordingGateway>();
         builder.Services.AddSingleton<ISimulationBroadcaster, NoopSimulationBroadcaster>();
+        builder.Services.AddSingleton<ISimulationJournalGateway, TestSimulationJournal>();
         builder.Services.AddSingleton<SimulationSessionBook>();
         builder.Services.AddSingleton<ISimulationAuthorizer, AllowAll>();
         var app = builder.Build();

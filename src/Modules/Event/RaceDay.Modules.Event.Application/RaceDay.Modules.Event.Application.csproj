@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Map\RaceDay.Modules.Map.Contracts\RaceDay.Modules.Map.Contracts.csproj" />
+    <ProjectReference Include="..\..\RaceMonitoring\RaceDay.Modules.RaceMonitoring.Contracts\RaceDay.Modules.RaceMonitoring.Contracts.csproj" />
     <ProjectReference Include="..\RaceDay.Modules.Event.Domain\RaceDay.Modules.Event.Domain.csproj" />
     <ProjectReference Include="..\RaceDay.Modules.Event.Contracts\RaceDay.Modules.Event.Contracts.csproj" />
     <ProjectReference Include="..\..\..\Shared\RaceDay.Shared.Application\RaceDay.Shared.Application.csproj" />
@@ -16,6 +17,7 @@
   <ItemGroup>
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.11.0" />
     <PackageReference Include="MediatR" Version="12.4.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.12" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
   </ItemGroup>
 </Project>

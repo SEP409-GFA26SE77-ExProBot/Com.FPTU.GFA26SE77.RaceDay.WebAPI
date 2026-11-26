@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="NSubstitute" Version="5.3.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Hosts/RaceDay.Api/RaceDay.Api.csproj" />
+    <ProjectReference Include="../../src/Modules/Iam/RaceDay.Modules.Iam.Api/RaceDay.Modules.Iam.Api.csproj" />
+    <ProjectReference Include="../../src/Modules/Event/RaceDay.Modules.Event.Api/RaceDay.Modules.Event.Api.csproj" />
+    <ProjectReference Include="../../src/Modules/Finance/RaceDay.Modules.Finance.Api/RaceDay.Modules.Finance.Api.csproj" />
+    <ProjectReference Include="../../src/Modules/Payment/RaceDay.Modules.Payment.Infrastructure/RaceDay.Modules.Payment.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

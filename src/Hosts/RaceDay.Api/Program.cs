@@ -1,4 +1,5 @@
 using MediatR;
+using RaceDay.Api.Dashboard;
 using Microsoft.OpenApi;
 using RaceDay.Modules.AuditLog.Api;
 using RaceDay.Modules.AuditLog.Application.EventHandlers;
@@ -19,6 +20,8 @@ using RaceDay.Modules.Payment.Application;
 using RaceDay.Modules.RaceMonitoring.Api;
 using RaceDay.Modules.RaceMonitoring.Application;
 using RaceDay.Modules.Simulation.Api;
+using RaceDay.Modules.Positioning.Api;
+using RaceDay.Modules.Positioning.Application;
 using RaceDay.Shared.Infrastructure;
 using RaceDay.Shared.Web;
 using RaceDay.Shared.Web.OpenApi;
@@ -41,6 +44,7 @@ builder.Services.AddMediatR(cfg =>
     cfg.RegisterServicesFromAssembly(typeof(RequestDeviceCodeCommand).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(BulkUploadPhotosCommand).Assembly);
     cfg.RegisterServicesFromAssembly(typeof(RaceMonitoringApplicationMarker).Assembly);
+    cfg.RegisterServicesFromAssembly(typeof(ReportPositionCommand).Assembly);
 });
 
 builder.Services.AddCors(options =>
@@ -67,6 +71,7 @@ builder.Services.AddFinanceModule(builder.Configuration);
 builder.Services.AddDeviceModule(builder.Configuration);
 builder.Services.AddPhotoModule(builder.Configuration);
 builder.Services.AddRaceMonitoringModule(builder.Configuration);
+builder.Services.AddPositioningModule(builder.Configuration);
 var simulationEnabled = bool.TryParse(builder.Configuration["Simulation:Enabled"], out var simulationOn) && simulationOn;
 if (simulationEnabled)
 {
@@ -88,17 +93,18 @@ builder.Services.AddSwaggerGen(options =>
             1. `POST /api/v1/iam/auth/register` → OTP email
             2. `POST /api/v1/iam/auth/verify-email`
             3. `POST /api/v1/iam/auth/login` (username + password) → copy `accessToken` → nút **Authorize**
-            - Seed admin (dev): `admin@raceday.vn` / `MatKhau@123`
+            - Seed (dev): `admin@raceday.vn` / `manager@raceday.vn` / `MatKhau@123`
 
             ### B. Organizer tạo giải (FE wizard 4 bước)
             1. Upload hồ sơ: `POST /api/v1/event/organizer/uploads`
             2. Tạo giải: `POST /api/v1/event/organizer/` (`submitForApproval=true`)
             3. (Tuỳ chọn) `.../submit`, `.../open-registration`
 
-            ### C. Admin duyệt giải (chưa mở ĐK)
-            1. `GET /api/v1/event/admin/pending`
+            ### C. Manager duyệt giải (Bearer Manager — không dùng /event/admin)
+            1. `GET /api/v1/event/manager/pending`
             2. `POST .../approve` → status **approved** (mặc định **không** mở ĐK)
             3. `POST /api/v1/event/organizer/{id}/open-registration` → **registration-open**
+            4. Xem map khi duyệt: `GET /api/v1/map/events/{id}/distances/{distanceId}/course` (Manager được đọc)
 
             ### D. Runner đăng ký + PayOS (registration-open)
             1. `POST /api/v1/event/{eventId}/registrations` → `pending_payment`
@@ -115,7 +121,7 @@ builder.Services.AddSwaggerGen(options =>
             2. Organizer xin rút → Manager (hoặc Admin) `.../finance/manager/payouts/{id}/approve`
             3. Runner: `GET .../refunds/quote` rồi `POST .../runner/refunds` (% theo ≥90d/≥60d/<60d)
             4. Organizer reject đăng ký đã trả → hoàn 100% tự động
-            5. AdminOnly: `/finance/admin/settings` + `/overview` (phí 30/70 + refund policy)
+            5. Phí/refund policy = mặc định DB; duyệt giải ngân + hoàn lỗi HT qua `/finance/manager` (ManagerOrAdmin)
 
             ### G. Device (Wear Device Flow + SOS)
             1. Watch: `POST /api/v1/device/auth/code` → QR
@@ -208,9 +214,11 @@ app.MapAuditLogEndpoints();
 app.MapPaymentEndpoints();
 app.MapMapEndpoints();
 app.MapFinanceEndpoints();
+app.MapDashboardExportEndpoints();
 app.MapDeviceEndpoints();
 app.MapPhotoEndpoints();
 app.MapRaceMonitoringEndpoints();
+app.MapPositioningEndpoints();
 if (simulationEnabled)
 {
     app.MapSimulationEndpoints();

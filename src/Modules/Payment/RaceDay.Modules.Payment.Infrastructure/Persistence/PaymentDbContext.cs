@@ -53,6 +53,7 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options)
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(40);
             entity.Property(x => x.Amount).HasPrecision(15, 2);
             entity.Property(x => x.RawResponseJson).HasColumnType("jsonb");
+            entity.HasIndex(x => x.TransactionCode).IsUnique();
             entity.Ignore(x => x.DomainEvents);
         });
 

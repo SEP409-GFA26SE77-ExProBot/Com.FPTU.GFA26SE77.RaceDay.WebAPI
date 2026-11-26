@@ -21,7 +21,12 @@ public sealed record RaceEventLogDto(
     Guid? RegistrationId,
     string? SourceType,
     Guid? SourceId,
-    string? ScanMethod);
+    string? ScanMethod,
+    string? CheckpointName,
+    string? RunnerName,
+    DateTime? ChipStartAtUtc = null,
+    bool Simulated = false,
+    Guid? SimulationRunId = null);
 
 public sealed record PagedRaceEventLogsResult(
     IReadOnlyList<RaceEventLogDto> Items,
@@ -63,6 +68,7 @@ public sealed class GetRaceEventLogQueryValidator : AbstractValidator<GetRaceEve
 
 public sealed class ListRaceEventLogsQueryHandler(
     IRaceEventLogRepository logs,
+    RaceEventLogChipStarts chipStarts,
     IEventOrganizerAccessQuery access,
     IEventSosOpsAccessQuery sosOps,
     ICurrentUserAccessor currentUser) : IRequestHandler<ListRaceEventLogsQuery, PagedRaceEventLogsResult>
@@ -89,12 +95,12 @@ public sealed class ListRaceEventLogsQueryHandler(
                 page,
                 pageSize),
             cancellationToken);
-        return new PagedRaceEventLogsResult(items.Select(ToDto).ToArray(), total, page, pageSize);
+        var notifications = await chipStarts.ToNotificationsAsync(request.EventId, items, cancellationToken);
+        return new PagedRaceEventLogsResult(notifications.Select(ToDto).ToArray(), total, page, pageSize);
     }
 
-    internal static RaceEventLogDto ToDto(RaceEventLog log)
+    internal static RaceEventLogDto ToDto(RaceEventLogNotification notification)
     {
-        var notification = RaceEventLogMapper.ToNotification(log);
         return new RaceEventLogDto(
             notification.Id,
             notification.Sequence,
@@ -108,7 +114,12 @@ public sealed class ListRaceEventLogsQueryHandler(
             notification.RegistrationId,
             notification.SourceType,
             notification.SourceId,
-            notification.ScanMethod);
+            notification.ScanMethod,
+            notification.CheckpointName,
+            notification.RunnerName,
+            notification.ChipStartAtUtc,
+            notification.Simulated,
+            notification.SimulationRunId);
     }
 
     internal static RaceEventLogType? ParseEventType(string? value)
@@ -145,6 +156,7 @@ public sealed class ListRaceEventLogsQueryHandler(
 
 public sealed class GetRaceEventLogQueryHandler(
     IRaceEventLogRepository logs,
+    RaceEventLogChipStarts chipStarts,
     IEventOrganizerAccessQuery access,
     IEventSosOpsAccessQuery sosOps,
     ICurrentUserAccessor currentUser) : IRequestHandler<GetRaceEventLogQuery, RaceEventLogDto>
@@ -160,7 +172,8 @@ public sealed class GetRaceEventLogQueryHandler(
             throw new DomainException("Không tìm thấy log.");
         }
 
-        return ListRaceEventLogsQueryHandler.ToDto(log);
+        var notifications = await chipStarts.ToNotificationsAsync(request.EventId, [log], cancellationToken);
+        return ListRaceEventLogsQueryHandler.ToDto(notifications[0]);
     }
 }
 

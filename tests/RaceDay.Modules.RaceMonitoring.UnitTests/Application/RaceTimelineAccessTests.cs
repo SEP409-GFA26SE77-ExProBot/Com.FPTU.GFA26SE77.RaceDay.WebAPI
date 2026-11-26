@@ -51,7 +51,12 @@ public class RaceTimelineAccessTests
                 Guid.NewGuid(),
                 Guid.NewGuid(),
                 null));
-        var handler = new GetRaceEventLogQueryHandler(logs, Access(allowed: true), Sos(allowed: true), User());
+        var handler = new GetRaceEventLogQueryHandler(
+            logs,
+            new RaceEventLogChipStarts(Substitute.For<IEventCheckpointQuery>(), logs),
+            Access(allowed: true),
+            Sos(allowed: true),
+            User());
 
         var ex = await Assert.ThrowsAsync<DomainException>(() =>
             handler.Handle(new GetRaceEventLogQuery(EventId, Guid.NewGuid()), CancellationToken.None));
@@ -82,7 +87,8 @@ public class RaceTimelineAccessTests
         var logs = Substitute.For<IRaceEventLogRepository>();
         logs.ListAsync(Arg.Any<RaceEventLogFilter>(), Arg.Any<CancellationToken>()).Returns((Array.Empty<RaceEventLog>(), 0));
         var user = User();
-        return (new ListRaceEventLogsQueryHandler(logs, Access(allowed), Sos(allowed), user), logs, user);
+        var chipStarts = new RaceEventLogChipStarts(Substitute.For<IEventCheckpointQuery>(), logs);
+        return (new ListRaceEventLogsQueryHandler(logs, chipStarts, Access(allowed), Sos(allowed), user), logs, user);
     }
 
     private static ICurrentUserAccessor User()

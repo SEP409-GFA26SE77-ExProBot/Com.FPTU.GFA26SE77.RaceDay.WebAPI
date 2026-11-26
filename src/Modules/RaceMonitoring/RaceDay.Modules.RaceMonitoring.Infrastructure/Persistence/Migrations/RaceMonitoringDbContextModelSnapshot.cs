@@ -670,6 +670,109 @@ namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Migrations
                     b.ToTable("runner_locations", "race_monitoring");
                 });
 
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.RunnerMonitoring.CutoffWarning", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BibNumber")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<Guid>("CheckpointId")
+                        .HasColumnType("uuid");
+
+                    b.Property<double>("CheckpointKm")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("CheckpointName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("CheckpointSortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CutoffAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("DetectedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DismissalNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime?>("DismissedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("DismissedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DistanceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DistanceName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("EventName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("LastCheckpointId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("LastCheckpointName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("LastPassedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RegistrationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ResolvedByScanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RunnerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RegistrationId", "CheckpointId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_cutoff_warnings_RegistrationId_CheckpointId");
+
+                    b.HasIndex("RegistrationId", "Status");
+
+                    b.HasIndex("EventId", "Status", "DetectedAtUtc");
+
+                    b.ToTable("cutoff_warnings", "race_monitoring");
+                });
+
             modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.RunnerMonitoring.RouteDeviation", b =>
                 {
                     b.Property<Guid>("Id")

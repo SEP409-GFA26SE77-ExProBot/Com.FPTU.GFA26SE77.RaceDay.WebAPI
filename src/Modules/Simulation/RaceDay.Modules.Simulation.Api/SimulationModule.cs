@@ -25,11 +25,17 @@ public static class SimulationModule
         services.AddSignalR();
         services.AddSingleton<ISimulationFieldSource, ScopedSimulationFieldSource>();
         services.AddSingleton<ISimulationCommitGateway, ScopedSimulationCommitGateway>();
-        services.AddSingleton<ISimulationBroadcaster, SignalRSimulationBroadcaster>();
+        services.AddSingleton<SignalRSimulationBroadcaster>();
+        services.AddSingleton<SimulationTimelineFeed>();
+        services.AddSingleton<ISimulationBroadcaster>(sp => new CompositeSimulationBroadcaster(
+            sp.GetRequiredService<SignalRSimulationBroadcaster>(),
+            sp.GetRequiredService<SimulationTimelineFeed>()));
+        services.AddSingleton<ISimulationJournalGateway, ScopedSimulationJournalGateway>();
         services.AddSingleton<SimulationSessionBook>();
         services.AddScoped<ISimulationAuthorizer, SimulationAuthorizer>();
         services.AddScoped<IStaffCheckpointWorkspace, StaffCheckpointWorkspace>();
         services.AddHostedService<SimulationClockHostedService>();
+        services.AddHostedService<SimulationTimelineWorker>();
         services.PostConfigure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, UseHubAccessToken);
         return services;
     }

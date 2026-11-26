@@ -36,20 +36,43 @@ public sealed class PaymentCompletedEventHandler(
             ?? throw new DomainException("Không tìm thấy giải.");
 
         var distance = race.GetDistance(reg.DistanceId);
-        if (!distance.HasAvailableSlot)
+        var held = reg.HasSlotHold;
+
+        // Hold còn → slot đã nằm trong RegisteredCount. Hold đã nhả (TTL) → reserve lại.
+        if (!held)
         {
-            throw new DomainException("Cự ly đã hết slot sau khi thanh toán.");
+            if (!await events.TryReserveDistanceSlotAsync(reg.DistanceId, cancellationToken))
+            {
+                throw new DomainException("Cự ly đã hết slot sau khi thanh toán.");
+            }
+
+            race = await events.GetByIdWithDetailsAsync(reg.EventId, cancellationToken)
+                ?? throw new DomainException("Không tìm thấy giải.");
+            distance = race.GetDistance(reg.DistanceId);
         }
 
         reg.MarkPaidPendingApproval();
-        distance.IncrementRegistered();
         registrations.Update(reg);
 
-        // Hủy các đơn chờ TT khác cùng giải (tránh 1 user nhiều cự ly pending).
+        // Hủy các đơn chờ TT khác cùng giải (tránh 1 user nhiều cự ly pending) + nhả hold.
         var siblings = await registrations.ListActiveByUserEventAsync(reg.EventId, reg.UserId, cancellationToken);
         foreach (var unpaid in siblings.Where(x =>
                      x.Id != reg.Id && x.Status == RegistrationStatus.PendingPayment))
         {
+            try
+            {
+                var unpaidDistance = race.GetDistance(unpaid.DistanceId);
+                RegistrationSlotHold.TryReleaseHeldSlot(unpaid, unpaidDistance);
+            }
+            catch (DomainException)
+            {
+                if (unpaid.HasSlotHold)
+                {
+                    await events.ReleaseDistanceSlotAsync(unpaid.DistanceId, cancellationToken);
+                    unpaid.ClearSlotHold();
+                }
+            }
+
             unpaid.CancelUnpaid();
             registrations.Update(unpaid);
         }

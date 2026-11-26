@@ -127,19 +127,3 @@ public sealed record AdminPayoutRequestDto(
     DateTime CreatedAt,
     string? ReceiptUrl);
 
-public sealed record PlatformFinanceOverviewDto(
-    decimal TotalEscrowHeld,
-    decimal PlatformFeeCollected,
-    decimal PendingPayoutAmount,
-    decimal TransferredThisMonth,
-    string Currency);
-
-public sealed record PlatformFeeSettingsDto(
-    decimal PlatformFeePercent,
-    decimal PreEventWithdrawPercent,
-    decimal PostEventWithdrawPercent,
-    decimal MinPayoutAmount,
-    string? Notes = null,
-    decimal FullRefundPercent = 100,
-    decimal PartialRefundPercent = 85,
-    bool AllowRefundAfterEventStart = false);

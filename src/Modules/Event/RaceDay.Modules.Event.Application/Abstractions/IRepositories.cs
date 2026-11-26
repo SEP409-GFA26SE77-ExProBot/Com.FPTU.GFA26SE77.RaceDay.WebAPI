@@ -33,6 +33,22 @@ public interface IRaceEventRepository
         Guid eventId,
         IReadOnlyList<EventDocument> documents,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomic +1 RegisteredCount khi còn chỗ. Caller reload aggregate sau khi true.
+    /// </summary>
+    Task<bool> TryReserveDistanceSlotAsync(Guid distanceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Atomic -1 RegisteredCount (floor 0). Dùng khi nhả hold / refund đồng bộ count.
+    /// </summary>
+    Task ReleaseDistanceSlotAsync(Guid distanceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks checkpoints just added to a tracked distance as new rows. Needed because their Guid key is set
+    /// client-side, so change detection alone would treat them as existing rows.
+    /// </summary>
+    void AddCheckpoints(IEnumerable<EventCheckpoint> checkpoints);
 }
 
 public interface IEventRegistrationRepository
@@ -75,6 +91,11 @@ public interface IRegistrationCheckpointPassageRepository
         Guid checkpointId,
         CancellationToken cancellationToken = default);
     Task AddAsync(RegistrationCheckpointPassage passage, CancellationToken cancellationToken = default);
+
+    /// <summary>Checkpoints among <paramref name="checkpointIds"/> that have at least one stored passage.</summary>
+    Task<IReadOnlyCollection<Guid>> ListCheckpointIdsWithPassagesAsync(
+        IReadOnlyCollection<Guid> checkpointIds,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IEventPackagePurchaseRepository
@@ -129,6 +150,7 @@ public interface IEventStaffMemberRepository
         Guid eventId,
         EventStaffRole role,
         string email,
+        Guid? excludeMemberId = null,
         CancellationToken cancellationToken = default);
     Task<bool> ExistsActiveStaffUserAsync(
         Guid eventId,

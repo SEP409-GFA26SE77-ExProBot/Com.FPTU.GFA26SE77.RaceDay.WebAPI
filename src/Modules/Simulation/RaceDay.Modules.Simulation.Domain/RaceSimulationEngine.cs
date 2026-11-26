@@ -235,7 +235,7 @@ public sealed class RaceSimulationEngine
         Log("CHIP", athlete.Bib + " " + athlete.ChipId);
     }
 
-    public void SetRaceStatus(Guid registrationId, AthleteMotion status)
+    public void ValidateRaceStatus(Guid registrationId, AthleteMotion status)
     {
         var athlete = Require(registrationId);
         if (status is not (AthleteMotion.Dnf or AthleteMotion.Dns or AthleteMotion.Dq))
@@ -246,6 +246,12 @@ public sealed class RaceSimulationEngine
             throw new DomainException("DNS chỉ dành cho VĐV chưa xuất phát, trước khi chạy lượt giả lập.");
         if (status == AthleteMotion.Dnf && (Phase == SimulationPhase.Ready || athlete.Motion != AthleteMotion.Racing))
             throw new DomainException("DNF chỉ dành cho VĐV đang chạy, chưa về đích.");
+    }
+
+    public void SetRaceStatus(Guid registrationId, AthleteMotion status)
+    {
+        ValidateRaceStatus(registrationId, status);
+        var athlete = Require(registrationId);
         athlete.Motion = status;
         athlete.ValidFinish = false;
         athlete.CurrentKmh = 0;

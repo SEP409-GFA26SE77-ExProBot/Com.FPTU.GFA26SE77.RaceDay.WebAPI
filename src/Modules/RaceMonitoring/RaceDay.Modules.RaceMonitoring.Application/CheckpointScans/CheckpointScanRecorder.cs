@@ -1,7 +1,7 @@
-using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
+using RaceDay.Modules.RaceMonitoring.Application.CutoffWarnings;
 using RaceDay.Modules.RaceMonitoring.Application.RaceEventLogs;
 using RaceDay.Modules.RaceMonitoring.Domain;
 using RaceDay.Shared.Domain.Exceptions;
@@ -37,6 +37,8 @@ public sealed class CheckpointScanRecorder(
     IRaceEventLogRepository logs,
     IRaceMonitoringUnitOfWork unitOfWork,
     IRaceEventLogPublisher publisher,
+    RaceEventLogChipStarts chipStarts,
+    ICutoffWarningPassageResolver cutoffWarnings,
     ILogger<CheckpointScanRecorder> logger) : ICheckpointScanRecorder
 {
     public const string AcceptedOutcome = "Accepted";
@@ -108,10 +110,10 @@ public sealed class CheckpointScanRecorder(
             checkpoint.CheckpointId,
             registration.RegistrationId,
             raw.Id,
-            JsonSerializer.Serialize(new Dictionary<string, string>
-            {
-                ["scanMethod"] = raw.ScanMethod.ToString()
-            }));
+            RaceEventLogMapper.SerializeCheckpointMetadata(
+                raw.ScanMethod.ToString(),
+                checkpoint.CheckpointName,
+                registration.RunnerName));
 
         scans.Add(raw);
         logs.Add(log);
@@ -121,7 +123,17 @@ public sealed class CheckpointScanRecorder(
             return await DuplicateAsync(scan.ScanId, scan.EventId, cancellationToken);
         }
 
-        var notification = RaceEventLogMapper.ToNotification(log);
+        RaceEventLogNotification notification;
+        try
+        {
+            notification = (await chipStarts.ToNotificationsAsync(log.EventId, [log], cancellationToken))[0];
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Không đọc được giờ xuất phát chip cho log {LogId}.", log.Id);
+            notification = RaceEventLogMapper.ToNotification(log);
+        }
+
         try
         {
             publisher.Publish(notification);
@@ -129,6 +141,16 @@ public sealed class CheckpointScanRecorder(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Không phát được SSE cho log {LogId}.", log.Id);
+        }
+
+        try
+        {
+            await cutoffWarnings.ResolveAsync(raw.RegistrationId, raw.CheckpointId, raw.Id, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The scan is already saved. The monitor tick closes the warning on its next pass.
+            logger.LogWarning(ex, "Chưa đóng được cảnh báo cut-off cho lượt quét {ScanId}.", raw.Id);
         }
 
         logger.LogInformation(

@@ -22,11 +22,16 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddEventInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Simulation.ISimulationJournalStore,
+            RaceDay.Modules.Event.Infrastructure.Simulation.EfSimulationJournalStore>();
         services.AddDbContext<EventDbContext>(options =>
             options.UseNpgsql(
                 configuration.GetConnectionString("Postgres"),
                 npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", "event")));
 
+        services.AddScoped<RaceDay.Modules.Event.Application.Dashboard.IOrganizerDashboardReader, OrganizerDashboardReader>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Finance.IOrganizerRegistrationScopeQuery,
+            RaceDay.Modules.Event.Infrastructure.Finance.OrganizerRegistrationScopeQuery>();
         services.AddScoped<IRaceEventRepository, RaceEventRepository>();
         services.AddScoped<IEventRegistrationRepository, EventRegistrationRepository>();
         services.AddScoped<IRaceStatusChangeRepository, RaceStatusChangeRepository>();
@@ -44,6 +49,7 @@ public static class DependencyInjection
         services.AddScoped<IEventUnitOfWork, EventUnitOfWork>();
         services.AddHostedService<PackageExpiryLockHostedService>();
         services.AddHostedService<RegistrationWindowHostedService>();
+        services.AddHostedService<RegistrationSlotHoldExpiryHostedService>();
         services.AddScoped<IEventComplaintRepository, EventComplaintRepository>();
         services.AddScoped<ICertificatePdfService, QuestPdfCertificateQuery>();
         services.AddScoped<ILeaderboardPdfService, QuestPdfLeaderboardService>();
@@ -57,6 +63,8 @@ public static class DependencyInjection
             RaceDay.Modules.Event.Infrastructure.Events.EventOrganizerAccessQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventStaffAccessQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventStaffAccessQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventPositioningAccessQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventStaffAccessQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventBibRosterQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventBibRosterQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IRunnerRaceDayQuery,
@@ -69,6 +77,10 @@ public static class DependencyInjection
             RaceDay.Modules.Event.Infrastructure.Events.EventStaffAssignmentQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventCheckpointQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventCheckpointQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventCheckpointSync,
+            RaceDay.Modules.Event.Application.Events.Checkpoints.EventCheckpointSync>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventCutoffScheduleQuery,
+            RaceDay.Modules.Event.Infrastructure.Events.EventCutoffScheduleQuery>();
         services.AddSingleton<RaceDay.Modules.Event.Contracts.Simulation.ISimulationDemoGate,
             RaceDay.Modules.Event.Infrastructure.Simulation.ConfigurationSimulationDemoGate>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Simulation.ISimulationCandidateQuery,

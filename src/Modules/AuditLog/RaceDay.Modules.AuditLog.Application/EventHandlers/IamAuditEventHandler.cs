@@ -13,7 +13,7 @@ namespace RaceDay.Modules.AuditLog.Application.EventHandlers;
 
 /// <summary>
 /// Ghi audit từ integration events (IAM + Event + Payment + Finance).
-/// Append-only Mongo — không UoW.
+/// Append-only Postgres (schema audit) — không classic UoW.
 /// </summary>
 public sealed class IamAuditEventHandler(
     IAuditEntryRepository repository,

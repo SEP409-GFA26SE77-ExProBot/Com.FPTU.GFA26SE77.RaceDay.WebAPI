@@ -10,4 +10,7 @@ public static class RaceEventLogStreamPolicy
     public const string CreatedEventName = "RaceEventLogCreated";
     public const string OverrunEventName = "RaceEventLogStreamOverrun";
     public const string AccessRevokedEventName = "RaceEventLogAccessRevoked";
+
+    /// <summary>Data: { eventId, eventDistanceId, simulationRunId }. Drop simulated rows of that distance from other runs.</summary>
+    public const string SimulationClearedEventName = "RaceEventLogsCleared";
 }

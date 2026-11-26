@@ -3,6 +3,8 @@ using NSubstitute;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Application.CheckpointScans;
+using RaceDay.Modules.RaceMonitoring.Application.RaceEventLogs;
+using RaceDay.Modules.RaceMonitoring.Application.CutoffWarnings;
 using RaceDay.Modules.RaceMonitoring.Domain;
 using RaceDay.Shared.Domain.Exceptions;
 
@@ -36,6 +38,31 @@ public class CheckpointScanRecorderTests
             && log.BibNumber == "1024"
             && log.SourceType == RaceEventLogSource.CheckpointScan
             && log.OccurredAtUtc < log.RecordedAtUtc));
+    }
+
+    [Fact]
+    public async Task Accepted_Scan_Carries_Checkpoint_And_Runner_Names()
+    {
+        var harness = Harness();
+        harness.UnitOfWork.SaveChangesAsync(Arg.Any<CancellationToken>()).Returns(1);
+        RaceEventLog? stored = null;
+        harness.Logs.When(logs => logs.Add(Arg.Any<RaceEventLog>()))
+            .Do(call => stored = call.Arg<RaceEventLog>());
+        RaceEventLogNotification? published = null;
+        harness.Publisher.When(publisher => publisher.Publish(Arg.Any<RaceEventLogNotification>()))
+            .Do(call => published = call.Arg<RaceEventLogNotification>());
+
+        await harness.Recorder.RecordAsync(Sample(ScanMethod.RFID), CancellationToken.None);
+
+        Assert.NotNull(stored);
+        var metadata = RaceEventLogMapper.ReadMetadata(stored!.Metadata);
+        Assert.Equal("RFID", metadata.ScanMethod);
+        Assert.Equal("Checkpoint 1 (KM 5)", metadata.CheckpointName);
+        Assert.Equal("Nguyễn Văn A", metadata.RunnerName);
+        Assert.NotNull(published);
+        Assert.Equal("Checkpoint 1 (KM 5)", published!.CheckpointName);
+        Assert.Equal("Nguyễn Văn A", published.RunnerName);
+        Assert.Equal("RFID", published.ScanMethod);
     }
 
     [Fact]
@@ -148,10 +175,10 @@ public class CheckpointScanRecorderTests
     {
         var registrations = Substitute.For<IEventRegistrationRaceQuery>();
         registrations.GetByIdAsync(RegistrationId, Arg.Any<CancellationToken>())
-            .Returns(new EventRegistrationRaceInfo(RegistrationId, EventId, DistanceId, "1024", status));
+            .Returns(new EventRegistrationRaceInfo(RegistrationId, EventId, DistanceId, "1024", status, "Nguyễn Văn A"));
         var checkpoints = Substitute.For<IEventCheckpointQuery>();
         checkpoints.GetAsync(CheckpointId, Arg.Any<CancellationToken>())
-            .Returns(new EventCheckpointInfo(CheckpointId, EventId, checkpointDistanceId ?? DistanceId));
+            .Returns(new EventCheckpointInfo(CheckpointId, EventId, checkpointDistanceId ?? DistanceId, "Checkpoint 1 (KM 5)"));
         var scans = Substitute.For<ICheckpointScanRepository>();
         var logs = Substitute.For<IRaceEventLogRepository>();
         var unitOfWork = Substitute.For<IRaceMonitoringUnitOfWork>();
@@ -163,6 +190,8 @@ public class CheckpointScanRecorderTests
             logs,
             unitOfWork,
             publisher,
+            new RaceEventLogChipStarts(checkpoints, logs),
+            Substitute.For<ICutoffWarningPassageResolver>(),
             NullLogger<CheckpointScanRecorder>.Instance);
         return new HarnessState(recorder, scans, logs, unitOfWork, publisher);
     }

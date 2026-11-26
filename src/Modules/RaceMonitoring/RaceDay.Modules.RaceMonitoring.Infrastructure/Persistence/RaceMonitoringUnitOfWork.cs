@@ -4,6 +4,8 @@ using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Application.Rfid;
 using RaceDay.Modules.RaceMonitoring.Domain;
 using RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination;
+using RaceDay.Modules.RaceMonitoring.Domain.RunnerMonitoring;
+using RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Configurations.RunnerMonitoring;
 using RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Configurations;
 using RaceDay.Shared.Domain.Exceptions;
 
@@ -37,6 +39,11 @@ public sealed class RaceMonitoringUnitOfWork(RaceMonitoringDbContext dbContext) 
             DetachAdded<RaceEventLog>();
             return 0;
         }
+        catch (DbUpdateException ex) when (Contains(ex, CutoffWarningConfiguration.UniqueRunnerCheckpointIndex))
+        {
+            // Another monitor instance raised the same warning first. Keep the rest of the batch (resolutions).
+            DetachAdded<CutoffWarning>();
+            return await dbContext.SaveChangesAsync(cancellationToken);
         catch (DbUpdateException ex) when (IsDuplicateRfidAssignment(ex))
         {
             DetachAdded<RfidTagAssignment>();

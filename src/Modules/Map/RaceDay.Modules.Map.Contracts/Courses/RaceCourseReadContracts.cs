@@ -26,3 +26,8 @@ public interface IRaceCourseReadQuery
         Guid distanceId,
         CancellationToken cancellationToken = default);
 }
+
+public interface IEventCoursesReadQuery
+{
+    Task<IReadOnlyList<RaceCourseSnapshot>> ListAsync(Guid eventId, CancellationToken cancellationToken = default);
+}
