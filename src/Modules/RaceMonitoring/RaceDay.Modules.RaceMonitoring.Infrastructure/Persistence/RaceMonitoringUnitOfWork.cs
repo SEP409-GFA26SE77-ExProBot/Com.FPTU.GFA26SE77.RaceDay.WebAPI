@@ -44,6 +44,7 @@ public sealed class RaceMonitoringUnitOfWork(RaceMonitoringDbContext dbContext) 
             // Another monitor instance raised the same warning first. Keep the rest of the batch (resolutions).
             DetachAdded<CutoffWarning>();
             return await dbContext.SaveChangesAsync(cancellationToken);
+        }
         catch (DbUpdateException ex) when (IsDuplicateRfidAssignment(ex))
         {
             DetachAdded<RfidTagAssignment>();
