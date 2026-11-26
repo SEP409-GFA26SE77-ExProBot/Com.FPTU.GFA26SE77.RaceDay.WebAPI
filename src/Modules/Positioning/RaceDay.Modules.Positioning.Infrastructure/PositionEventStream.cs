@@ -23,12 +23,14 @@ public sealed class PositionEventStream : IPositionEventPublisher
             if (!_listeners.TryGetValue(eventId, out var listeners)) return;
             foreach (var listener in listeners)
             {
-                if (message.Alert is not null || listener.IncludePositions) listener.Writer.TryWrite(message);
+                // Out-of-zone alerts go only to the staff member who left the zone.
+                var deliver = message.Alert is { } alert ? alert.UserId == listener.UserId : listener.IncludePositions;
+                if (deliver) listener.Writer.TryWrite(message);
             }
         }
     }
 
-    public async IAsyncEnumerable<PositionStreamEvent?> ListenAsync(Guid eventId, bool includePositions, [EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<PositionStreamEvent?> ListenAsync(Guid eventId, Guid userId, bool includePositions, [EnumeratorCancellation] CancellationToken ct)
     {
         var channel = Channel.CreateBounded<PositionStreamEvent>(new BoundedChannelOptions(128)
         {
@@ -36,7 +38,7 @@ public sealed class PositionEventStream : IPositionEventPublisher
             SingleReader = true,
             SingleWriter = true
         });
-        var listener = new Listener(channel.Writer, includePositions);
+        var listener = new Listener(channel.Writer, userId, includePositions);
         lock (_gate)
         {
             if (!_listeners.TryGetValue(eventId, out var listeners))
@@ -77,5 +79,5 @@ public sealed class PositionEventStream : IPositionEventPublisher
         }
     }
 
-    private sealed record Listener(ChannelWriter<PositionStreamEvent> Writer, bool IncludePositions);
+    private sealed record Listener(ChannelWriter<PositionStreamEvent> Writer, Guid UserId, bool IncludePositions);
 }

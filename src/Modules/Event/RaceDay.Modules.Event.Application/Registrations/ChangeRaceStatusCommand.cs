@@ -6,6 +6,7 @@ using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Modules.Event.Domain.Staff;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
+using RaceDay.Shared.Application.Time;
 
 namespace RaceDay.Modules.Event.Application.Registrations;
 
@@ -76,10 +77,10 @@ public sealed class ChangeRaceStatusCommandHandler(
             throw new DomainException("Không thể thay đổi lý do của quyết định đã ghi nhận.");
         }
 
-        // Match the existing finish calculation: EventDate + distance/event start time are UTC.
+        // EventDate + distance/event start time are Vietnam wall-clock values.
         var startTime = race.GetDistance(reg.DistanceId).StartAt ?? race.StartTime;
         DateTime? scheduledStart = startTime.HasValue
-            ? DateTime.SpecifyKind(race.EventDate.ToDateTime(startTime.Value), DateTimeKind.Utc)
+            ? RaceLocalTime.ToUtc(race.EventDate, startTime.Value)
             : null;
         var change = reg.ChangeRaceStatus(target, request.Reason, userId,
             clock.GetUtcNow().UtcDateTime, scheduledStart);

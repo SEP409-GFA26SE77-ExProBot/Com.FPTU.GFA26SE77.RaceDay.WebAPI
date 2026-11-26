@@ -65,7 +65,7 @@ services:
       Photo__Ocr__WorkerBusyDelaySeconds: "0"
       # Organizer race simulation demo (REST + SignalR hub)
       Simulation__Enabled: "true"
-      Simulation__StartTimeZone: "UTC"
+      Simulation__StartTimeZone: "Asia/Ho_Chi_Minh"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
