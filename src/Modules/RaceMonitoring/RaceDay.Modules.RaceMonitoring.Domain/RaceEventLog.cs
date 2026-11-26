@@ -6,10 +6,14 @@ namespace RaceDay.Modules.RaceMonitoring.Domain;
 public static class RaceEventLogSource
 {
     public const string CheckpointScan = "CheckpointScan";
+
+    /// <summary>Pass produced by the organizer race simulator. SourceId is a stable id per run, runner and checkpoint.</summary>
+    public const string Simulation = "Simulation";
 }
 
 /// <summary>
 /// Dòng timeline append-only của một giải. Không cập nhật và không xóa.
+/// Ngoại lệ duy nhất: dòng giả lập (<see cref="RaceEventLogSource.Simulation"/>) bị xóa khi lượt giả lập được thay.
 /// Passage hợp lệ là bản ghi này, không phải entity passage của module Event.
 /// </summary>
 public sealed class RaceEventLog : AggregateRoot
@@ -41,6 +45,52 @@ public sealed class RaceEventLog : AggregateRoot
         Guid registrationId,
         Guid sourceScanId,
         string? metadata)
+        => CheckpointPassed(
+            eventId,
+            eventDistanceId,
+            occurredAtUtc,
+            recordedAtUtc,
+            bibNumber,
+            checkpointId,
+            registrationId,
+            sourceScanId,
+            RaceEventLogSource.CheckpointScan,
+            metadata);
+
+    /// <summary>Simulated pass: same row shape as a scan, source <see cref="RaceEventLogSource.Simulation"/>, no scan behind it.</summary>
+    public static RaceEventLog RecordSimulatedCheckpointPassed(
+        Guid eventId,
+        Guid eventDistanceId,
+        DateTime occurredAtUtc,
+        DateTime recordedAtUtc,
+        string bibNumber,
+        Guid checkpointId,
+        Guid registrationId,
+        Guid simulationPassageId,
+        string? metadata)
+        => CheckpointPassed(
+            eventId,
+            eventDistanceId,
+            occurredAtUtc,
+            recordedAtUtc,
+            bibNumber,
+            checkpointId,
+            registrationId,
+            simulationPassageId,
+            RaceEventLogSource.Simulation,
+            metadata);
+
+    private static RaceEventLog CheckpointPassed(
+        Guid eventId,
+        Guid eventDistanceId,
+        DateTime occurredAtUtc,
+        DateTime recordedAtUtc,
+        string bibNumber,
+        Guid checkpointId,
+        Guid registrationId,
+        Guid sourceScanId,
+        string sourceType,
+        string? metadata)
     {
         CoordinatorInvariants.RequiredId(eventId, "Tham chiếu giải không hợp lệ.");
         CoordinatorInvariants.RequiredId(eventDistanceId, "Tham chiếu cự ly không hợp lệ.");
@@ -63,7 +113,7 @@ public sealed class RaceEventLog : AggregateRoot
             CheckpointId = checkpointId,
             RegistrationId = registrationId,
             SourceId = sourceScanId,
-            SourceType = RaceEventLogSource.CheckpointScan,
+            SourceType = sourceType,
             Metadata = NormalizeMetadata(metadata)
         };
     }

@@ -169,6 +169,7 @@ public sealed class UpsertCourseCommandHandler(
     IRaceCourseRepository courses,
     IMapUnitOfWork unitOfWork,
     IEventDistanceAccessQuery access,
+    IEventCheckpointSync checkpointSync,
     ICurrentUserAccessor currentUser,
     IPublisher publisher) : IRequestHandler<UpsertCourseCommand, CourseConfigDto>
 {
@@ -194,6 +195,23 @@ public sealed class UpsertCourseCommandHandler(
             body.Polyline ?? [],
             NormalizeCheckpoints(body.Checkpoints),
             now);
+
+        // Event owns event_checkpoints (scans, timeline, cut-off use their ids). Sync first: when a checkpoint
+        // that already has race data was removed from the map, this throws and the course is not saved.
+        await checkpointSync.SyncFromCourseAsync(
+            request.EventId,
+            request.DistanceId,
+            dto.Checkpoints
+                .Select(checkpoint => new CourseCheckpointSyncItem(
+                    checkpoint.Id,
+                    checkpoint.Name,
+                    checkpoint.Km,
+                    checkpoint.Lat,
+                    checkpoint.Lng,
+                    checkpoint.Type,
+                    checkpoint.Cutoff))
+                .ToList(),
+            cancellationToken);
 
         var json = CourseJson.Serialize(dto);
         var existing = await courses.GetByEventDistanceAsync(request.EventId, request.DistanceId, cancellationToken);

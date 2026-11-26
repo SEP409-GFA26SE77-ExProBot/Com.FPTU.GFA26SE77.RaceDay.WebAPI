@@ -57,6 +57,17 @@ Warns Admin and Race-staff when a started runner has not passed a checkpoint bef
 
 **Tests** (`tests/RaceDay.Modules.RaceMonitoring.UnitTests`): `Domain/CutoffWarningTests.cs`, `Application/CutoffClockTests.cs`, `Application/DetectCutoffWarningsHandlerTests.cs`, `Application/CutoffWarningPassageResolverTests.cs`, `Api/CutoffWarningSseTests.cs` (wire format: event names and camelCase fields admin-fe reads, per-event filtering). The test project references the RaceMonitoring Api project and `Microsoft.AspNetCore.App` for the SSE tests.
 
+## Simulator → race timeline (added 2026-11-25)
+
+Simulated checkpoint crossings appear on the Race-staff "Timeline trực tiếp" (admin-fe) as RFID rows marked simulated.
+
+- `SimulationTimelineFeed` (Simulation.Application) is a second `ISimulationBroadcaster` behind `CompositeSimulationBroadcaster`: it diffs each snapshot's splits and queues only new crossings. `SimulationTimelineWorker` (Simulation.Api, BackgroundService) writes the queue to `ISimulationTimelineSink` (RaceMonitoring.Contracts), outside the clock tick.
+- `SimulationTimelineSink` (RaceMonitoring.Application) writes `RaceEventLog` rows only — `SourceType = "Simulation"`, SourceId stable per (run, runner, course checkpoint), metadata `scanMethod: RFID` + `simulationRunId`. **No `checkpoint_scans` row**, so cut-off monitoring ignores simulated passes. OccurredAtUtc = official start (event date + distance/event start, `Simulation:StartTimeZone`, same anchor as the result commit) + interpolated sim time (microseconds).
+- The first snapshot of a run on a distance (create, Reset, New Run, or after an API restart) deletes every other simulated run's rows for that distance and sends SSE `RaceEventLogsCleared { eventId, eventDistanceId, simulationRunId }`.
+- Chip time: `RaceEventLogChipStarts` adds `chipStartAtUtc` (first pass at a Start-type checkpoint, simulated and real kept apart) to list/get/SSE; admin-fe shows `occurredAt − chipStart` as `HH:MM:SS.mmm`.
+- Map course checkpoints → `event_checkpoints`: saving the map (`UpsertCourseCommandHandler`) calls `IEventCheckpointSync` (Event.Contracts). Match by ExternalId, then same type within 1 m; removing a checkpoint that has scans, timeline rows or passages (`ICheckpointActivityQuery` + Event passages) throws and the course is not saved.
+- Tests: `CheckpointCourseSyncTests` (Event), `SimulationTimelineSinkTests` (RaceMonitoring), `SimulationTimelineFeedTests` (Simulation).
+
 ## Known pre-existing issues (as of 2026-11-23)
 
 - `Event.IntegrationTests`: 27 failures because Postgres-specific migrations run on SQLite. Not caused by the cut-off work.

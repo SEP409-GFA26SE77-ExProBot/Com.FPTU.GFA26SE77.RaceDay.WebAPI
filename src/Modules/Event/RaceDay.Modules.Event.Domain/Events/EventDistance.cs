@@ -3,6 +3,22 @@ using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Event.Domain.Events;
 
+/// <summary>One checkpoint as drawn on the organizer's map course.</summary>
+public sealed record CourseCheckpointDraft(
+    string ExternalId,
+    string Name,
+    double Km,
+    double Lat,
+    double Lng,
+    CheckpointType Type,
+    string? Cutoff);
+
+/// <summary><see cref="NewCheckpoints"/> are not tracked yet; the repository must add them explicitly.</summary>
+public sealed record CheckpointSyncOutcome(int Updated, int Removed, IReadOnlyList<EventCheckpoint> NewCheckpoints)
+{
+    public int Added => NewCheckpoints.Count;
+}
+
 public sealed class EventCheckpoint : Entity
 {
     public Guid DistanceId { get; private set; }
@@ -51,6 +67,28 @@ public sealed class EventCheckpoint : Entity
             SortOrder = sortOrder
         };
     }
+
+    /// <summary>Applies the map course values. A null cut-off keeps the stored one; elevation is kept.</summary>
+    public void UpdateFromCourse(CourseCheckpointDraft draft, int sortOrder)
+    {
+        if (string.IsNullOrWhiteSpace(draft.Name))
+        {
+            throw new DomainException("Tên checkpoint không được để trống.");
+        }
+
+        ExternalId = draft.ExternalId.Trim();
+        Name = draft.Name.Trim();
+        Km = draft.Km;
+        Lat = draft.Lat;
+        Lng = draft.Lng;
+        Type = draft.Type;
+        if (!string.IsNullOrWhiteSpace(draft.Cutoff))
+        {
+            Cutoff = draft.Cutoff.Trim();
+        }
+
+        SortOrder = sortOrder;
+    }
 }
 
 public sealed class EventDistance : Entity
@@ -89,6 +127,119 @@ public sealed class EventDistance : Entity
     public DateTime? ResultsPublishedAtUtc { get; private set; }
 
     public IReadOnlyCollection<EventCheckpoint> Checkpoints => _checkpoints.AsReadOnly();
+
+    /// <summary>Same type and within 1 m: treated as the same checkpoint when the map id changed.</summary>
+    private const double SameCheckpointKmTolerance = 0.001;
+
+    /// <summary>
+    /// Makes the checkpoints match the saved map course. Match by ExternalId first, then by same type within 1 m
+    /// (the row keeps its Id and takes the new ExternalId). Unmatched rows are removed unless they have race data,
+    /// in which case nothing changes and a DomainException names them.
+    /// </summary>
+    public CheckpointSyncOutcome SyncCheckpointsFromCourse(
+        IReadOnlyList<CourseCheckpointDraft> drafts,
+        IReadOnlySet<Guid> checkpointIdsWithData)
+    {
+        ArgumentNullException.ThrowIfNull(drafts);
+        ArgumentNullException.ThrowIfNull(checkpointIdsWithData);
+
+        foreach (var draft in drafts)
+        {
+            if (string.IsNullOrWhiteSpace(draft.ExternalId) || draft.ExternalId.Trim().Length > 64)
+            {
+                throw new DomainException("Mã checkpoint trên bản đồ không hợp lệ (1–64 ký tự).");
+            }
+
+            if (draft.Cutoff is { } cutoff && cutoff.Trim().Length > 20)
+            {
+                throw new DomainException($"Cut-off của checkpoint \"{draft.Name.Trim()}\" quá dài (tối đa 20 ký tự).");
+            }
+        }
+
+        var duplicate = drafts
+            .GroupBy(draft => draft.ExternalId.Trim(), StringComparer.Ordinal)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+        {
+            throw new DomainException($"Mã checkpoint \"{duplicate.Key}\" bị trùng trên bản đồ.");
+        }
+
+        var remaining = _checkpoints.ToList();
+        var matches = new EventCheckpoint?[drafts.Count];
+        for (var i = 0; i < drafts.Count; i++)
+        {
+            var externalId = drafts[i].ExternalId.Trim();
+            var hit = remaining.FirstOrDefault(checkpoint => string.Equals(checkpoint.ExternalId, externalId, StringComparison.Ordinal));
+            if (hit is not null)
+            {
+                matches[i] = hit;
+                remaining.Remove(hit);
+            }
+        }
+
+        for (var i = 0; i < drafts.Count; i++)
+        {
+            if (matches[i] is not null)
+            {
+                continue;
+            }
+
+            var draft = drafts[i];
+            var hit = remaining
+                .Where(checkpoint => checkpoint.Type == draft.Type
+                                     && Math.Abs(checkpoint.Km - draft.Km) <= SameCheckpointKmTolerance)
+                .OrderBy(checkpoint => Math.Abs(checkpoint.Km - draft.Km))
+                .FirstOrDefault();
+            if (hit is not null)
+            {
+                matches[i] = hit;
+                remaining.Remove(hit);
+            }
+        }
+
+        var blocked = remaining.Where(checkpoint => checkpointIdsWithData.Contains(checkpoint.Id)).ToList();
+        if (blocked.Count > 0)
+        {
+            var names = string.Join(", ", blocked.OrderBy(checkpoint => checkpoint.SortOrder).Select(checkpoint => checkpoint.Name));
+            throw new DomainException(
+                $"Không thể xóa checkpoint đã có dữ liệu ghi nhận (lượt qua checkpoint hoặc timeline): {names}. "
+                + "Hãy giữ checkpoint này trên bản đồ. Nếu dữ liệu chỉ đến từ giả lập, Reset lượt giả lập rồi lưu lại.");
+        }
+
+        foreach (var checkpoint in remaining)
+        {
+            _checkpoints.Remove(checkpoint);
+        }
+
+        var created = new List<EventCheckpoint>();
+        var updated = 0;
+        for (var i = 0; i < drafts.Count; i++)
+        {
+            var draft = drafts[i];
+            if (matches[i] is { } existing)
+            {
+                existing.UpdateFromCourse(draft, i);
+                updated++;
+                continue;
+            }
+
+            var checkpoint = EventCheckpoint.Create(
+                Id,
+                draft.ExternalId,
+                draft.Name,
+                draft.Km,
+                draft.Lat,
+                draft.Lng,
+                draft.Type,
+                draft.Cutoff,
+                null,
+                i);
+            _checkpoints.Add(checkpoint);
+            created.Add(checkpoint);
+        }
+
+        return new CheckpointSyncOutcome(updated, remaining.Count, created);
+    }
 
     public bool HasBibRange =>
         BibRangeStart is >= 1 and <= 9999

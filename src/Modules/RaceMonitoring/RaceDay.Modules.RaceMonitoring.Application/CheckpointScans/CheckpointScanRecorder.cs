@@ -37,6 +37,7 @@ public sealed class CheckpointScanRecorder(
     IRaceEventLogRepository logs,
     IRaceMonitoringUnitOfWork unitOfWork,
     IRaceEventLogPublisher publisher,
+    RaceEventLogChipStarts chipStarts,
     ICutoffWarningPassageResolver cutoffWarnings,
     ILogger<CheckpointScanRecorder> logger) : ICheckpointScanRecorder
 {
@@ -122,7 +123,17 @@ public sealed class CheckpointScanRecorder(
             return await DuplicateAsync(scan.ScanId, scan.EventId, cancellationToken);
         }
 
-        var notification = RaceEventLogMapper.ToNotification(log);
+        RaceEventLogNotification notification;
+        try
+        {
+            notification = (await chipStarts.ToNotificationsAsync(log.EventId, [log], cancellationToken))[0];
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Không đọc được giờ xuất phát chip cho log {LogId}.", log.Id);
+            notification = RaceEventLogMapper.ToNotification(log);
+        }
+
         try
         {
             publisher.Publish(notification);

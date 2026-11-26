@@ -199,6 +199,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseSharedWeb();
 app.UseCors("AllowFrontend");
+app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();

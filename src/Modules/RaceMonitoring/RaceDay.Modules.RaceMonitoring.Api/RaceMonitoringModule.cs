@@ -13,6 +13,8 @@ using RaceDay.Modules.RaceMonitoring.Application.EmergencyAssignments;
 using RaceDay.Modules.RaceMonitoring.Application.EmergencyResources;
 using RaceDay.Modules.RaceMonitoring.Application.EmergencyResponses;
 using RaceDay.Modules.RaceMonitoring.Application.RaceEventLogs;
+using RaceDay.Modules.RaceMonitoring.Application.Rfid;
+using RaceDay.Modules.RaceMonitoring.Application.TimingReads;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Infrastructure;
 using RaceDay.Shared.Web.Auth;
@@ -27,6 +29,11 @@ public static class RaceMonitoringModule
         // MediatR đăng ký tập trung ở Host (Program.cs)
         services.AddValidatorsFromAssembly(typeof(RaceMonitoringApplicationMarker).Assembly);
         services.AddRaceMonitoringInfrastructure(configuration);
+        var gateway = configuration.GetSection(RfidGatewayOptions.SectionName).Get<RfidGatewayOptions>()
+            ?? new RfidGatewayOptions();
+        services.AddSingleton(gateway);
+        services.AddSingleton<RfidReadRequestBoard>();
+        services.AddScoped<ITimingReadResolver, TimingReadResolver>();
         return services;
     }
 
@@ -35,6 +42,35 @@ public static class RaceMonitoringModule
         var api = app.MapGroup("/api/v1/race-monitoring")
             .WithTags(ApiTags.RaceMonitoring)
             .RequireRateLimiting("public");
+
+        api.MapGet("/health", () => Results.Ok(new { module = "race-monitoring", status = "ready" }))
+            .WithSummary("RaceMonitoring module health");
+
+        api.MapPost("/timing-reads", async (
+            TimingReadRequest body,
+            HttpRequest http,
+            RfidGatewayOptions gateway,
+            IMediator mediator,
+            CancellationToken ct) =>
+        {
+            var provided = http.Headers.TryGetValue(RfidGatewayAuthenticator.HeaderName, out var header)
+                ? header.ToString()
+                : null;
+            if (!RfidGatewayAuthenticator.IsValid(provided, gateway.ServiceKey))
+            {
+                return Results.Unauthorized();
+            }
+
+            return Results.Ok(await mediator.Send(new IngestTimingReadCommand(body), ct));
+        })
+            .AllowAnonymous()
+            .WithSummary("Nhận TimingRead từ RFID Gateway")
+            .WithDescription(
+                "Header X-Service-Key. Body: { readId, readerId, tagScheme, tagId, observedAtUtc, timestampSource }. "
+                + "Tra reader → event/checkpoint và tag → registration trong phạm vi giải, "
+                + "rồi ghi một lượt checkpoint qua CheckpointScanRecorder. "
+                + "Cùng readId trả outcome Duplicate và không tạo dòng timeline thứ hai. "
+                + "Không ghi passage chính thức và không gọi nghiệp vụ Start/Finish.");
 
         var ops = api.MapGroup("")
             .RequireAuthorization(AuthPolicies.OrganizerOrRaceStaff)
@@ -334,6 +370,8 @@ public static class RaceMonitoringModule
                 + "Event RaceEventLogCreated. Heartbeat comment mỗi 15 giây. "
                 + "Mất quyền thì event RaceEventLogAccessRevoked rồi đóng. "
                 + "Client chậm thì RaceEventLogStreamOverrun rồi đóng.");
+
+        api.MapRfidEndpoints();
 
         ops.MapGet("/events/{eventId:guid}/race-logs/{logId:guid}", async (
             Guid eventId,

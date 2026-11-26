@@ -77,6 +77,8 @@ public static class DependencyInjection
             RaceDay.Modules.Event.Infrastructure.Events.EventStaffAssignmentQuery>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventCheckpointQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventCheckpointQuery>();
+        services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventCheckpointSync,
+            RaceDay.Modules.Event.Application.Events.Checkpoints.EventCheckpointSync>();
         services.AddScoped<RaceDay.Modules.Event.Contracts.Events.IEventCutoffScheduleQuery,
             RaceDay.Modules.Event.Infrastructure.Events.EventCutoffScheduleQuery>();
         services.AddSingleton<RaceDay.Modules.Event.Contracts.Simulation.ISimulationDemoGate,

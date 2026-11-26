@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Application.RaceEventLogs;
+using RaceDay.Modules.RaceMonitoring.Domain;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.RaceMonitoring.Api;
@@ -46,9 +47,15 @@ public static class RaceEventLogSse
                 var recordedAfterUtc = DateTime.UtcNow - RaceEventLogStreamPolicy.ReplayOverlap;
                 await using var scope = scopeFactory.CreateAsyncScope();
                 var logs = scope.ServiceProvider.GetRequiredService<IRaceEventLogRepository>();
+                var replay = new List<RaceEventLog>();
                 await foreach (var log in logs.ReplayAsync(eventId, cursor, recordedAfterUtc, cancellationToken))
                 {
-                    var notification = RaceEventLogMapper.ToNotification(log);
+                    replay.Add(log);
+                }
+
+                var chipStarts = scope.ServiceProvider.GetRequiredService<RaceEventLogChipStarts>();
+                foreach (var notification in await chipStarts.ToNotificationsAsync(eventId, replay, cancellationToken))
+                {
                     if (!seen.Add(notification.Id))
                     {
                         continue;
@@ -102,6 +109,21 @@ public static class RaceEventLogSse
                     {
                         if (notification.EventId != eventId || !seen.Add(notification.Id))
                         {
+                            continue;
+                        }
+
+                        if (notification.Kind == RaceEventLogNotificationKinds.SimulationCleared)
+                        {
+                            await WriteControlAsync(
+                                response.Body,
+                                RaceEventLogStreamPolicy.SimulationClearedEventName,
+                                new
+                                {
+                                    eventId,
+                                    eventDistanceId = notification.EventDistanceId,
+                                    simulationRunId = notification.SimulationRunId
+                                },
+                                cancellationToken);
                             continue;
                         }
 
