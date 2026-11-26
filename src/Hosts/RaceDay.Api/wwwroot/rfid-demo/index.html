@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RFID Demo</title>
+  <style>
+    :root { color-scheme: light; font-family: "Segoe UI", sans-serif; }
+    body { margin: 0; background: #f4f6f8; color: #1c2430; }
+    main { max-width: 880px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.6rem; margin: 0 0 8px; }
+    p { line-height: 1.45; }
+    section { background: #fff; border: 1px solid #d8dee6; border-radius: 12px; padding: 16px; margin-top: 16px; }
+    label { display: block; font-weight: 600; margin: 12px 0 4px; }
+    input, select, button { font: inherit; }
+    input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #c5ced8; border-radius: 8px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    button { border: 0; border-radius: 8px; padding: 8px 14px; background: #0f6b4c; color: #fff; cursor: pointer; }
+    button.secondary { background: #405066; }
+    button:disabled { background: #b7c0ca; cursor: not-allowed; }
+    .meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; margin-top: 12px; }
+    .meta div { background: #f7faf8; border-radius: 8px; padding: 10px; }
+    .meta span { display: block; color: #5c6b7a; font-size: 0.85rem; }
+    .epc { font-family: Consolas, monospace; font-size: 1.15rem; word-break: break-all; }
+    .error { color: #9d1c1c; white-space: pre-wrap; }
+    .ok { color: #0f6b4c; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { text-align: left; border-bottom: 1px solid #e4e9ee; padding: 6px 4px; font-size: 0.92rem; vertical-align: top; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>RFID Demo</h1>
+    <p>Chọn giải, đầu đọc và một đăng ký Confirmed có BIB. Đọc thẻ không ghi timeline. Sau khi xác nhận, lấy thẻ ra khỏi vùng đọc, check-in và phát BIB trên UserWeb, rồi bấm <strong>Bắt đầu quét checkpoint</strong> và đưa thẻ lại.</p>
+
+    <section id="login-panel">
+      <h2>Đăng nhập</h2>
+      <label for="username">Tên đăng nhập</label>
+      <input id="username" autocomplete="username" />
+      <label for="password">Mật khẩu</label>
+      <input id="password" type="password" autocomplete="current-password" />
+      <div class="row"><button id="login-button" type="button">Đăng nhập</button></div>
+    </section>
+
+    <section id="work-panel" class="hidden">
+      <div class="row">
+        <button id="logout-button" class="secondary" type="button">Đăng xuất</button>
+        <span id="session-label"></span>
+      </div>
+      <label for="event">Giải</label>
+      <select id="event"></select>
+      <label for="reader">Đầu đọc</label>
+      <select id="reader"></select>
+      <label for="registration">Đăng ký Confirmed có BIB</label>
+      <select id="registration"></select>
+      <div class="meta">
+        <div><span>BIB</span><strong id="bib">—</strong></div>
+        <div><span>Cự ly</span><strong id="distance">—</strong></div>
+        <div><span>Yêu cầu đọc</span><strong id="read-status">—</strong></div>
+      </div>
+      <div class="row">
+        <button id="read-button" type="button">Đọc thẻ</button>
+        <button id="confirm-button" type="button" disabled>Xác nhận gán</button>
+        <button id="cancel-button" class="secondary" type="button" disabled>Hủy yêu cầu</button>
+        <button id="start-button" type="button" disabled>Bắt đầu quét checkpoint</button>
+        <button id="logs-button" class="secondary" type="button">Xem timeline</button>
+      </div>
+      <p id="epc" class="epc"></p>
+      <p id="hint"></p>
+      <table>
+        <thead><tr><th>Thời điểm</th><th>Loại</th><th>BIB</th><th>Sequence</th></tr></thead>
+        <tbody id="logs"></tbody>
+      </table>
+    </section>
+    <p id="message" class="error"></p>
+  </main>
+  <script>
+    const tokenKey = "raceday-rfid-demo-token";
+    const roleKey = "raceday-rfid-demo-role";
+    let registrations = [];
+    let requestId = null;
+    let pollTimer = 0;
+    let logTimer = 0;
+
+    const loginPanel = document.querySelector("#login-panel");
+    const workPanel = document.querySelector("#work-panel");
+    const message = document.querySelector("#message");
+
+    function setMessage(text, ok) {
+      message.textContent = text || "";
+      message.className = ok ? "ok" : "error";
+    }
+
+    async function api(path, options) {
+      const headers = { Accept: "application/json" };
+      if (options && options.body) headers["Content-Type"] = "application/json";
+      const token = sessionStorage.getItem(tokenKey);
+      if (token) headers.Authorization = "Bearer " + token;
+      const response = await fetch(path, Object.assign({}, options || {}, { headers }));
+      const text = await response.text();
+      let body = null;
+      if (text) {
+        try { body = JSON.parse(text); } catch { body = { error: text }; }
+      }
+      if (response.status === 401 && !path.endsWith("/auth/login")) {
+        sessionStorage.removeItem(tokenKey);
+        showLogin();
+      }
+      if (!response.ok) throw new Error((body && body.error) || ("Lỗi " + response.status));
+      return body;
+    }
+
+    function showLogin() {
+      loginPanel.classList.remove("hidden");
+      workPanel.classList.add("hidden");
+      stopTimers();
+    }
+
+    function showWork() {
+      loginPanel.classList.add("hidden");
+      workPanel.classList.remove("hidden");
+      document.querySelector("#session-label").textContent = sessionStorage.getItem(roleKey) || "";
+    }
+
+    function stopTimers() {
+      if (pollTimer) clearInterval(pollTimer);
+      if (logTimer) clearInterval(logTimer);
+      pollTimer = 0;
+    }
+
+    function selectedRegistration() {
+      return registrations.find(row => row.id === document.querySelector("#registration").value) || null;
+    }
+
+    function distanceText(row) {
+      if (!row) return "—";
+      const parts = [];
+      if (row.distanceLabel) parts.push(row.distanceLabel);
+      if (row.distanceKm !== null && row.distanceKm !== undefined && row.distanceKm !== "") parts.push(row.distanceKm + " km");
+      return parts.join(" · ") || "—";
+    }
+
+    function showRegistration() {
+      const row = selectedRegistration();
+      document.querySelector("#bib").textContent = row && row.bibNumber ? row.bibNumber : "—";
+      document.querySelector("#distance").textContent = distanceText(row);
+    }
+
+    async function loadEvents() {
+      const events = await api("/api/v1/event/organizer/mine");
+      const select = document.querySelector("#event");
+      select.innerHTML = "";
+      for (const race of events || []) {
+        const option = document.createElement("option");
+        option.value = race.id;
+        option.textContent = race.name || race.id;
+        select.appendChild(option);
+      }
+      await loadEventDetails();
+    }
+
+    async function loadEventDetails() {
+      const eventId = document.querySelector("#event").value;
+      const readerSelect = document.querySelector("#reader");
+      const registrationSelect = document.querySelector("#registration");
+      readerSelect.innerHTML = "";
+      registrationSelect.innerHTML = "";
+      registrations = [];
+      showRegistration();
+      if (!eventId) return;
+      const readers = await api("/api/v1/race-monitoring/rfid/readers?eventId=" + encodeURIComponent(eventId));
+      for (const reader of readers || []) {
+        const option = document.createElement("option");
+        option.value = reader.readerId;
+        option.textContent = reader.readerId;
+        readerSelect.appendChild(option);
+      }
+      const rows = await api("/api/v1/event/organizer/" + eventId + "/registrations");
+      registrations = (rows || []).filter(row =>
+        String(row.status || "").toLowerCase() === "confirmed" && row.bibNumber);
+      registrations.sort((a, b) => {
+        const checked = (a.checkedInAtUtc ? 1 : 0) - (b.checkedInAtUtc ? 1 : 0);
+        if (checked !== 0) return checked;
+        return String(a.bibNumber).localeCompare(String(b.bibNumber), "vi");
+      });
+      for (const row of registrations) {
+        const option = document.createElement("option");
+        option.value = row.id;
+        const checked = row.checkedInAtUtc ? " · đã check-in" : "";
+        option.textContent = "BIB " + row.bibNumber + " — " + distanceText(row) + checked;
+        registrationSelect.appendChild(option);
+      }
+      showRegistration();
+    }
+
+    function setRequest(request) {
+      requestId = request ? request.requestId : null;
+      const status = request ? request.status : "—";
+      document.querySelector("#read-status").textContent = status;
+      const tags = request && request.tagIds ? request.tagIds : [];
+      document.querySelector("#epc").textContent = tags.length ? tags.join(", ") : "";
+      const open = request && ["Pending", "Reading", "Observed", "Ambiguous", "NoTag"].includes(request.status);
+      document.querySelector("#confirm-button").disabled = !(request && request.status === "Observed" && tags.length === 1);
+      document.querySelector("#cancel-button").disabled = !open;
+      document.querySelector("#read-button").disabled = open;
+      if (request && request.status === "Confirmed") {
+        document.querySelector("#start-button").disabled = false;
+        document.querySelector("#hint").textContent = "Lấy thẻ ra khỏi vùng đọc, check-in trên UserWeb, rồi bấm Bắt đầu quét checkpoint và đưa thẻ lại.";
+      }
+    }
+
+    async function refreshRequest() {
+      if (!requestId) return;
+      const request = await api("/api/v1/race-monitoring/rfid/read-requests/" + requestId);
+      setRequest(request);
+      if (["Confirmed", "Cancelled", "Expired"].includes(request.status)) {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = 0;
+      }
+    }
+
+    async function loadLogs() {
+      const eventId = document.querySelector("#event").value;
+      const row = selectedRegistration();
+      const body = document.querySelector("#logs");
+      body.innerHTML = "";
+      if (!eventId || !row || !row.bibNumber) return;
+      const page = await api(
+        "/api/v1/race-monitoring/events/" + eventId +
+        "/race-logs?bibNumber=" + encodeURIComponent(row.bibNumber) + "&pageSize=20");
+      for (const item of (page && page.items) || []) {
+        const tr = document.createElement("tr");
+        for (const value of [item.occurredAtUtc, item.eventType, item.bibNumber, item.sequence]) {
+          const td = document.createElement("td");
+          td.textContent = value ?? "";
+          tr.appendChild(td);
+        }
+        body.appendChild(tr);
+      }
+    }
+
+    document.querySelector("#login-button").addEventListener("click", async () => {
+      setMessage("");
+      try {
+        const result = await api("/api/v1/iam/auth/login", {
+          method: "POST",
+          body: JSON.stringify({
+            username: document.querySelector("#username").value.trim(),
+            password: document.querySelector("#password").value
+          })
+        });
+        sessionStorage.setItem(tokenKey, result.accessToken);
+        sessionStorage.setItem(roleKey, result.role || "");
+        showWork();
+        await loadEvents();
+      } catch (error) {
+        setMessage(error.message);
+      }
+    });
+
+    document.querySelector("#logout-button").addEventListener("click", () => {
+      sessionStorage.removeItem(tokenKey);
+      sessionStorage.removeItem(roleKey);
+      showLogin();
+    });
+
+    document.querySelector("#event").addEventListener("change", () => loadEventDetails().catch(error => setMessage(error.message)));
+    document.querySelector("#registration").addEventListener("change", showRegistration);
+
+    document.querySelector("#read-button").addEventListener("click", async () => {
+      setMessage("");
+      const row = selectedRegistration();
+      const eventId = document.querySelector("#event").value;
+      const readerId = document.querySelector("#reader").value;
+      if (!row || !eventId || !readerId) {
+        setMessage("Chọn giải, đầu đọc và một đăng ký Confirmed có BIB.");
+        return;
+      }
+      try {
+        const created = await api("/api/v1/race-monitoring/rfid/read-requests", {
+          method: "POST",
+          body: JSON.stringify({ eventId, registrationId: row.id, readerId })
+        });
+        setRequest(created);
+        document.querySelector("#start-button").disabled = true;
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(() => refreshRequest().catch(error => setMessage(error.message)), 1200);
+      } catch (error) {
+        setMessage(error.message);
+      }
+    });
+
+    document.querySelector("#confirm-button").addEventListener("click", async () => {
+      setMessage("");
+      const tags = document.querySelector("#epc").textContent.split(",").map(item => item.trim()).filter(Boolean);
+      if (!requestId || tags.length !== 1) return;
+      try {
+        const saved = await api("/api/v1/race-monitoring/rfid/assignments", {
+          method: "POST",
+          body: JSON.stringify({ requestId, tagId: tags[0] })
+        });
+        setMessage(saved.created ? "Đã lưu gán EPC." : "Cặp này đã được gán từ trước.", true);
+        await refreshRequest();
+        document.querySelector("#start-button").disabled = false;
+      } catch (error) {
+        setMessage(error.message);
+      }
+    });
+
+    document.querySelector("#cancel-button").addEventListener("click", async () => {
+      if (!requestId) return;
+      try {
+        const cancelled = await api("/api/v1/race-monitoring/rfid/read-requests/" + requestId + "/cancel", { method: "POST" });
+        setRequest(cancelled);
+      } catch (error) {
+        setMessage(error.message);
+      }
+    });
+
+    document.querySelector("#start-button").addEventListener("click", async () => {
+      const readerId = document.querySelector("#reader").value;
+      if (!readerId) return;
+      try {
+        await api("/api/v1/race-monitoring/rfid/readers/" + encodeURIComponent(readerId) + "/checkpoint-scan", { method: "POST" });
+        setMessage("Đã gửi lệnh bắt đầu quét checkpoint. Đưa thẻ lại vùng đọc.", true);
+        document.querySelector("#start-button").disabled = true;
+        await loadLogs();
+        if (logTimer) clearInterval(logTimer);
+        logTimer = setInterval(() => loadLogs().catch(error => setMessage(error.message)), 3000);
+      } catch (error) {
+        setMessage(error.message);
+      }
+    });
+
+    document.querySelector("#logs-button").addEventListener("click", () => loadLogs().catch(error => setMessage(error.message)));
+
+    if (sessionStorage.getItem(tokenKey)) {
+      showWork();
+      loadEvents().catch(error => setMessage(error.message));
+    }
+  </script>
+</body>
+</html>

@@ -2,6 +2,7 @@
   <Folder Name="/src/" />
   <Folder Name="/src/Gateways/">
     <Project Path="src/Gateways/RaceDay.ApiGateway/RaceDay.ApiGateway.csproj" />
+    <Project Path="src/Gateways/RaceDay.RfidGateway/RaceDay.RfidGateway.csproj" />
   </Folder>
   <Folder Name="/src/Hosts/">
     <Project Path="src/Hosts/RaceDay.Api/RaceDay.Api.csproj" />
@@ -109,5 +110,6 @@
     <Project Path="tests/RaceDay.Modules.RaceMonitoring.UnitTests/RaceDay.Modules.RaceMonitoring.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Shared.UnitTests/RaceDay.Shared.UnitTests.csproj" />
     <Project Path="tests/RaceDay.Modules.Simulation.UnitTests/RaceDay.Modules.Simulation.UnitTests.csproj" />
+    <Project Path="tests/RaceDay.RfidGateway.UnitTests/RaceDay.RfidGateway.UnitTests.csproj" />
   </Folder>
 </Solution>

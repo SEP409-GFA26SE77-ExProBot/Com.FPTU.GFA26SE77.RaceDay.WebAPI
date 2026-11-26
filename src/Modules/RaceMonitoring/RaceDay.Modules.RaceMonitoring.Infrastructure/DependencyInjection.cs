@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IEmergencyAssignmentRepository, EmergencyAssignmentRepository>();
         services.AddScoped<ICheckpointScanRepository, CheckpointScanRepository>();
         services.AddScoped<IRaceEventLogRepository, RaceEventLogRepository>();
+        services.AddScoped<IRfidTagAssignmentRepository, RfidTagAssignmentRepository>();
         services.AddScoped<ICheckpointScanRecorder, CheckpointScanRecorder>();
         services.AddScoped<RaceEventLogChipStarts>();
         services.AddSingleton<SimulationRunAnchorCache>();
