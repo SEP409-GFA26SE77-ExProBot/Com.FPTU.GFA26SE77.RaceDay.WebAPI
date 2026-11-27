@@ -1,6 +1,8 @@
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.RateLimiting;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
@@ -21,11 +23,12 @@ public static class PositioningModule
 {
     public static IServiceCollection AddPositioningModule(this IServiceCollection services, IConfiguration configuration)
     {
-        _ = configuration;
         services.AddScoped<PositioningAccess>();
         services.AddSingleton<IPositionTracker, CachedPositionTracker>();
         services.AddSingleton<PositionEventStream>();
         services.AddSingleton<IPositionEventPublisher>(sp => sp.GetRequiredService<PositionEventStream>());
+        services.AddSingleton<IStaffCheckInStore, CachedStaffCheckInStore>();
+        services.AddSingleton(new StaffCheckInCodes(CheckInKey(configuration)));
         services.AddRateLimiter(options => options.AddPolicy("positioning", context =>
             RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "local",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 3600, Window = TimeSpan.FromMinutes(1) })));
@@ -44,8 +47,39 @@ public static class PositioningModule
         {
             if (user.UserId is not Guid userId) return Results.Forbid();
             var receipt = await sender.Send(new ReportPositionCommand(eventId, userId, body), ct);
+            if (receipt == PositionReceipt.NotCheckedIn)
+            {
+                return Results.Json(new { error = StaffCheckInRules.NotCheckedIn, zoneStatus = PositionReceipt.NotCheckedIn.ZoneStatus },
+                    statusCode: StatusCodes.Status403Forbidden);
+            }
             return receipt is null ? Results.Forbid() : Results.Ok(receipt);
-        }).WithSummary("Nhận mẫu GPS cho giải và kiểm tra vùng hoạt động.");
+        }).WithSummary("Nhận mẫu GPS cho giải và kiểm tra vùng hoạt động (Staff/Photographer phải check-in QR trước).");
+
+        events.MapGet("/check-in-code", async (Guid eventId, ICurrentUserAccessor user, HttpContext context,
+            ISender sender, CancellationToken ct) =>
+        {
+            if (user.UserId is not Guid userId) return Results.Forbid();
+            context.Response.Headers.CacheControl = "no-store";
+            var code = await sender.Send(new IssueStaffCheckInCodeQuery(eventId, userId), ct);
+            return code is null ? Results.Forbid() : Results.Ok(code);
+        }).WithSummary("BTC lấy mã QR check-in nhân sự hiện tại (đổi mỗi 60 giây).");
+
+        events.MapPost("/check-in", async (Guid eventId, StaffCheckInBody body, ICurrentUserAccessor user,
+            ISender sender, CancellationToken ct) =>
+        {
+            if (user.UserId is not Guid userId) return Results.Forbid();
+            var receipt = await sender.Send(new StaffCheckInCommand(eventId, userId, body.Code), ct);
+            return receipt is null
+                ? Results.Json(new { error = "Bạn không được phân công tại giải này." }, statusCode: StatusCodes.Status403Forbidden)
+                : Results.Ok(receipt);
+        }).WithSummary("Staff/Photographer check-in bằng mã QR của BTC.");
+
+        events.MapDelete("/check-in", async (Guid eventId, ICurrentUserAccessor user, ISender sender, CancellationToken ct) =>
+        {
+            if (user.UserId is not Guid userId) return Results.Forbid();
+            await sender.Send(new StaffCheckOutCommand(eventId, userId), ct);
+            return Results.NoContent();
+        }).WithSummary("Staff/Photographer kết thúc check-in (tắt chia sẻ vị trí).");
 
         events.MapGet("/positions", async (Guid eventId, int? offset, ICurrentUserAccessor user,
             HttpContext context, ISender sender, CancellationToken ct) =>
@@ -70,6 +104,16 @@ public static class PositioningModule
         return app;
     }
 
+    /// <summary>QR signing key: Positioning:CheckInSecret, else derived from the JWT signing key.</summary>
+    private static byte[] CheckInKey(IConfiguration configuration)
+    {
+        var secret = configuration["Positioning:CheckInSecret"];
+        if (string.IsNullOrWhiteSpace(secret)) secret = configuration["Jwt:SigningKey"];
+        return string.IsNullOrWhiteSpace(secret)
+            ? RandomNumberGenerator.GetBytes(32)
+            : HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), "raceday-staff-check-in"u8);
+    }
+
     private static async Task<IResult> OpenStreamAsync(Guid eventId, bool includePositions, ICurrentUserAccessor user,
         PositioningAccess access, PositionEventStream stream, IServiceScopeFactory scopes, HttpContext context, CancellationToken ct)
     {
@@ -92,7 +136,7 @@ public static class PositioningModule
         var remaining = expiresAt - DateTimeOffset.UtcNow;
         if (remaining <= TimeSpan.Zero) yield break;
         session.CancelAfter(remaining);
-        await using var listener = stream.ListenAsync(eventId, includePositions, session.Token).GetAsyncEnumerator();
+        await using var listener = stream.ListenAsync(eventId, userId, includePositions, session.Token).GetAsyncEnumerator();
         if (!await listener.MoveNextAsync()) yield break;
 
         if (includePositions)

@@ -7,6 +7,7 @@ using RaceDay.Modules.Event.Contracts.Simulation;
 using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Contracts.Timeline;
 using RaceDay.Modules.RaceMonitoring.Domain;
+using RaceDay.Shared.Application.Time;
 
 namespace RaceDay.Modules.RaceMonitoring.Application.RaceEventLogs;
 
@@ -123,7 +124,7 @@ public sealed class SimulationTimelineSink(
         startUtc = default;
         var clock = clocks?.DistanceStartAt ?? clocks?.EventStartTime;
         if (clocks is null || clock is null || string.IsNullOrWhiteSpace(timeZoneId)
-            || !TimeZoneInfo.TryFindSystemTimeZoneById(timeZoneId.Trim(), out var zone))
+            || !RaceLocalTime.TryFindZone(timeZoneId, out var zone))
         {
             return false;
         }

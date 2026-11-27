@@ -68,6 +68,27 @@ Simulated checkpoint crossings appear on the Race-staff "Timeline trực tiếp"
 - Map course checkpoints → `event_checkpoints`: saving the map (`UpsertCourseCommandHandler`) calls `IEventCheckpointSync` (Event.Contracts). Match by ExternalId, then same type within 1 m; removing a checkpoint that has scans, timeline rows or passages (`ICheckpointActivityQuery` + Event passages) throws and the course is not saved.
 - Tests: `CheckpointCourseSyncTests` (Event), `SimulationTimelineSinkTests` (RaceMonitoring), `SimulationTimelineFeedTests` (Simulation).
 
+## Race times are Vietnam wall-clock (since 2026-11-27)
+
+`EventDate`, `StartTime`, `EndDate` and distance `StartAt`/`EndAt` hold what the organizer types in UserWeb (no offset, never converted by the frontends), which is Vietnam time. Compare them with UTC instants only through `RaceDay.Shared.Application.Time.RaceLocalTime` (`ToUtc(date, time)`, `Today(utcNow)`, `TryFindZone`; falls back to a fixed UTC+07 zone when the host has no tz data).
+
+- Uses it: finish result time (`FinishCommands`), DNS gate (`ChangeRaceStatusCommand`), refunds/payout phase (`LedgerCalculator`), dispute "last month" window, event-date validation, positioning race-day window (`EventOrganizerAccessQuery.StartsAtUtc`), simulation official start (`Simulation:StartTimeZone` = `Asia/Ho_Chi_Minh` in docker-compose and appsettings.Development). Cut-off monitoring uses `CutoffClock` with the same zone.
+- Before this, the first four read the clock as UTC (7 h late: a 06:00 race could not record a finish before 13:00 and refunds counted UTC dates). Results already stored are not recomputed.
+- `deploy/sql/seed_system_test_event.sql` stores the Vietnam clock of `-StartAt`.
+- **Not changed (watch is out of scope):** `RunnerRaceDayQuery.GetPrimaryAsync`, used only by `POST /api/v1/device/sos` (wear token), still takes "today" as the UTC date and picks the runner's registration whose `EventDate` is closest. Between 00:00 and 07:00 Vietnam time a runner with races on consecutive days can have an SOS attached to the wrong race (ties are unordered). Fix it before bringing the watch back: use `RaceLocalTime.Today`, prefer the race whose race-day window contains now, and add a tie-breaker.
+
+## Staff QR check-in & out-of-zone alerts (added 2026-11-27)
+
+Staff and Photographers share GPS (Positioning module) only after checking in with the organizer's rotating QR.
+
+- `StaffCheckInCodes` (Application) is stateless: QR text = `raceday-staff-checkin:{eventId:N}:{window}:{hmac}` with 60 s windows (unix seconds / 60), plus 5 s grace after rotation. Key: `Positioning:CheckInSecret`, else derived from `Jwt:SigningKey`, else random per process.
+- Endpoints (group `/api/v1/positioning/events/{eventId}`): `GET /check-in-code` (organizer only → `{ payload, issuedAtUtc, expiresAtUtc, serverNowUtc }`), `POST /check-in` `{ code }` (active Staff/Photographer; wrong code → 400 with `StaffCheckInRules.WrongCode`), `DELETE /check-in`.
+- Check-in state lives in Redis (`CachedStaffCheckInStore`, key `positioning:checkin:{event}:{user}`, 24 h). `POST /positions` from a staff member who has not checked in returns 403 `{ error, zoneStatus: "not-checked-in" }`; organizers are exempt.
+- Window: check-in and out-of-zone alerts open 1 h before the race start (`PositioningAccess.RaceDayOpensAt`), closed for Cancelled/Completed/Suspended.
+- Out-of-zone alerts (`PositionAlert.UserId`) are delivered by `PositionEventStream` only to the listener whose user left the zone, on both `/alerts` and `/positions/live`. Organizers and other staff no longer get them; the live map still shows positions.
+- UI: UserWeb organizer "Quản lý nhân sự" → "QR check-in nhân sự" (`StaffCheckInQrDialog`); StaffMobile drawer Check-in toggle → `StaffCheckInScanScreen`.
+- Test data: `deploy/sql/seed_staff_checkin_outzone.sql` (re-run to move the start to now + 30 min).
+
 ## Known pre-existing issues (as of 2026-11-23)
 
 - `Event.IntegrationTests`: 27 failures because Postgres-specific migrations run on SQLite. Not caused by the cut-off work.

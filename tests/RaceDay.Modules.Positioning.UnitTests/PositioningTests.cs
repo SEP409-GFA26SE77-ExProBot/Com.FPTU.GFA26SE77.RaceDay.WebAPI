@@ -15,6 +15,7 @@ public sealed class PositioningTests
     private static readonly Guid EventId = Guid.NewGuid();
     private static readonly Guid StaffId = Guid.NewGuid();
     private static readonly Guid DistanceId = Guid.NewGuid();
+    private static readonly Guid OrganizerId = Guid.NewGuid();
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-11-14T08:00:00Z");
 
     [Theory]
@@ -120,26 +121,119 @@ public sealed class PositioningTests
     }
 
     [Fact]
-    public async Task Stream_OnlyReceivesAlertsFromSubscribedEvent()
+    public async Task Stream_SendsAlertsOnlyToTheStaffWhoLeftTheZone()
     {
         var stream = new PositionEventStream();
-        await using var listener = stream.ListenAsync(EventId, includePositions: false, CancellationToken.None).GetAsyncEnumerator();
-        await using var live = stream.ListenAsync(EventId, includePositions: true, CancellationToken.None).GetAsyncEnumerator();
+        var otherStaffId = Guid.NewGuid();
+        await using var listener = stream.ListenAsync(EventId, StaffId, includePositions: false, CancellationToken.None).GetAsyncEnumerator();
+        await using var live = stream.ListenAsync(EventId, otherStaffId, includePositions: true, CancellationToken.None).GetAsyncEnumerator();
         Assert.True(await listener.MoveNextAsync());
         Assert.True(await live.MoveNextAsync());
         Assert.Null(listener.Current);
-        var alert = new PositionAlert(EventId, Guid.NewGuid(), "Staff", "race-staff", Now);
+        var alert = new PositionAlert(EventId, StaffId, Guid.NewGuid(), "Staff", "race-staff", Now);
+        var otherAlert = alert with { UserId = otherStaffId };
         var position = new LiveStaffPosition(StaffId, "Staff", ["race-staff"], [], 21, 105, Now);
         stream.Publish(Guid.NewGuid(), position);
         stream.Publish(EventId, position);
         stream.Publish(alert with { EventId = Guid.NewGuid() });
         stream.Publish(alert);
+        stream.Publish(otherAlert);
+
         Assert.True(await listener.MoveNextAsync());
         Assert.Equal(alert, listener.Current?.Alert);
         Assert.True(await live.MoveNextAsync());
         Assert.Equal(position, live.Current?.Position);
+        // The live map viewer does not get StaffId's alert, only its own.
         Assert.True(await live.MoveNextAsync());
-        Assert.Equal(alert, live.Current?.Alert);
+        Assert.Equal(otherAlert, live.Current?.Alert);
+    }
+
+    [Fact]
+    public async Task Report_RefusesStaffWhoHaveNotCheckedIn()
+    {
+        var fixture = new Fixture(["duty:float"]);
+        fixture.CheckIns.GetAsync(EventId, StaffId, Arg.Any<CancellationToken>()).Returns((DateTimeOffset?)null);
+
+        var result = await fixture.Handle(new ReportPositionBody(0.005, 0, 3, Now));
+
+        Assert.Equal(PositionReceipt.NotCheckedIn, result);
+        await fixture.Tracker.DidNotReceiveWithAnyArgs().RecordAsync(default, default, default!, default, default);
+        fixture.Alerts.DidNotReceiveWithAnyArgs().Publish(default!);
+    }
+
+    [Fact]
+    public async Task Report_AlertCarriesTheReportingUser()
+    {
+        var fixture = new Fixture(["duty:float"]);
+        await fixture.Handle(new ReportPositionBody(0.005, 0, 3, Now));
+        fixture.Alerts.Received(1).Publish(Arg.Is<PositionAlert>(alert => alert.UserId == StaffId && alert.EventId == EventId));
+    }
+
+    [Fact]
+    public void Codes_RotateEveryMinuteWithShortGrace()
+    {
+        var codes = new StaffCheckInCodes(new byte[32]);
+        var issued = codes.Issue(EventId, Now.AddSeconds(30));
+
+        Assert.Equal(Now, issued.IssuedAtUtc);
+        Assert.Equal(Now.AddSeconds(60), issued.ExpiresAtUtc);
+        Assert.True(codes.IsValid(EventId, issued.Payload, Now.AddSeconds(59)));
+        Assert.True(codes.IsValid(EventId, $"  {issued.Payload}\n", Now));
+        Assert.True(codes.IsValid(EventId, issued.Payload, Now.AddSeconds(60 + StaffCheckInCodes.GraceSeconds - 1)));
+        Assert.False(codes.IsValid(EventId, issued.Payload, Now.AddSeconds(60 + StaffCheckInCodes.GraceSeconds)));
+        Assert.False(codes.IsValid(EventId, issued.Payload, Now.AddSeconds(-1)));
+        Assert.False(codes.IsValid(Guid.NewGuid(), issued.Payload, Now));
+        Assert.False(new StaffCheckInCodes(new byte[] { 1 }).IsValid(EventId, issued.Payload, Now));
+        var tampered = issued.Payload[..^1] + (issued.Payload[^1] == '0' ? '1' : '0');
+        Assert.False(codes.IsValid(EventId, tampered, Now));
+        Assert.False(codes.IsValid(EventId, null, Now));
+        Assert.NotEqual(issued.Payload, codes.Issue(EventId, Now.AddSeconds(60)).Payload);
+    }
+
+    [Fact]
+    public async Task CheckIn_AcceptsCurrentCodeAndRejectsWrongOne()
+    {
+        var fixture = new Fixture(["duty:float"]);
+        var codes = new StaffCheckInCodes(new byte[32]);
+        var handler = new StaffCheckInCommandHandler(fixture.Access, codes, fixture.CheckIns, new FixedClock());
+        var current = codes.Issue(EventId, Now).Payload;
+
+        var error = await Assert.ThrowsAsync<DomainException>(() =>
+            handler.Handle(new StaffCheckInCommand(EventId, StaffId, "raceday-staff-checkin:wrong"), CancellationToken.None));
+        Assert.Equal(StaffCheckInRules.WrongCode, error.Message);
+        await fixture.CheckIns.DidNotReceiveWithAnyArgs().SetAsync(default, default, default, default);
+
+        Assert.Null(await handler.Handle(new StaffCheckInCommand(EventId, Guid.NewGuid(), current), CancellationToken.None));
+        var receipt = await handler.Handle(new StaffCheckInCommand(EventId, StaffId, current), CancellationToken.None);
+        Assert.Equal(Now, receipt?.CheckedInAtUtc);
+        await fixture.CheckIns.Received(1).SetAsync(EventId, StaffId, Now, Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(61, false)]
+    [InlineData(60, true)]
+    [InlineData(null, false)]
+    public async Task CheckIn_OpensOneHourBeforeStart(int? minutesUntilStart, bool open)
+    {
+        var fixture = new Fixture(["duty:float"], minutesUntilStart);
+        var codes = new StaffCheckInCodes(new byte[32]);
+        var handler = new StaffCheckInCommandHandler(fixture.Access, codes, fixture.CheckIns, new FixedClock());
+        var command = new StaffCheckInCommand(EventId, StaffId, codes.Issue(EventId, Now).Payload);
+
+        if (open) Assert.NotNull(await handler.Handle(command, CancellationToken.None));
+        else await Assert.ThrowsAsync<DomainException>(() => handler.Handle(command, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task IssueCode_OnlyForTheOrganizer()
+    {
+        var fixture = new Fixture(["duty:float"]);
+        var handler = new IssueStaffCheckInCodeQueryHandler(fixture.Access, new StaffCheckInCodes(new byte[32]), new FixedClock());
+
+        Assert.Null(await handler.Handle(new IssueStaffCheckInCodeQuery(EventId, StaffId), CancellationToken.None));
+        var code = await handler.Handle(new IssueStaffCheckInCodeQuery(EventId, OrganizerId), CancellationToken.None);
+        Assert.NotNull(code);
+        Assert.StartsWith("raceday-staff-checkin:", code.Payload);
     }
 
     private sealed class Fixture
@@ -147,6 +241,7 @@ public sealed class PositioningTests
         public IPositionEventPublisher Alerts { get; } = Substitute.For<IPositionEventPublisher>();
         public IPositionTracker Tracker { get; } = Substitute.For<IPositionTracker>();
         public IEventPositioningAccessQuery Staff { get; } = Substitute.For<IEventPositioningAccessQuery>();
+        public IStaffCheckInStore CheckIns { get; } = Substitute.For<IStaffCheckInStore>();
         public PositioningAccess Access { get; }
         private readonly ReportPositionCommandHandler _handler;
 
@@ -159,7 +254,7 @@ public sealed class PositioningTests
                     : Array.Empty<PositioningStaffAssignment>());
             var organizers = Substitute.For<IEventOrganizerAccessQuery>();
             organizers.GetAsync(EventId, Arg.Any<CancellationToken>()).Returns(
-                new EventOrganizerAccessInfo(EventId, Guid.NewGuid(), "Approved", "Race",
+                new EventOrganizerAccessInfo(EventId, OrganizerId, "Approved", "Race",
                     minutesUntilStart is { } minutes ? Now.AddMinutes(minutes) : null));
             Access = new PositioningAccess(organizers, Staff);
             var courses = Substitute.For<IEventCoursesReadQuery>();
@@ -171,7 +266,8 @@ public sealed class PositioningTests
             });
             Tracker.RecordAsync(EventId, StaffId, Arg.Any<PositionSample>(), Arg.Any<bool?>(), Arg.Any<CancellationToken>())
                 .Returns(call => new PositionRecordResult(true, call.Arg<bool?>() == true));
-            _handler = new ReportPositionCommandHandler(Access, courses, Tracker, Alerts, new FixedClock());
+            CheckIns.GetAsync(EventId, Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(Now);
+            _handler = new ReportPositionCommandHandler(Access, courses, Tracker, Alerts, CheckIns, new FixedClock());
         }
 
         public Task<PositionReceipt?> Handle(ReportPositionBody body, Guid? userId = null)

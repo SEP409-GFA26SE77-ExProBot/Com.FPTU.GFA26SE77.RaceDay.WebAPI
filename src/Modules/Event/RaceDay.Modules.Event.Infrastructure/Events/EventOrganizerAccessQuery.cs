@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.Event.Infrastructure.Persistence;
+using RaceDay.Shared.Application.Time;
 
 namespace RaceDay.Modules.Event.Infrastructure.Events;
 
@@ -28,7 +29,8 @@ public sealed class EventOrganizerAccessQuery(EventDbContext db) : IEventOrganiz
             race.Status.ToString(),
             race.Name,
             race.StartTime is { } startTime
-                ? new DateTimeOffset(race.EventDate.ToDateTime(startTime, DateTimeKind.Utc))
+                // Start times are race-local (Vietnam) wall-clock times, not UTC.
+                ? new DateTimeOffset(RaceLocalTime.ToUtc(race.EventDate, startTime))
                 : null);
     }
 }

@@ -1,4 +1,5 @@
 using FluentValidation;
+using RaceDay.Shared.Application.Time;
 
 namespace RaceDay.Shared.Application.Validation;
 
@@ -21,7 +22,7 @@ public static class InputValidationExtensions
 
     public static IRuleBuilderOptions<T, DateOnly> EventDate<T>(this IRuleBuilder<T, DateOnly> rule)
         => rule
-            .Must(d => InputRules.IsValidEventDate(d, DateOnly.FromDateTime(DateTime.UtcNow)))
+            .Must(d => InputRules.IsValidEventDate(d, RaceLocalTime.Today(DateTime.UtcNow)))
             .WithMessage($"Ngày giải phải trong khoảng {InputRules.MaxEventDaysPast} ngày trước đến {InputRules.MaxEventYearsAhead} năm tới.");
 
     public static IRuleBuilderOptions<T, double> Latitude<T>(this IRuleBuilder<T, double> rule)

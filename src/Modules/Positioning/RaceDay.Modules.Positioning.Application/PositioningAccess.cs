@@ -14,15 +14,27 @@ public sealed class PositioningAccess(IEventOrganizerAccessQuery organizers, IEv
         if (race is null) return null;
 
         var assignments = await staff.ListActiveAsync(eventId, userId, ct);
-        if (assignments.Count > 0 || race.OrganizerUserId == userId)
+        var isOrganizer = race.OrganizerUserId == userId;
+        if (assignments.Count > 0 || isOrganizer)
         {
-            var alertsStartAt = race.Status is "Cancelled" or "Completed" or "Suspended"
-                ? null
-                : race.StartsAtUtc?.AddHours(-1);
-            return new PositioningReportAccess(assignments, alertsStartAt);
+            return new PositioningReportAccess(assignments, RaceDayOpensAt(race), isOrganizer);
         }
         return null;
     }
+
+    public Task<EventOrganizerAccessInfo?> GetRaceAsync(Guid eventId, CancellationToken ct) => organizers.GetAsync(eventId, ct);
+
+    /// <summary>
+    /// Out-of-zone alerts and staff QR check-in open one hour before the race starts.
+    /// Null when the race has no start time or is cancelled, completed or suspended.
+    /// </summary>
+    public static DateTimeOffset? RaceDayOpensAt(EventOrganizerAccessInfo race)
+        => race.Status is "Cancelled" or "Completed" or "Suspended"
+            ? null
+            : race.StartsAtUtc?.AddHours(-1);
 }
 
-public sealed record PositioningReportAccess(IReadOnlyList<PositioningStaffAssignment> Assignments, DateTimeOffset? AlertsStartAt);
+/// <param name="AlertsStartAt">When out-of-zone alerts start (see <see cref="PositioningAccess.RaceDayOpensAt"/>).</param>
+/// <param name="IsOrganizer">Organizers report without QR check-in.</param>
+public sealed record PositioningReportAccess(
+    IReadOnlyList<PositioningStaffAssignment> Assignments, DateTimeOffset? AlertsStartAt, bool IsOrganizer = false);

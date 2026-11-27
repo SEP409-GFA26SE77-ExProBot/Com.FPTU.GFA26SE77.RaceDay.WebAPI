@@ -29,6 +29,7 @@ public sealed class ReportPositionCommandHandler(
     IEventCoursesReadQuery courses,
     IPositionTracker tracker,
     IPositionEventPublisher events,
+    IStaffCheckInStore checkIns,
     TimeProvider clock) : IRequestHandler<ReportPositionCommand, PositionReceipt?>
 {
     public async Task<PositionReceipt?> Handle(ReportPositionCommand request, CancellationToken cancellationToken)
@@ -44,6 +45,10 @@ public sealed class ReportPositionCommandHandler(
 
         var reporting = await access.GetReportingAccessAsync(request.EventId, request.UserId, cancellationToken);
         if (reporting is null) return null;
+        if (!reporting.IsOrganizer && await checkIns.GetAsync(request.EventId, request.UserId, cancellationToken) is null)
+        {
+            return PositionReceipt.NotCheckedIn;
+        }
 
         var point = new GeoPoint(lat, lng);
         var nearestEdge = double.PositiveInfinity;
@@ -79,7 +84,7 @@ public sealed class ReportPositionCommandHandler(
         }
         if (recorded.BecameOutside && nearestAssignment is not null)
         {
-            events.Publish(new PositionAlert(request.EventId, nearestAssignment.Id, nearestAssignment.Name, nearestAssignment.Role, now));
+            events.Publish(new PositionAlert(request.EventId, request.UserId, nearestAssignment.Id, nearestAssignment.Name, nearestAssignment.Role, now));
         }
 
         return new PositionReceipt(nearestAssignment is null ? "unconfigured" : outside switch
