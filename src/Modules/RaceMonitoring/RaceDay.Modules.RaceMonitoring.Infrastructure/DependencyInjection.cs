@@ -7,10 +7,12 @@ using RaceDay.Modules.RaceMonitoring.Application.Abstractions;
 using RaceDay.Modules.RaceMonitoring.Application.CheckpointScans;
 using RaceDay.Modules.RaceMonitoring.Application.CutoffWarnings;
 using RaceDay.Modules.RaceMonitoring.Application.RaceEventLogs;
+using RaceDay.Modules.RaceMonitoring.Contracts.StaffIncidents;
 using RaceDay.Modules.RaceMonitoring.Contracts.Timeline;
 using RaceDay.Modules.RaceMonitoring.Infrastructure.CutoffWarnings;
 using RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence;
 using RaceDay.Modules.RaceMonitoring.Infrastructure.RaceEventLogs;
+using RaceDay.Modules.RaceMonitoring.Infrastructure.StaffIncidents;
 
 namespace RaceDay.Modules.RaceMonitoring.Infrastructure;
 
@@ -34,6 +36,9 @@ public static class DependencyInjection
         services.AddSingleton<SimulationRunAnchorCache>();
         services.AddScoped<ISimulationTimelineSink, SimulationTimelineSink>();
         services.AddScoped<ICheckpointActivityQuery, CheckpointActivityQuery>();
+        services.AddScoped<StaffIncidentStore>();
+        services.AddScoped<IStaffIncidentSink>(sp => sp.GetRequiredService<StaffIncidentStore>());
+        services.AddScoped<IStaffIncidentQuery>(sp => sp.GetRequiredService<StaffIncidentStore>());
         services.AddSingleton<InMemoryRaceEventLogBroker>();
         services.AddSingleton<IRaceEventLogBroker>(sp => sp.GetRequiredService<InMemoryRaceEventLogBroker>());
         services.AddSingleton<IRaceEventLogPublisher>(sp => sp.GetRequiredService<InMemoryRaceEventLogBroker>());

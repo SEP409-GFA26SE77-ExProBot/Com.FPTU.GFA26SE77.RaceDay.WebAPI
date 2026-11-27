@@ -1,14 +1,18 @@
 using MediatR;
+using Microsoft.Extensions.Logging;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.Map.Contracts.Courses;
 using RaceDay.Modules.Positioning.Contracts;
+using RaceDay.Modules.RaceMonitoring.Contracts.StaffIncidents;
 using RaceDay.Modules.Positioning.Domain;
 using RaceDay.Shared.Domain.Exceptions;
 
 namespace RaceDay.Modules.Positioning.Application;
 
 public sealed record PositionSample(GeoPoint Point, double AccuracyMeters, DateTimeOffset CapturedAtUtc);
-public sealed record PositionRecordResult(bool Accepted, bool BecameOutside);
+/// <param name="BecameInside">Inside now while the last known state was outside or unknown (first sample, or the
+/// state expired). An open out-of-zone row, if any, is closed then.</param>
+public sealed record PositionRecordResult(bool Accepted, bool BecameOutside, bool BecameInside = false);
 
 public interface IPositionTracker
 {
@@ -30,6 +34,8 @@ public sealed class ReportPositionCommandHandler(
     IPositionTracker tracker,
     IPositionEventPublisher events,
     IStaffCheckInStore checkIns,
+    IStaffIncidentSink incidents,
+    ILogger<ReportPositionCommandHandler> logger,
     TimeProvider clock) : IRequestHandler<ReportPositionCommand, PositionReceipt?>
 {
     public async Task<PositionReceipt?> Handle(ReportPositionCommand request, CancellationToken cancellationToken)
@@ -85,6 +91,15 @@ public sealed class ReportPositionCommandHandler(
         if (recorded.BecameOutside && nearestAssignment is not null)
         {
             events.Publish(new PositionAlert(request.EventId, request.UserId, nearestAssignment.Id, nearestAssignment.Name, nearestAssignment.Role, now));
+            var staffMember = new StaffIncidentStaff(request.EventId, request.UserId, nearestAssignment.Name,
+                nearestAssignment.Role, StaffZones.Describe([nearestAssignment]));
+            await RecordIncidentAsync(ct => incidents.RecordLeftZoneAsync(
+                staffMember, new StaffIncidentPoint(lat, lng, accuracy), capturedAt, ct), cancellationToken);
+        }
+        else if (recorded.BecameInside)
+        {
+            await RecordIncidentAsync(ct => incidents.RecordReturnedAsync(
+                request.EventId, request.UserId, capturedAt, ct), cancellationToken);
         }
 
         return new PositionReceipt(nearestAssignment is null ? "unconfigured" : outside switch
@@ -93,6 +108,19 @@ public sealed class ReportPositionCommandHandler(
             false => "inside",
             null => "uncertain"
         });
+    }
+
+    /// <summary>The incident log is secondary: a database error must not make the GPS report fail.</summary>
+    private async Task RecordIncidentAsync(Func<CancellationToken, Task> record, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await record(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Could not record a staff zone change.");
+        }
     }
 
     private static bool HasGeometry(string stationId) => stationId == "duty:float" || stationId.StartsWith("map:", StringComparison.Ordinal);
