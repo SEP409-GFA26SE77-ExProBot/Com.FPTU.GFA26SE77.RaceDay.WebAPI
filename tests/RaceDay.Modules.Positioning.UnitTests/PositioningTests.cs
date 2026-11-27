@@ -1,10 +1,13 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using RaceDay.Modules.Event.Contracts.Events;
 using RaceDay.Modules.Map.Contracts.Courses;
 using RaceDay.Modules.Positioning.Application;
 using RaceDay.Modules.Positioning.Contracts;
 using RaceDay.Modules.Positioning.Domain;
 using RaceDay.Modules.Positioning.Infrastructure;
+using RaceDay.Modules.RaceMonitoring.Contracts.StaffIncidents;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
 
@@ -236,9 +239,151 @@ public sealed class PositioningTests
         Assert.StartsWith("raceday-staff-checkin:", code.Payload);
     }
 
+    [Fact]
+    public async Task Tracker_ReportsReturnAfterOutsideOrUnknownState()
+    {
+        using var tracker = new CachedPositionTracker(new MemoryCache());
+        async Task<bool> Send(int offset, bool? outside) => (await tracker.RecordAsync(EventId, StaffId,
+            new PositionSample(new GeoPoint(0, 0), 1, Now.AddSeconds(offset)), outside, CancellationToken.None)).BecameInside;
+
+        Assert.True(await Send(0, false));
+        Assert.False(await Send(5, false));
+        Assert.False(await Send(10, true));
+        Assert.False(await Send(15, null));
+        Assert.True(await Send(20, false));
+        Assert.False(await Send(25, false));
+    }
+
+    [Fact]
+    public async Task Report_LogsTheExitWithTheZoneAndClosesItOnReturn()
+    {
+        var fixture = new Fixture(["duty:float"]);
+        fixture.Tracker.RecordAsync(EventId, StaffId, Arg.Any<PositionSample>(), Arg.Any<bool?>(), Arg.Any<CancellationToken>())
+            .Returns(call => new PositionRecordResult(true, call.Arg<bool?>() == true, call.Arg<bool?>() == false));
+
+        await fixture.Handle(new ReportPositionBody(0.005, 0, 3, Now));
+        await fixture.Incidents.Received(1).RecordLeftZoneAsync(
+            Arg.Is<StaffIncidentStaff>(staff => staff.EventId == EventId && staff.UserId == StaffId
+                && staff.Name == "Staff" && staff.Role == "photographer"),
+            new StaffIncidentPoint(0.005, 0, 3), Now, Arg.Any<CancellationToken>());
+        await fixture.Incidents.DidNotReceiveWithAnyArgs().RecordReturnedAsync(default, default, default, default);
+
+        await fixture.Handle(new ReportPositionBody(0.0005, 0.005, 3, Now));
+        await fixture.Incidents.Received(1).RecordReturnedAsync(EventId, StaffId, Now, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Report_StillAnswersWhenTheIncidentLogFails()
+    {
+        var fixture = new Fixture(["duty:float"]);
+        fixture.Incidents.RecordLeftZoneAsync(default!, default!, default, default)
+            .ThrowsAsyncForAnyArgs(new InvalidOperationException("database down"));
+
+        var result = await fixture.Handle(new ReportPositionBody(0.005, 0, 3, Now));
+
+        Assert.Equal("outside", result?.ZoneStatus);
+        fixture.Alerts.Received(1).Publish(Arg.Any<PositionAlert>());
+    }
+
+    [Fact]
+    public async Task Report_LogsNoExitBeforeAlertsOpen()
+    {
+        var fixture = new Fixture(["duty:float"], minutesUntilStart: 61);
+        await fixture.Handle(new ReportPositionBody(0.005, 0, 3, Now));
+        await fixture.Incidents.DidNotReceiveWithAnyArgs().RecordLeftZoneAsync(default!, default!, default, default);
+    }
+
+    [Fact]
+    public async Task SubmitReport_UploadsThePhotoAndSnapshotsTheStaff()
+    {
+        var fixture = new Fixture(["duty:float"]);
+        fixture.Staff.ListActiveAsync(EventId, StaffId, Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            new PositioningStaffAssignment(Guid.NewGuid(), StaffId, "Lan", "photographer",
+                [new PositioningStaffStation("duty:float", "Theo đoàn"), new PositioningStaffStation("map:x:cp", null)]),
+            new PositioningStaffAssignment(Guid.NewGuid(), StaffId, "Lan", "race-staff",
+                [new PositioningStaffStation("map:x:cp2", "Trạm km 5")])
+        });
+        using var photo = new MemoryStream([1, 2, 3]);
+
+        await fixture.SubmitReport(new SubmitStaffReportCommand(EventId, StaffId, "Logistics", "  Hư xe máy  ", 10.5, 106.7, 8,
+            new StaffReportPhoto(photo, "car.jpg", "image/jpeg", 3)));
+
+        await fixture.Storage.Received(1).UploadAsync(photo, "car.jpg", "image/jpeg",
+            SubmitStaffReportCommandHandler.PhotoFolder, Arg.Any<CancellationToken>());
+        await fixture.Incidents.Received(1).RecordReportAsync(Arg.Is<StaffReportInput>(report =>
+            report.Staff.Name == "Lan"
+            && report.Staff.Role == "photographer, race-staff"
+            && report.Staff.ZoneName == "Theo đoàn, Trạm km 5"
+            && report.IncidentType == "Logistics"
+            && report.Description == "Hư xe máy"
+            && report.PhotoUrl == "https://files/car.jpg"
+            && report.Location == new StaffIncidentPoint(10.5, 106.7, 8)
+            && report.ReportedAtUtc == Now), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("Weather", "", 0L, "image/jpeg")]
+    [InlineData("Flood", "Ngập", 0L, "image/jpeg")]
+    [InlineData("Other", "Mất liên lạc", SubmitStaffReportCommandHandler.MaxPhotoBytes + 1, "image/jpeg")]
+    [InlineData("Other", "Mất liên lạc", 10L, "application/pdf")]
+    public async Task SubmitReport_RefusesInvalidInputBeforeUploading(string type, string description, long photoBytes, string contentType)
+    {
+        var fixture = new Fixture(["duty:float"]);
+        var photo = photoBytes == 0 ? null : new StaffReportPhoto(Stream.Null, "x", contentType, photoBytes);
+
+        await Assert.ThrowsAsync<DomainException>(() =>
+            fixture.SubmitReport(new SubmitStaffReportCommand(EventId, StaffId, type, description, null, null, null, photo)));
+        await fixture.Storage.DidNotReceiveWithAnyArgs().UploadAsync(default!, default!, default!, default!, default);
+        await fixture.Incidents.DidNotReceiveWithAnyArgs().RecordReportAsync(default!, default);
+    }
+
+    [Fact]
+    public async Task SubmitReport_RefusesHalfALocationAndPeopleWithoutAssignment()
+    {
+        var fixture = new Fixture(["duty:float"]);
+        await Assert.ThrowsAsync<DomainException>(() => fixture.SubmitReport(
+            new SubmitStaffReportCommand(EventId, StaffId, "Other", "Mất liên lạc", 10, null, null, null)));
+        Assert.Null(await fixture.SubmitReport(
+            new SubmitStaffReportCommand(EventId, OrganizerId, "Other", "Mất liên lạc", null, null, null, null)));
+        await fixture.Incidents.DidNotReceiveWithAnyArgs().RecordReportAsync(default!, default);
+    }
+
+    [Theory]
+    [InlineData(61, false)]
+    [InlineData(60, true)]
+    [InlineData(null, false)]
+    public async Task SubmitReport_OpensOneHourBeforeStartWithoutCheckIn(int? minutesUntilStart, bool open)
+    {
+        var fixture = new Fixture(["duty:float"], minutesUntilStart);
+        fixture.CheckIns.GetAsync(EventId, StaffId, Arg.Any<CancellationToken>()).Returns((DateTimeOffset?)null);
+        var command = new SubmitStaffReportCommand(EventId, StaffId, "Medical", "Nhân sự bị ngất", null, null, null, null);
+
+        if (open) Assert.NotNull(await fixture.SubmitReport(command));
+        else await Assert.ThrowsAsync<DomainException>(() => fixture.SubmitReport(command));
+    }
+
+    [Fact]
+    public async Task ListIncidents_OnlyForTheOrganizerOrAdmin()
+    {
+        var fixture = new Fixture(["duty:float"]);
+        var page = new StaffIncidentPage([], 0, 1, 20, 0, 0, 0);
+        fixture.IncidentQuery.ListAsync(Arg.Any<StaffIncidentFilter>(), Arg.Any<CancellationToken>()).Returns(page);
+        var handler = new ListStaffIncidentsQueryHandler(fixture.Access, fixture.IncidentQuery);
+
+        Assert.Null(await handler.Handle(new ListStaffIncidentsQuery(EventId, StaffId, false, null, null, 1, 20), CancellationToken.None));
+        Assert.Same(page, await handler.Handle(
+            new ListStaffIncidentsQuery(EventId, OrganizerId, false, " Report ", "Lan", 2, 10), CancellationToken.None));
+        Assert.Same(page, await handler.Handle(new ListStaffIncidentsQuery(EventId, StaffId, true, null, null, 1, 20), CancellationToken.None));
+        await fixture.IncidentQuery.Received(1).ListAsync(new StaffIncidentFilter(EventId, "Report", "Lan", 2, 10), Arg.Any<CancellationToken>());
+    }
+
     private sealed class Fixture
     {
         public IPositionEventPublisher Alerts { get; } = Substitute.For<IPositionEventPublisher>();
+        public IStaffIncidentSink Incidents { get; } = Substitute.For<IStaffIncidentSink>();
+        public IStaffIncidentQuery IncidentQuery { get; } = Substitute.For<IStaffIncidentQuery>();
+        public IFileStorage Storage { get; } = Substitute.For<IFileStorage>();
         public IPositionTracker Tracker { get; } = Substitute.For<IPositionTracker>();
         public IEventPositioningAccessQuery Staff { get; } = Substitute.For<IEventPositioningAccessQuery>();
         public IStaffCheckInStore CheckIns { get; } = Substitute.For<IStaffCheckInStore>();
@@ -267,8 +412,16 @@ public sealed class PositioningTests
             Tracker.RecordAsync(EventId, StaffId, Arg.Any<PositionSample>(), Arg.Any<bool?>(), Arg.Any<CancellationToken>())
                 .Returns(call => new PositionRecordResult(true, call.Arg<bool?>() == true));
             CheckIns.GetAsync(EventId, Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(Now);
-            _handler = new ReportPositionCommandHandler(Access, courses, Tracker, Alerts, CheckIns, new FixedClock());
+            _handler = new ReportPositionCommandHandler(Access, courses, Tracker, Alerts, CheckIns, Incidents,
+                NullLogger<ReportPositionCommandHandler>.Instance, new FixedClock());
+            Storage.UploadAsync(default!, default!, default!, default!, default).ReturnsForAnyArgs(call =>
+                new StoredFile(call.ArgAt<string>(1), $"https://files/{call.ArgAt<string>(1)}", call.ArgAt<string>(2), 3));
+            Incidents.RecordReportAsync(default!, default).ReturnsForAnyArgs(new StaffIncidentItem(Guid.NewGuid(),
+                StaffIncidentKinds.Report, StaffId, "Staff", "photographer", null, "Other", "x", null, null, null, null, Now, null));
         }
+
+        public Task<StaffIncidentItem?> SubmitReport(SubmitStaffReportCommand command)
+            => new SubmitStaffReportCommandHandler(Access, Incidents, Storage, new FixedClock()).Handle(command, CancellationToken.None);
 
         public Task<PositionReceipt?> Handle(ReportPositionBody body, Guid? userId = null)
             => _handler.Handle(new ReportPositionCommand(EventId, userId ?? StaffId, body), CancellationToken.None);

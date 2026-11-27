@@ -89,6 +89,18 @@ Staff and Photographers share GPS (Positioning module) only after checking in wi
 - UI: UserWeb organizer "Quản lý nhân sự" → "QR check-in nhân sự" (`StaffCheckInQrDialog`); StaffMobile drawer Check-in toggle → `StaffCheckInScanScreen`.
 - Test data: `deploy/sql/seed_staff_checkin_outzone.sql` (re-run to move the start to now + 30 min).
 
+## Staff incidents: out-of-zone log & staff reports (added 2026-11-27)
+
+Organizer page "Sự cố nhân viên" (UserWeb `organizer/events/[id]/staff-incidents`) lists who left their zone and the incidents staff reported from StaffMobile (drawer → "Báo cáo"). Collect, store and display only; no handling workflow.
+
+- Table `race_monitoring.staff_incidents` (entity `Domain/Entities/StaffMonitoring/StaffIncident.cs`), `Kind` = `OutOfZone` | `Report`. Name, role and zone labels are snapshots; no cross-schema foreign keys. Report types reuse `ContingencyIncidentType`; `StaffIncidentTypes.All` (Contracts) must match it (unit test).
+- Positioning → RaceMonitoring through `IStaffIncidentSink` / `IStaffIncidentQuery` (RaceMonitoring.Contracts, implemented by `StaffIncidentStore` in Infrastructure).
+- Out-of-zone rows are written only on zone changes, never per GPS sample: `CachedPositionTracker` reports `BecameOutside` / `BecameInside` (inside while the last known state was outside or unknown, e.g. after the 2-minute Redis entry expired). Exit → insert; return → `ExecuteUpdate` sets `ReturnedAtUtc`. Unique filtered index `IX_staff_incidents_open_exit` (EventId, UserId where open) makes a repeated exit a no-op. Only inside the alert window (1 h before start). A failed write is logged and never fails `POST /positions`.
+- Endpoints (group `/api/v1/positioning/events/{eventId}`): `POST /reports` multipart (`incidentType`, `description` ≤ 1000, `latitude`/`longitude`/`accuracyMeters` optional, `photo` ≤ 5 MB JPG/PNG/WEBP/HEIC → `IFileStorage` folder `staff-reports`); active Staff/Photographer only, from 1 h before start, no QR check-in needed. `GET /staff-incidents?kind=&search=&page=&pageSize=` for the event organizer or Admin, newest first, with `outOfZoneCount`, `reportCount`, `currentlyOutsideCount`.
+- UserWeb polls the list every 30 s while the tab is visible (no SSE).
+- Limit: if a staff member stops sharing GPS while outside, the row stays open ("Đang ở ngoài") until their next inside sample.
+- Tests: `PositioningTests` (exit/return logging, report validation and window, list access), `RaceMonitoring.UnitTests/Domain/StaffIncidentTests.cs`. `StaffIncidentStore` (Postgres-specific filtered index, ILike) has no automated test.
+
 ## Known pre-existing issues (as of 2026-11-23)
 
 - `Event.IntegrationTests`: 27 failures because Postgres-specific migrations run on SQLite. Not caused by the cut-off work.

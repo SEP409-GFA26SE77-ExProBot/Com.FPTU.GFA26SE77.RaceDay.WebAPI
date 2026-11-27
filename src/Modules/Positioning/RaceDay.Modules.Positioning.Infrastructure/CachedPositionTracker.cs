@@ -15,11 +15,11 @@ public sealed class CachedPositionTracker(ICacheService cache) : IPositionTracke
         try
         {
             var previous = await cache.GetAsync<LatestPosition>(key, ct);
-            if (previous is not null && previous.Sample.CapturedAtUtc >= sample.CapturedAtUtc) return new(false, false);
+            if (previous is not null && previous.Sample.CapturedAtUtc >= sample.CapturedAtUtc) return new(false, false, false);
 
             var current = new LatestPosition(sample, isOutside ?? previous?.Outside);
             await cache.SetAsync(key, current, TimeSpan.FromMinutes(2), ct);
-            return new(true, isOutside == true && previous?.Outside != true);
+            return new(true, isOutside == true && previous?.Outside != true, isOutside == false && previous?.Outside != false);
         }
         finally
         {

@@ -7,6 +7,7 @@ using System.Threading.RateLimiting;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
@@ -14,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 using RaceDay.Modules.Positioning.Application;
 using RaceDay.Modules.Positioning.Contracts;
 using RaceDay.Modules.Positioning.Infrastructure;
+using RaceDay.Modules.RaceMonitoring.Contracts.StaffIncidents;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Web.Auth;
 
@@ -90,6 +92,41 @@ public static class PositioningModule
             var positions = await sender.Send(new ListLiveStaffPositionsQuery(eventId, userId, offset ?? 0), ct);
             return positions is null ? Results.Forbid() : Results.Ok(positions);
         }).WithSummary("Vị trí GPS mới nhất của Staff và Photographer đang chia sẻ tại giải.");
+
+        events.MapPost("/reports", async (Guid eventId, [FromForm] string? incidentType, [FromForm] string? description,
+            [FromForm] double? latitude, [FromForm] double? longitude, [FromForm] double? accuracyMeters, IFormFile? photo,
+            ICurrentUserAccessor user, ISender sender, CancellationToken ct) =>
+        {
+            if (user.UserId is not Guid userId) return Results.Forbid();
+            await using var content = photo?.OpenReadStream();
+            var attachment = photo is null || content is null
+                ? null
+                : new StaffReportPhoto(content, photo.FileName, photo.ContentType ?? string.Empty, photo.Length);
+            var report = await sender.Send(new SubmitStaffReportCommand(eventId, userId, incidentType, description,
+                latitude, longitude, accuracyMeters, attachment), ct);
+            return report is null
+                ? Results.Json(new { error = "Bạn không được phân công tại giải này." }, statusCode: StatusCodes.Status403Forbidden)
+                : Results.Created($"/api/v1/positioning/events/{eventId}/staff-incidents", report);
+        })
+        .DisableAntiforgery()
+        .Produces<StaffIncidentItem>(StatusCodes.Status201Created)
+        .WithSummary("Staff/Photographer báo cáo sự cố tới BTC (multipart: incidentType, description, latitude?, longitude?, accuracyMeters?, photo?).")
+        .WithDescription("incidentType: Weather | CourseHazard | Medical | Security | Logistics | Other. Ảnh ≤ 5 MB (JPG, PNG, WEBP, HEIC). "
+            + "Mở từ 1 giờ trước giờ xuất phát; không cần check-in QR.");
+
+        events.MapGet("/staff-incidents", async (Guid eventId, string? kind, string? search, int? page, int? pageSize,
+            ICurrentUserAccessor user, HttpContext context, ISender sender, CancellationToken ct) =>
+        {
+            if (user.UserId is not Guid userId) return Results.Forbid();
+            context.Response.Headers.CacheControl = "no-store";
+            var incidents = await sender.Send(new ListStaffIncidentsQuery(eventId, userId, user.IsAdmin, kind, search,
+                page ?? 1, pageSize ?? 20), ct);
+            return incidents is null ? Results.Forbid() : Results.Ok(incidents);
+        })
+        .Produces<StaffIncidentPage>()
+        .WithSummary("BTC/Admin xem sự cố nhân viên: lượt ra ngoài vùng hoạt động và báo cáo sự cố.")
+        .WithDescription("kind: OutOfZone | Report (bỏ trống = cả hai). search: tên, vai trò, vùng, mô tả. "
+            + "Trả kèm outOfZoneCount, reportCount, currentlyOutsideCount của cả giải.");
 
         events.MapGet("/alerts", (Guid eventId, ICurrentUserAccessor user, PositioningAccess access,
             PositionEventStream stream, IServiceScopeFactory scopes, HttpContext context, CancellationToken ct) =>
