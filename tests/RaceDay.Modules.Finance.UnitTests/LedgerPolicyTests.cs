@@ -53,6 +53,17 @@ public sealed class LedgerPolicyTests
     }
 
     [Fact]
+    public void ComputeRefund_CountsVietnamCalendarDays()
+    {
+        // 01:00 on 10/06 in Vietnam is still 09/06 in UTC. The race on 07/09 is 89 Vietnam days away,
+        // so the refund is the 60-day tier (85%), not the 90-day one a UTC date would give.
+        var now = new DateTime(2026, 6, 9, 18, 0, 0, DateTimeKind.Utc);
+        var ev = EventOn(new DateOnly(2026, 9, 7));
+        Assert.Equal(89, LedgerCalculator.DaysUntilEvent(ev, now));
+        Assert.Equal(85m, LedgerCalculator.ComputeRefund(600_000m, Settings(), ev, now).Percent);
+    }
+
+    [Fact]
     public void Wallet_TooEarly_AvailableIsZero()
     {
         var ledger = EventLedger.Create(Guid.NewGuid(), Guid.NewGuid(), "Race", "VND");

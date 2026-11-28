@@ -4,6 +4,7 @@ using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
+using RaceDay.Shared.Application.Time;
 
 namespace RaceDay.Modules.Event.Application.Registrations;
 
@@ -112,6 +113,6 @@ public sealed class FinishRegistrationCommandHandler(
         var startAt = distance.StartAt ?? race.StartTime
             ?? throw new DomainException("Giải/cự ly chưa cấu hình giờ xuất phát.");
 
-        return DateTime.SpecifyKind(race.EventDate.ToDateTime(startAt), DateTimeKind.Utc);
+        return RaceLocalTime.ToUtc(race.EventDate, startAt);
     }
 }

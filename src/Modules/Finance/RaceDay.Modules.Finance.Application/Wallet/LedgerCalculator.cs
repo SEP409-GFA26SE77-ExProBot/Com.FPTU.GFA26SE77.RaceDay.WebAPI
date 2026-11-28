@@ -1,6 +1,7 @@
 using RaceDay.Modules.Event.Contracts.Finance;
 using RaceDay.Modules.Finance.Domain.Ledger;
 using RaceDay.Modules.Finance.Domain.Settings;
+using RaceDay.Shared.Application.Time;
 
 namespace RaceDay.Modules.Finance.Application.Wallet;
 
@@ -82,6 +83,10 @@ public static class LedgerCalculator
             daysUntil);
     }
 
+    /// <summary>Race start as UTC; EventDate/StartTime are Vietnam wall-clock values (midnight when no start time).</summary>
+    private static DateTime StartUtc(EventFinanceInfo info)
+        => RaceLocalTime.ToUtc(info.EventDate, info.StartTime ?? TimeOnly.MinValue);
+
     public static bool IsAfterOrAtEventStart(EventFinanceInfo? info)
     {
         if (info is null)
@@ -89,9 +94,7 @@ public static class LedgerCalculator
             return false;
         }
 
-        var startLocal = info.EventDate.ToDateTime(info.StartTime ?? TimeOnly.MinValue);
-        var startUtc = DateTime.SpecifyKind(startLocal, DateTimeKind.Utc);
-        return DateTime.UtcNow >= startUtc;
+        return DateTime.UtcNow >= StartUtc(info);
     }
 
     /// <summary>Số ngày còn lại đến EventDate (floor). Âm nếu đã qua ngày giải.</summary>
@@ -102,10 +105,9 @@ public static class LedgerCalculator
             return null;
         }
 
-        var now = utcNow ?? DateTime.UtcNow;
-        var startLocal = info.EventDate.ToDateTime(info.StartTime ?? TimeOnly.MinValue);
-        var startUtc = DateTime.SpecifyKind(startLocal, DateTimeKind.Utc);
-        return (int)Math.Floor((startUtc.Date - now.Date).TotalDays);
+        // Whole Vietnam calendar days between today and the race day.
+        var today = RaceLocalTime.Today(utcNow ?? DateTime.UtcNow);
+        return info.EventDate.DayNumber - today.DayNumber;
     }
 
     /// <summary>
@@ -125,9 +127,7 @@ public static class LedgerCalculator
 
         if (utcNow is not null)
         {
-            var startLocal = eventInfo.EventDate.ToDateTime(eventInfo.StartTime ?? TimeOnly.MinValue);
-            var startUtc = DateTime.SpecifyKind(startLocal, DateTimeKind.Utc);
-            if (utcNow.Value >= startUtc && !settings.AllowRefundAfterEventStart)
+            if (utcNow.Value >= StartUtc(eventInfo) && !settings.AllowRefundAfterEventStart)
             {
                 return (0, 0);
             }

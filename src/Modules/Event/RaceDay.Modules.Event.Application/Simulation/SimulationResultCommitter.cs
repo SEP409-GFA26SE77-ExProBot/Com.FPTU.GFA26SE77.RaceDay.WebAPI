@@ -5,6 +5,7 @@ using RaceDay.Modules.Event.Domain.Events;
 using RaceDay.Modules.Event.Domain.Registrations;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
+using RaceDay.Shared.Application.Time;
 
 namespace RaceDay.Modules.Event.Application.Simulation;
 
@@ -52,7 +53,7 @@ public static class SimulationOfficialStartResolver
             return false;
         }
 
-        if (!TimeZoneInfo.TryFindSystemTimeZoneById(timeZoneId.Trim(), out var zone))
+        if (!RaceLocalTime.TryFindZone(timeZoneId, out var zone))
         {
             reason = "Simulation__StartTimeZone không phải mã múi giờ hợp lệ.";
             return false;

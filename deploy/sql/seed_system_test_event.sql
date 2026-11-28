@@ -54,8 +54,8 @@ BEGIN
     RAISE EXCEPTION 'duration_minutes must be between 1 and 1440.';
   END IF;
 
-  -- The race status and finish handlers interpret these date/time columns as UTC.
-  start_clock := start_instant AT TIME ZONE 'UTC';
+  -- EventDate/StartTime/StartAt are Vietnam wall-clock values, as entered in UserWeb.
+  start_clock := start_instant AT TIME ZONE 'Asia/Ho_Chi_Minh';
   finish_clock := start_clock + make_interval(mins => duration_minutes);
   -- EventDistance supports a cutoff clock within its start date.
   cutoff_clock := CASE WHEN finish_clock::date = start_clock::date THEN finish_clock::time END;
@@ -260,8 +260,8 @@ BEGIN
 END $seed$;
 
 SELECT e."Id" AS event_id, e."Name" AS event_name, e."Status" AS event_status,
-       e."EventDate" + e."StartTime" AS start_utc,
-       (e."EventDate" + e."StartTime") + interval '7 hours' AS start_utc_plus_07,
+       e."EventDate" + e."StartTime" AS start_vietnam,
+       (e."EventDate" + e."StartTime") AT TIME ZONE 'Asia/Ho_Chi_Minh' AS start_instant,
        e."RegistrationClosesAtUtc" AT TIME ZONE 'UTC' AS registration_closes_utc
 FROM event.race_events AS e
 WHERE e."Id" = '5eed2026-0000-4000-8000-000000000100';

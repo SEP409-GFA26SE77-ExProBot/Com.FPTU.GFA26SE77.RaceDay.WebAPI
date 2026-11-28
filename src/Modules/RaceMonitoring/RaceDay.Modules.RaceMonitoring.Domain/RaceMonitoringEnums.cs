@@ -151,6 +151,12 @@ public enum ContingencyIncidentType
     Other = 5
 }
 
+public enum StaffIncidentKind
+{
+    OutOfZone = 0,
+    Report = 1
+}
+
 public enum ContingencySeverity
 {
     Low = 0,

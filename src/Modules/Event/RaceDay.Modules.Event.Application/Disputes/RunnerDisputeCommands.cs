@@ -4,6 +4,7 @@ using RaceDay.Modules.Event.Application.Abstractions;
 using RaceDay.Modules.Event.Domain.Disputes;
 using RaceDay.Shared.Application.Abstractions;
 using RaceDay.Shared.Domain.Exceptions;
+using RaceDay.Shared.Application.Time;
 
 namespace RaceDay.Modules.Event.Application.Disputes;
 
@@ -32,7 +33,7 @@ public sealed class CreateEventDisputeCommandHandler(
         var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var race = await recentEvents.GetAsync(
-            userId, request.EventId, DateOnly.FromDateTime(now), cancellationToken)
+            userId, request.EventId, RaceLocalTime.Today(now), cancellationToken)
             ?? throw new DomainException(
                 "Chỉ có thể khiếu nại giải đã tham gia trong vòng 1 tháng gần đây với đăng ký đã xác nhận hoặc đã hoàn thành.");
 
@@ -86,7 +87,7 @@ public sealed class ListRecentJoinedEventsQueryHandler(
     public Task<RunnerPageDto<RecentJoinedEventDto>> Handle(ListRecentJoinedEventsQuery request, CancellationToken cancellationToken)
     {
         var userId = currentUser.UserId ?? throw new DomainException("Cần đăng nhập.");
-        var today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+        var today = RaceLocalTime.Today(timeProvider.GetUtcNow().UtcDateTime);
         return recentEvents.ListAsync(userId, today, request.Page, request.PageSize, cancellationToken);
     }
 }

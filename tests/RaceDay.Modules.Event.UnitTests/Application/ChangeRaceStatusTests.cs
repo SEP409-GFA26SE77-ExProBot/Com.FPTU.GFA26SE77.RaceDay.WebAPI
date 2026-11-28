@@ -21,7 +21,8 @@ public class ChangeRaceStatusTests
     private readonly Guid _userId = Guid.NewGuid();
     private readonly RaceEvent _race;
     private readonly EventRegistration _reg;
-    private static readonly DateTime Now = new(2026, 11, 3, 8, 0, 0, DateTimeKind.Utc);
+    // 08:00 Vietnam time on race day: the distance's scheduled start (StartAt 08:00 is Vietnam wall-clock time).
+    private static readonly DateTime Now = new(2026, 11, 3, 1, 0, 0, DateTimeKind.Utc);
 
     public ChangeRaceStatusTests()
     {
@@ -39,9 +40,9 @@ public class ChangeRaceStatusTests
         _user.UserId.Returns(_userId);
     }
 
-    private ChangeRaceStatusCommandHandler Handler() => new(_events, _registrations, _staff, _changes, _uow, _user, new FixedClock());
+    private ChangeRaceStatusCommandHandler Handler(DateTime? now = null) => new(_events, _registrations, _staff, _changes, _uow, _user, new FixedClock(now ?? Now));
     private ChangeRaceStatusCommand Command(string status = "dq", string reason = "Rule violation") => new(_race.Id, _reg.Id, status, reason);
-    private sealed class FixedClock : TimeProvider { public override DateTimeOffset GetUtcNow() => Now; }
+    private sealed class FixedClock(DateTime now) : TimeProvider { public override DateTimeOffset GetUtcNow() => now; }
 
     private EventStaffMember Assign(EventStaffRole role, Guid? eventId = null, Guid? userId = null)
     {
@@ -121,6 +122,16 @@ public class ChangeRaceStatusTests
     {
         Assign(EventStaffRole.RaceStaff);
         Assert.Equal("dns", (await Handler().Handle(Command("dns", "Absent"), default)).RaceStatus);
+    }
+
+    [Fact]
+    public async Task Dns_BeforeVietnamStartTime_IsRefused()
+    {
+        Assign(EventStaffRole.RaceStaff);
+        // 07:59 in Vietnam, one minute before the scheduled start.
+        await Assert.ThrowsAsync<DomainException>(() =>
+            Handler(Now.AddMinutes(-1)).Handle(Command("dns", "Absent"), default));
+        await _uow.DidNotReceive().SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]

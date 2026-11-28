@@ -5,6 +5,7 @@ using RaceDay.Modules.RaceMonitoring.Domain.BroomWagons;
 using RaceDay.Modules.RaceMonitoring.Domain.Contingency;
 using RaceDay.Modules.RaceMonitoring.Domain.EmergencyCoordination;
 using RaceDay.Modules.RaceMonitoring.Domain.RunnerMonitoring;
+using RaceDay.Modules.RaceMonitoring.Domain.StaffMonitoring;
 
 namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence;
 
@@ -29,6 +30,7 @@ public sealed class RaceMonitoringDbContext(DbContextOptions<RaceMonitoringDbCon
     public DbSet<BroomWagon> BroomWagons => Set<BroomWagon>();
     public DbSet<BroomWagonCheckpointLog> BroomWagonCheckpointLogs => Set<BroomWagonCheckpointLog>();
     public DbSet<RfidTagAssignment> RfidTagAssignments => Set<RfidTagAssignment>();
+    public DbSet<StaffIncident> StaffIncidents => Set<StaffIncident>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
