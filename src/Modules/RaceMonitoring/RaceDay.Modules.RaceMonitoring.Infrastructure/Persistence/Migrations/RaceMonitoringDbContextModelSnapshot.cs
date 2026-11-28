@@ -851,6 +851,76 @@ namespace RaceDay.Modules.RaceMonitoring.Infrastructure.Persistence.Migrations
                     b.ToTable("runner_status_histories", "race_monitoring");
                 });
 
+            modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.StaffMonitoring.StaffIncident", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<double?>("AccuracyMeters")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("IncidentType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("double precision");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PhotoUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime?>("ReturnedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("StaffName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ZoneName")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId", "OccurredAtUtc")
+                        .IsDescending(false, true);
+
+                    b.HasIndex("EventId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_staff_incidents_open_exit")
+                        .HasFilter("\"Kind\" = 'OutOfZone' AND \"ReturnedAtUtc\" IS NULL");
+
+                    b.ToTable("staff_incidents", "race_monitoring");
+                });
+
             modelBuilder.Entity("RaceDay.Modules.RaceMonitoring.Domain.AidStations.AidStationInventory", b =>
                 {
                     b.HasOne("RaceDay.Modules.RaceMonitoring.Domain.AidStations.AidStation", "AidStation")
